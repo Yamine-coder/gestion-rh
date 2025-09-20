@@ -1,0 +1,106 @@
+/* src/index.css */
+/* ———— avant ton @tailwind base; @tailwind components; etc. ———— */
+
+
+@import "react-big-scheduler/lib/css/style.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Personnalisation des alertes SweetAlert2 */
+.swal2-popup {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  border: 1px solid #f3f4f6;
+  padding: 0.25rem !important;
+}
+
+.swal2-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-top: 1rem !important;
+}
+
+.swal2-html-container {
+  font-size: 0.875rem;
+  color: #4b5563 !important;
+}
+
+.swal2-icon {
+  margin: 0 auto !important;
+}
+
+.swal2-icon.swal2-warning {
+  border-color: #f59e0b !important;
+  color: #f59e0b !important;
+}
+
+.swal2-icon.swal2-error {
+  border-color: #cf292c !important;
+  color: #cf292c !important;
+}
+
+.swal2-icon.swal2-success {
+  border-color: #10b981 !important;
+}
+
+.swal2-icon.swal2-success .swal2-success-ring {
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+.swal2-icon.swal2-success [class^=swal2-success-line] {
+  background-color: #10b981 !important;
+}
+
+.swal2-icon.swal2-question {
+  border-color: #cf292c !important;
+  color: #cf292c !important;
+}
+
+.swal2-icon.swal2-info {
+  border-color: #3b82f6 !important;
+  color: #3b82f6 !important;
+}
+
+.swal2-confirm.swal2-styled {
+  background-color: #cf292c !important;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.swal2-confirm.swal2-styled:hover {
+  background-color: #b32426 !important;
+  transform: translateY(-1px);
+}
+
+.swal2-confirm.swal2-styled:focus {
+  box-shadow: 0 0 0 3px rgba(207, 41, 44, 0.3);
+  outline: none;
+}
+
+.swal2-cancel.swal2-styled {
+  background-color: #6b7280 !important;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.swal2-cancel.swal2-styled:hover {
+  background-color: #4b5563 !important;
+  transform: translateY(-1px);
+}
+
+.swal2-cancel.swal2-styled:focus {
+  box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.3);
+  outline: none;
+}
+
+.swal2-actions {
+  margin-top: 1.5rem !important;
+}

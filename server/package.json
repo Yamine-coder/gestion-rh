@@ -1,0 +1,39 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "bulk:users": "node scripts/bulk-create-users.js",
+    "bulk:users:20": "node scripts/bulk-create-users.js 20",
+    "bulk:users:50": "node scripts/bulk-create-users.js 50",
+    "bulk:users:100": "node scripts/bulk-create-users.js 100",
+    "seed": "node scripts/seed-data.js",
+    "seed:more": "node scripts/add-more-data.js",
+    "seed:clean": "node scripts/clean-data.js",
+    "create:admin": "node scripts/create-admin.js",
+    "fix:shifts": "node scripts/fix-shifts.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/client": "^6.15.0",
+    "axios": "^1.11.0",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^7.0.5",
+    "prisma": "^6.15.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

@@ -1,0 +1,540 @@
+// server/controllers/adminController.js
+const prisma = require('../prisma/client');
+const bcrypt = require('bcrypt');
+const { genererMotDePasseListible } = require('../utils/passwordUtils');
+
+const creerEmploye = async (req, res) => {
+  const { email, nom, prenom, telephone, categorie, dateEmbauche, role } = req.body;
+
+  console.log('🔍 CRÉATION UTILISATEUR DEBUG:');
+  console.log('- email:', email);
+  console.log('- role reçu:', role);
+  console.log('- role final:', role || "employee");
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      return res.status(400).json({ error: "Cet email est déjà utilisé." });
+    }
+
+    // Génération mot de passe temporaire lisible
+    const motDePasseTemporaire = genererMotDePasseListible();
+    const hashedPassword = await bcrypt.hash(motDePasseTemporaire, 10);
+
+    const nouvelEmploye = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        nom,
+        prenom,
+        telephone,
+        categorie,
+        dateEmbauche: dateEmbauche ? new Date(dateEmbauche) : null,
+        role: role || "employee", // ✅ Utilise le rôle envoyé ou "employee" par défaut
+        firstLoginDone: false,
+        statut: "actif"
+      },
+    });
+
+    console.log(`✅ Nouvel employé créé: ${nom} ${prenom}`);
+    console.log(`� Mot de passe temporaire: ${motDePasseTemporaire}`);
+
+    res.status(201).json({
+      message: "Employé créé avec succès",
+      user: { 
+        id: nouvelEmploye.id,
+        email: nouvelEmploye.email, 
+        nom: nouvelEmploye.nom,
+        prenom: nouvelEmploye.prenom,
+        telephone: nouvelEmploye.telephone,
+        categorie: nouvelEmploye.categorie,
+        dateEmbauche: nouvelEmploye.dateEmbauche,
+        role: nouvelEmploye.role,
+        statut: nouvelEmploye.statut
+      },
+      motDePasseTemporaire: motDePasseTemporaire,
+      instructions: "L'employé devra changer ce mot de passe lors de sa première connexion"
+    });
+  } catch (err) {
+    console.error("Erreur création employé :", err);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+};
+
+const supprimerEmploye = async (req, res) => {
+  const employeId = parseInt(req.params.id);
+
+  // Validation ID
+  if (isNaN(employeId)) {
+    return res.status(400).json({
+      error: "ID invalide",
+      code: "INVALID_ID",
+      raw: req.params.id
+    });
+  }
+
+  try {
+    // Vérifier si l'employé existe
+    const employe = await prisma.user.findUnique({
+      where: { id: employeId },
+      include: {
+        _count: { select: { conges: true, pointages: true, plannings: true, shifts: true } }
+      }
+    });
+
+    if (!employe) {
+      return res.status(404).json({ 
+        error: "Employé non trouvé",
+        code: "NOT_FOUND",
+        details: "L'employé que vous essayez de supprimer n'existe pas." 
+      });
+    }
+
+    console.log(`Suppression employé ID ${employeId}. Relations:`, employe._count);
+
+    await prisma.$transaction(async (tx) => {
+      if (employe._count.conges) await tx.conge.deleteMany({ where: { userId: employeId } });
+      if (employe._count.pointages) await tx.pointage.deleteMany({ where: { userId: employeId } });
+      if (employe._count.plannings) await tx.planning.deleteMany({ where: { userId: employeId } });
+      if (employe._count.shifts) await tx.shift.deleteMany({ where: { employeId } });
+      await tx.user.delete({ where: { id: employeId } });
+    });
+
+    return res.status(200).json({ message: "Employé supprimé avec succès." });
+  } catch (error) {
+    // Logs détaillés
+    console.error('Erreur suppression détaillée:', {
+      code: error.code,
+      name: error.name,
+      message: error.message,
+      meta: error.meta,
+      stack: error.stack?.split('\n').slice(0,4).join('\n')
+    });
+
+    let status = 500;
+    let errorMessage = "Erreur lors de la suppression de l'employé.";
+    let code = error.code || 'UNKNOWN';
+
+    if (code === 'P2025') { // Record not found
+      status = 404; errorMessage = "Employé déjà supprimé.";
+    } else if (code === 'P2003') { // FK constraint
+      status = 400; errorMessage = "Impossible de supprimer: des données liées existent.";
+    } else if (code === 'P2034') { // Transaction failed
+      status = 500; errorMessage = "Échec de transaction, réessayez.";
+    }
+
+    return res.status(status).json({
+      error: errorMessage,
+      code,
+      details: error.meta || null,
+      raw: error.message
+    });
+  }
+};
+
+const modifierEmploye = async (req, res) => {
+  const { id } = req.params;
+  const { email, nom, prenom } = req.body; // Ajoutez nom et prenom
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: { 
+        email,
+        nom,      // Ajoutez cette ligne
+        prenom    // Ajoutez cette ligne
+      },
+    });
+
+    res.status(200).json(updated);
+  } catch (err) {
+    console.error("Erreur modification employé :", err);
+    res.status(500).json({ error: "Erreur lors de la modification" });
+  }
+};
+
+const getDashboardStats = async (req, res) => {
+  try {
+    const today = new Date();
+    // Début de journée (locale) - ajuster pour timezone UTC
+    const startOfToday = new Date(today);
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    // Pour le taux de pointage, utiliser une fenêtre plus large qui inclut la journée précédente
+    // pour capter les pointages qui peuvent être décalés par timezone
+    const startPointage = new Date(startOfToday);
+    startPointage.setDate(startPointage.getDate() - 1);
+    startPointage.setHours(22, 0, 0, 0); // Depuis 22h hier (00h local)
+    
+    const finPointage = new Date(startOfToday);
+    finPointage.setDate(finPointage.getDate() + 1);
+    finPointage.setHours(6, 0, 0, 0); // Jusqu'à 06h demain
+    
+    const now = today;    // Gestion de la période depuis les paramètres de requête
+    const { periode = 'mois' } = req.query;
+    const startDate = new Date(startOfToday);
+    
+    switch (periode) {
+      case 'semaine':
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+      case 'mois':
+        startDate.setMonth(startDate.getMonth() - 1);
+        break;
+      case 'trimestre':
+        startDate.setMonth(startDate.getMonth() - 3);
+        break;
+      case 'annee':
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        break;
+    }
+
+    // Données de base
+    const employes = await prisma.user.count({ where: { role: 'employee' } });
+
+    // Pointages (arrivées) de la journée (fenêtre timezone-aware) pour calcul du taux
+    const pointesAujourdHui = await prisma.pointage.findMany({
+      where: {
+        horodatage: { gte: startPointage, lte: finPointage },
+        type: 'arrivee'
+      },
+      distinct: ['userId']
+    });
+
+    // Calcul sur les 7 derniers jours pour les heures travaillées
+    const last7Days = new Date();
+    last7Days.setDate(last7Days.getDate() - 7);
+    last7Days.setHours(0, 0, 0, 0);
+
+    // Calcul des heures travaillées aujourd'hui seulement
+  // Fenêtre heures travaillées (identique logique) : aujourd'hui 00:00 -> demain 06:00
+  const tomorrow = new Date(startOfToday);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const finEtendue = new Date(tomorrow);
+  finEtendue.setHours(6,0,0,0);
+  const tempsPresenceAujourdhui = await calculerTotalHeures(startOfToday, finEtendue);
+
+    // Demandes en attente
+    const demandesAttente = await prisma.conge.count({
+      where: { statut: 'en attente' },
+    });
+
+    // Congés ce mois-ci
+    const premierDuMois = new Date(startOfToday.getFullYear(), startOfToday.getMonth(), 1);
+    const congesCeMois = await prisma.conge.count({
+      where: {
+        dateDebut: { gte: premierDuMois },
+      },
+    });
+
+    // Répartition des types de congés (pour la période sélectionnée)
+    const congesPeriode = await prisma.conge.findMany({
+      where: {
+        dateDebut: { gte: startDate },
+        dateFin: { lte: today },
+      },
+    });
+
+    const congesParType = {};
+    congesPeriode.forEach((c) => {
+      const nbJours = Math.ceil(
+        (new Date(c.dateFin) - new Date(c.dateDebut)) / (1000 * 60 * 60 * 24) + 1
+      );
+      if (!congesParType[c.type]) {
+        congesParType[c.type] = 0;
+      }
+      congesParType[c.type] += nbJours;
+    });
+
+    const repartitionConges = Object.entries(congesParType).map(([type, jours]) => ({
+      type,
+      jours,
+    }));
+
+    // Statuts des demandes (pour la période sélectionnée)
+    const statuts = await prisma.conge.groupBy({
+      by: ['statut'],
+      _count: true,
+      where: {
+        dateDebut: { gte: startDate },
+        dateFin: { lte: today },
+      },
+    });
+
+    const statutsDemandes = statuts.map((s) => ({
+      statut: s.statut.charAt(0).toUpperCase() + s.statut.slice(1),
+      value: s._count,
+      color: s.statut === 'approuvé' || s.statut === 'approuve' ? '#10B981' : 
+             s.statut === 'en attente' ? '#FBBF24' : '#cf292c'
+    }));
+
+    // Évolution du taux de présence (simulation basée sur les données réelles)
+    const evolutionPresence = await genererEvolutionPresence();
+
+    const congesSemaine = await prisma.conge.count({
+      where: {
+        dateDebut: { gte: today },
+        dateFin: { lte: new Date(new Date().setDate(startOfToday.getDate() + 7)) },
+      },
+    });
+
+    const prochainsConges = await prisma.conge.findMany({
+      where: { dateDebut: { gte: today } },
+      include: { user: true },
+      take: 5
+      // Commenté temporairement pour debugger l'erreur colonne
+      // orderBy: { dateDebut: 'asc' },
+    });
+
+    // 👁️ Calculs pour la section "À surveiller" - Données hebdomadaires pertinentes
+    
+    // Période : début de semaine (lundi) au jour actuel
+    const debutSemaine = new Date();
+    const joursDepuisLundi = (debutSemaine.getDay() + 6) % 7; // 0 = lundi, 6 = dimanche
+    debutSemaine.setDate(debutSemaine.getDate() - joursDepuisLundi);
+    debutSemaine.setHours(0, 0, 0, 0);
+    
+    console.log(`📅 Période surveillance: ${debutSemaine.toLocaleDateString()} au ${today.toLocaleDateString()}`);
+    
+    // 1. Employés absents cette semaine (aucun pointage d'arrivée)
+    const employesAvecPointages = await prisma.pointage.findMany({
+      where: {
+        horodatage: { gte: debutSemaine, lte: today },
+        type: 'arrivee'
+      },
+      select: { userId: true },
+      distinct: ['userId']
+    });
+    
+    // S'assurer que le nombre d'employés absents ne peut pas être négatif
+    const employesAbsents = Math.max(0, employes - employesAvecPointages.length);
+    
+    // 2. Employés avec retards répétés cette semaine 
+    // Compter les employés qui ont eu au moins un pointage d'arrivée tardif
+    const employesAvecRetards = await prisma.pointage.findMany({
+      where: {
+        horodatage: { gte: debutSemaine, lte: today },
+        type: 'arrivee',
+      },
+      select: { 
+        userId: true,
+        horodatage: true 
+      }
+    });
+    
+    // Simulation : considérer qu'un employé est en retard s'il pointe après 9h
+    const employsRetardsSet = new Set();
+    employesAvecRetards.forEach(pointage => {
+      const heure = pointage.horodatage.getHours();
+      if (heure >= 9) { // Retard si pointage à 9h ou après
+        employsRetardsSet.add(pointage.userId);
+      }
+    });
+    
+    const employesEnRetard = employsRetardsSet.size;
+    
+    // 3. Employés avec écart entre heures prévues et réalisées
+    const shiftsWeek = await prisma.shift.count({
+      where: {
+        date: { gte: debutSemaine, lte: today }
+      }
+    });
+    
+    const pointagesWeek = await prisma.pointage.count({
+      where: {
+        horodatage: { gte: debutSemaine, lte: today }
+      }
+    });
+    
+    // Si moins de pointages que de shifts, certains employés n'ont pas respecté leur planning
+    const employesEcartPlanning = shiftsWeek > 0 ? Math.max(0, Math.min(3, Math.floor((shiftsWeek - pointagesWeek) / 2))) : 0;
+
+    // Si pas de données, retourner des données de démonstration
+    if (employes === 0 && repartitionConges.length === 0 && statutsDemandes.length === 0) {
+      return res.json(genererDonneesDemo());
+    }
+
+    res.json({
+      employes,
+      demandesAttente,
+      congesCeMois,
+      totalHeures: tempsPresenceAujourdhui,  // Heures travaillées aujourd'hui
+      repartitionConges,
+      statutsDemandes,
+      evolutionPresence,
+      pointes: pointesAujourdHui.length,
+      congesSemaine,
+      prochainsConges: prochainsConges.map(c => ({
+        nom: c.user.nom && c.user.prenom ? `${c.user.prenom} ${c.user.nom}` : c.user.email,
+        type: c.type,
+        dateDebut: c.dateDebut,
+        dateFin: c.dateFin,
+      })),
+      // Données pour la section "À surveiller" - hebdomadaires
+      surveillance: {
+        employesAbsents: employesAbsents,
+        employesEnRetard: employesEnRetard,
+        employesEcartPlanning: employesEcartPlanning,
+        totalElements: employesAbsents + employesEnRetard + employesEcartPlanning,
+        periode: `du ${debutSemaine.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} au ${today.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`
+      },
+      periode,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Erreur dans getDashboardStats:', error);
+    // En cas d'erreur, retourner des données de démonstration
+    res.status(200).json(genererDonneesDemo());
+  }
+};
+
+const calculerTotalHeures = async (debut, fin) => {
+  // Si pas de paramètres, utiliser aujourd'hui
+  const dateDebut = debut || new Date();
+  const dateFinReel = fin || new Date();
+
+  // Etendre légèrement la fenêtre de fin (comme la vue journalière) pour capter les départs tardifs
+  const dateFin = new Date(dateFinReel);
+  const dateFinEtendue = new Date(dateFin);
+  dateFinEtendue.setHours(dateFinEtendue.getHours() + 6); // tolérance jusqu'à 6h après
+
+  // Logs réduits
+  console.log(`[Heures] Fenêtre ${dateDebut.toISOString()} -> ${dateFinEtendue.toISOString()}`);
+
+  const pointages = await prisma.pointage.findMany({
+    where: {
+      horodatage: {
+        gte: dateDebut,
+        lte: dateFinEtendue
+      },
+    },
+    orderBy: { horodatage: 'asc' },
+  });
+
+  if (pointages.length === 0) return '0h00';
+  
+  const pointagesParEmploye = {};
+
+  for (const p of pointages) {
+    if (!pointagesParEmploye[p.userId]) pointagesParEmploye[p.userId] = [];
+    pointagesParEmploye[p.userId].push(p);
+  }
+
+  let totalMs = 0;
+  const now = new Date();
+
+  for (const userId in pointagesParEmploye) {
+    const points = pointagesParEmploye[userId];
+
+    for (let i = 0; i < points.length; i++) {
+      const current = points[i];
+      const next = points[i + 1];
+
+      if (current.type === 'arrivee') {
+        if (next && next.type === 'depart') {
+          const dureeMs = new Date(next.horodatage) - new Date(current.horodatage);
+          totalMs += dureeMs;
+          const dureeH = Math.floor(dureeMs / 1000 / 60 / 60);
+          const dureeMin = Math.floor((dureeMs / 1000 / 60) % 60);
+          i++; // skip la paire
+        } else if (!next) {
+          // Pas de départ encore: comptabiliser jusqu'à maintenant (session en cours)
+            const dureeMs = now - new Date(current.horodatage);
+            if (dureeMs > 0) {
+              totalMs += dureeMs;
+              const dureeH = Math.floor(dureeMs / 1000 / 60 / 60);
+              const dureeMin = Math.floor((dureeMs / 1000 / 60) % 60);
+            }
+        }
+      }
+    }
+  }
+
+  if (totalMs <= 0) {
+    console.log('🔍 DEBUG HEURES: totalMs = 0 => retour 0h00');
+    return '0h00';
+  }
+  const heures = Math.floor(totalMs / 1000 / 60 / 60);
+  const minutes = Math.floor((totalMs / 1000 / 60) % 60);
+  console.log(`🔍 DEBUG HEURES: total calculé = ${heures}h${minutes.toString().padStart(2,'0')}`);
+  return `${heures}h${minutes.toString().padStart(2, '0')}`;
+};
+
+// Fonction pour générer l'évolution du taux de présence
+const genererEvolutionPresence = async () => {
+  const mois = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août'];
+  const evolutionPresence = [];
+  
+  for (let i = 0; i < 8; i++) {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (7 - i));
+    
+    // Compter les pointages pour ce mois
+    const debutMois = new Date(date.getFullYear(), date.getMonth(), 1);
+    const finMois = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    
+    const pointagesMois = await prisma.pointage.count({
+      where: {
+        horodatage: { gte: debutMois, lte: finMois },
+      },
+    });
+    
+    // Calculer un taux basé sur l'activité (simulation)
+    const tauxBase = 85;
+    const variation = Math.floor(Math.random() * 15) - 7; // -7 à +7
+    const taux = Math.max(70, Math.min(100, tauxBase + variation + (pointagesMois > 0 ? 5 : 0)));
+    
+    evolutionPresence.push({
+      mois: mois[date.getMonth()],
+      taux,
+    });
+  }
+  
+  return evolutionPresence;
+};
+
+// Fonction pour générer des données de démonstration
+const genererDonneesDemo = () => {
+  return {
+    demo: true,
+    employes: 5,
+    demandesAttente: 2,
+    congesCeMois: 8,
+    tempsPresence: '127h30',
+    repartitionConges: [
+      { type: 'Congés payés', jours: 12 },
+      { type: 'Maladie', jours: 4 },
+      { type: 'RTT', jours: 6 },
+      { type: 'Autres', jours: 2 },
+    ],
+    statutsDemandes: [
+      { statut: 'Approuvé', value: 8, color: '#10B981' },
+      { statut: 'En attente', value: 2, color: '#FBBF24' },
+      { statut: 'Refusé', value: 1, color: '#cf292c' },
+    ],
+    evolutionPresence: [
+      { mois: 'Jan', taux: 86 },
+      { mois: 'Fév', taux: 89 },
+      { mois: 'Mar', taux: 92 },
+      { mois: 'Avr', taux: 87 },
+      { mois: 'Mai', taux: 91 },
+      { mois: 'Juin', taux: 95 },
+      { mois: 'Juil', taux: 88 },
+      { mois: 'Août', taux: 93 },
+    ],
+    pointes: 2,
+    congesSemaine: 1,
+    prochainsConges: [
+      { nom: 'Demo User', type: 'Congés payés', dateDebut: new Date(), dateFin: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+    ],
+    periode: 'demo',
+    timestamp: new Date().toISOString()
+  };
+};
+
+module.exports = {
+  creerEmploye,
+  modifierEmploye,
+  supprimerEmploye,
+  getDashboardStats,
+};

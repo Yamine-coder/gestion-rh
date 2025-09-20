@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  password  String
+  role      String     @default("employee")
+  createdAt DateTime   @default(now())
+  nom       String?
+  prenom    String?
+  telephone String?
+  categorie String?
+  dateEmbauche DateTime?
+  codeActivation String?
+  firstLoginDone Boolean @default(false)
+  lastLoginAt DateTime?
+  statut    String     @default("actif")
+  conges    Conge[]
+  plannings Planning[]
+  pointages Pointage[]
+  shifts                    Shift[]
+  extraPaymentLogsAsEmploye ExtraPaymentLog[] @relation("EmployeExtraLogs")
+  changedExtraPaymentLogs   ExtraPaymentLog[] @relation("UserExtraLogs")
+  passwordResets            PasswordReset[]
+  anomaliesAsEmploye        Anomalie[]        @relation("EmployeAnomalies")
+  anomaliesAsAdmin          Anomalie[]        @relation("AdminAnomalies")
+}
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Pointage {
+  id         Int      @id @default(autoincrement())
+  type       String
+  horodatage DateTime @default(now())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model Conge {
+  id        Int      @id @default(autoincrement())
+  type      String
+  statut    String   @default("en attente")
+  dateDebut DateTime
+  dateFin   DateTime
+  userId    Int
+  vu        Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Planning {
+  id         Int      @id @default(autoincrement())
+  date       DateTime
+  heureDebut DateTime
+  heureFin   DateTime
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model Shift {
+  id        Int      @id @default(autoincrement())
+  employeId Int
+  date      DateTime
+  type      String
+  motif     String?
+  segments  Json
+  version   Int      @default(0)
+  employe   User     @relation(fields: [employeId], references: [id])
+  extraPaymentLogs ExtraPaymentLog[] @relation("ShiftExtraLogs")
+}
+
+model ExtraPaymentLog {
+  id              Int      @id @default(autoincrement())
+  shiftId         Int
+  segmentIndex    Int
+  employeId       Int
+  changedByUserId Int
+  oldValues       Json?
+  newValues       Json?
+  createdAt       DateTime @default(now())
+  shift     Shift @relation("ShiftExtraLogs", fields: [shiftId], references: [id])
+  employe   User  @relation("EmployeExtraLogs", fields: [employeId], references: [id])
+  changedBy User  @relation("UserExtraLogs", fields: [changedByUserId], references: [id])
+  @@index([shiftId])
+  @@index([employeId])
+  @@index([createdAt])
+}
+
+model Anomalie {
+  id              Int      @id @default(autoincrement())
+  employeId       Int
+  date            DateTime
+  type            String   // retard, hors_plage, absence_totale, presence_non_prevue, depart_anticipe, heures_sup, etc.
+  gravite         String   // critique, attention, info
+  description     String
+  details         Json?    // données détaillées (écart en minutes, heures concernées, etc.)
+  statut          String   @default("en_attente") // en_attente, validee, refusee, corrigee
+  commentaire     String?
+  traitePar       Int?     // ID de l'admin qui a traité
+  traiteAt        DateTime?
+  montantExtra    Decimal? // montant pour les heures sup si validées
+  heuresExtra     Decimal? // nombre d'heures supplémentaires
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  employe         User     @relation("EmployeAnomalies", fields: [employeId], references: [id])
+  traiteur        User?    @relation("AdminAnomalies", fields: [traitePar], references: [id])
+  
+  @@unique([employeId, date, type, description]) // Éviter les doublons
+  @@index([employeId])
+  @@index([date])
+  @@index([statut])
+  @@index([type])
+}

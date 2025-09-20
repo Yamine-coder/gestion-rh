@@ -1,0 +1,198 @@
+/* Animations pour les composants de l'application */
+
+/* Animation de fondu */
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Animation séquentielle pour les actions après création */
+@keyframes slideInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideInUp {
+  animation: slideInUp 0.4s ease-out forwards;
+}
+
+/* Animation pour une entrée en fondu depuis la droite */
+@keyframes slideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out forwards;
+}
+
+/* Animation pour une entrée en fondu depuis la gauche */
+@keyframes slideInLeft {
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.3s ease-out forwards;
+}
+
+/* Animation subtile pour attirer l'attention */
+@keyframes subtle-highlight {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(207, 41, 44, 0.05);
+  }
+}
+
+/* Animation de pulsation légère pour les boutons */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(207, 41, 44, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(207, 41, 44, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(207, 41, 44, 0);
+  }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Animation de pulsation pour le texte */
+@keyframes pulseText {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+.animate-pulseText {
+  animation: pulseText 1.5s infinite;
+}
+
+/* Animation de la barre de progression */
+@keyframes progressBar {
+  0% { width: 0; }
+  100% { width: 100%; }
+}
+
+.animate-progressBar {
+  animation: progressBar 5s linear forwards;
+}
+
+/* Animation de rebond pour les indicateurs */
+@keyframes bounce {
+  0%, 100% { 
+    transform: translateY(0);
+  }
+  50% { 
+    transform: translateY(-5px);
+  }
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite;
+}
+
+/* Effet de vibration subtil pour l'attention */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
+  20%, 40%, 60%, 80% { transform: translateX(2px); }
+}
+
+.animate-shake {
+  animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Animation de rotation */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Animation pour le countdown visuel */
+@keyframes countdown {
+  0% { width: 100%; }
+  100% { width: 0; }
+}
+
+.countdown-bar {
+  height: 2px;
+  background: #4a5568;
+  animation: countdown 5s linear forwards;
+}
+
+/* Animation d'échelle */
+@keyframes scaleIn {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-scaleIn {
+  animation: scaleIn 0.3s ease-out forwards;
+}
+
+/* Animation pour attirer l'attention sur un élément */
+@keyframes highlight {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(207, 41, 44, 0.1); }
+}
+
+.animate-highlight {
+  animation: highlight 1.5s ease-in-out;
+}
+
+/* Animation de transition pour les interactions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.duration-200 {
+  transition-duration: 200ms;
+}
+
+.duration-300 {
+  transition-duration: 300ms;
+}
+
+.duration-500 {
+  transition-duration: 500ms;
+}

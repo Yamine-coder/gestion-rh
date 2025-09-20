@@ -1,0 +1,179 @@
+// 🧪 Test Frontend - Système de récupération
+// Ouvrir ce fichier dans le navigateur pour tester l'interface
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Récupération - Chez Antoine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .container { max-width: 400px; margin: 2rem auto; padding: 2rem; }
+        .btn { padding: 0.75rem 1.5rem; margin: 0.5rem; border-radius: 0.5rem; border: none; cursor: pointer; }
+        .btn-primary { background-color: #dc2626; color: white; }
+        .btn-secondary { background-color: #6b7280; color: white; }
+        .result { margin-top: 1rem; padding: 1rem; border-radius: 0.5rem; }
+        .success { background-color: #d1fae5; color: #065f46; }
+        .error { background-color: #fee2e2; color: #dc2626; }
+        .info { background-color: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container bg-white rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold text-center mb-6 text-red-700">🧪 Test Récupération RH</h1>
+        
+        <div class="space-y-4">
+            <div>
+                <h3 class="font-semibold mb-2">1. Test demande de récupération</h3>
+                <input type="email" id="testEmail" placeholder="Email à tester" 
+                       value="test@example.com" class="w-full p-2 border rounded mb-2">
+                <button onclick="testForgotPassword()" class="btn btn-primary">
+                    📧 Tester demande récupération
+                </button>
+            </div>
+            
+            <div>
+                <h3 class="font-semibold mb-2">2. Test rate limiting</h3>
+                <button onclick="testRateLimit()" class="btn btn-secondary">
+                    ⚡ Tester protection (4 demandes rapides)
+                </button>
+            </div>
+            
+            <div>
+                <h3 class="font-semibold mb-2">3. Test token invalide</h3>
+                <button onclick="testInvalidToken()" class="btn btn-secondary">
+                    🔑 Tester token invalide
+                </button>
+            </div>
+            
+            <div>
+                <h3 class="font-semibold mb-2">4. Test interface React</h3>
+                <button onclick="openLoginPage()" class="btn btn-primary">
+                    🚀 Ouvrir page de connexion
+                </button>
+            </div>
+        </div>
+        
+        <div id="results"></div>
+        
+        <div class="mt-6 p-4 bg-gray-50 rounded">
+            <h4 class="font-semibold mb-2">📋 Instructions:</h4>
+            <ul class="text-sm space-y-1">
+                <li>• Serveur backend doit être lancé (port 5000)</li>
+                <li>• Mode test activé (emails simulés)</li>
+                <li>• Vérifiez la console pour les détails</li>
+                <li>• Rate limiting : 3 demandes max/15min</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000';
+        
+        function showResult(message, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong><br>${message}`;
+            results.appendChild(div);
+            results.scrollTop = results.scrollHeight;
+        }
+        
+        async function testForgotPassword() {
+            const email = document.getElementById('testEmail').value;
+            showResult(`🔄 Test demande de récupération pour: ${email}`, 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/forgot-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`✅ Succès: ${data.message}`, 'success');
+                    console.log('📧 Email simulé envoyé - Vérifiez les logs serveur');
+                } else {
+                    showResult(`❌ Erreur: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Erreur réseau: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testRateLimit() {
+            showResult('🔄 Test rate limiting (4 demandes rapides)...', 'info');
+            
+            for (let i = 1; i <= 4; i++) {
+                try {
+                    const response = await fetch(`${API_BASE}/auth/forgot-password`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: 'rate.limit.test@example.com' })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.status === 429) {
+                        showResult(`✅ Rate limiting activé à la tentative ${i}: ${data.error}`, 'success');
+                        break;
+                    } else {
+                        showResult(`⏳ Tentative ${i}/4 acceptée`, 'info');
+                    }
+                } catch (error) {
+                    showResult(`❌ Erreur tentative ${i}: ${error.message}`, 'error');
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
+        async function testInvalidToken() {
+            showResult('🔄 Test token invalide...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        token: 'token-invalide-test-12345',
+                        nouveauMotDePasse: 'TestPassword123!'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.status === 400) {
+                    showResult(`✅ Token invalide rejeté: ${data.error}`, 'success');
+                } else {
+                    showResult(`❌ Erreur inattendue: ${JSON.stringify(data)}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Erreur réseau: ${error.message}`, 'error');
+            }
+        }
+        
+        function openLoginPage() {
+            showResult('🚀 Ouverture de la page de connexion React...', 'info');
+            window.open('http://localhost:3000/login', '_blank');
+        }
+        
+        // Test de connexion au serveur au chargement
+        async function checkServer() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                showResult(`✅ Serveur connecté: ${data.message} | Mode test: ${data.emailTestMode}`, 'success');
+            } catch (error) {
+                showResult(`❌ Serveur non accessible: ${error.message}`, 'error');
+            }
+        }
+        
+        // Vérifier la connexion au chargement
+        checkServer();
+    </script>
+</body>
+</html>
