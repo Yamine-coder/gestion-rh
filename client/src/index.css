@@ -8,6 +8,235 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================
+   PWA SAFE AREA - iOS/Android Support
+   Solution universelle pour tous les appareils
+   Supporte: iPhone (notch, Dynamic Island), Android (encoche, barre navigation)
+   ======================================== */
+
+:root {
+  /* Safe areas - fonctionnent sur iOS Safari, Android Chrome, PWA */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  
+  /* Hauteur de la navbar mobile (incluant le safe-area) */
+  /* 100px = hauteur de base de la navbar (icônes + labels + padding + marge de sécurité) */
+  --navbar-height-mobile: calc(100px + var(--safe-bottom));
+  
+  /* Hauteur du header mobile (incluant le safe-area top) */
+  --header-height-mobile: calc(60px + var(--safe-top));
+  
+  /* Marges pour FAB et éléments flottants */
+  --fab-margin: 1rem;
+}
+
+/* ===== Classes utilitaires PWA dans le layer Tailwind ===== */
+@layer utilities {
+  /* Padding safe-area - tous les côtés */
+  .safe-area-inset {
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /* Padding bottom pour le contenu qui doit éviter la navbar */
+  .pb-navbar {
+    padding-bottom: var(--navbar-height-mobile);
+  }
+
+  /* Padding top pour le contenu qui doit éviter le header */
+  .pt-header {
+    padding-top: var(--header-height-mobile);
+  }
+
+  /* Padding top safe-area uniquement */
+  .pt-safe {
+    padding-top: var(--safe-top);
+  }
+
+  /* Padding bottom safe-area uniquement */
+  .pb-safe {
+    padding-bottom: var(--safe-bottom);
+  }
+
+  /* Position bottom pour les FAB au-dessus de la navbar */
+  .bottom-above-navbar {
+    bottom: calc(var(--navbar-height-mobile) + var(--fab-margin));
+  }
+
+  /* Modales fullscreen avec safe-area automatique */
+  .modal-safe-area {
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /* Container plein écran PWA avec safe-areas */
+  .pwa-fullscreen {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+  }
+}
+
+/* ===== Corrections spécifiques PWA ===== */
+
+/* Empêcher le overscroll bounce sur iOS */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ===== Empêcher le zoom automatique iOS sur les inputs ===== */
+/* iOS zoome automatiquement quand la taille de police est < 16px */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Support du dynamic viewport height (dvh) pour iOS 15+ et Android modernes */
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* Forcer la scrollbar visible pour éviter le shift de layout - desktop uniquement */
+@media (min-width: 1024px) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
+/* Sur mobile, pas de scrollbar visible */
+@media (max-width: 1023px) {
+  html {
+    overflow-y: auto;
+  }
+  
+  /* Masquer les scrollbars sur mobile tout en gardant le scroll fonctionnel */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ===== Touch optimizations pour mobile ===== */
+@media (hover: none) and (pointer: coarse) {
+  /* Targets touch devices */
+  
+  /* Éviter le highlight bleu/gris au tap */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Touch targets minimum 44px (recommandation Apple/Google) */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Smooth scrolling natif */
+  .overflow-y-auto, .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ========================================
+   ANIMATIONS GLOBALES
+   ======================================== */
+
+/* Animation wave pour emoji */
+@keyframes wave {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-8deg); }
+  45% { transform: rotate(14deg); }
+  60% { transform: rotate(-4deg); }
+  75% { transform: rotate(10deg); }
+  90% { transform: rotate(0deg); }
+}
+
+/* ========================================
+   ANIMATIONS NAVBAR MOBILE
+   ======================================== */
+
+/* Animation d'entrée pour les éléments actifs */
+@keyframes nav-pop {
+  0% { transform: scale(0.85); opacity: 0; }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes nav-dot {
+  0% { transform: translateX(-50%) scale(0); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.1); }
+}
+
+/* Classes d'animation pour la navbar */
+.nav-icon-active {
+  animation: nav-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.nav-dot-animate {
+  animation: nav-dot 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.nav-pulse {
+  animation: gentle-pulse 3s ease-in-out infinite;
+}
+
+/* Effet de ripple au touch */
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+.nav-item-ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle, currentColor 10%, transparent 10%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav-item-ripple:active::after {
+  animation: ripple 0.4s ease-out;
+}
+
+/* Smooth transitions pour la navbar */
+.nav-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* Personnalisation des alertes SweetAlert2 */
 .swal2-popup {
   font-family: ui-sans-serif, system-ui, sans-serif;
@@ -103,4 +332,123 @@
 
 .swal2-actions {
   margin-top: 1.5rem !important;
+}
+
+/* ========================================
+   ANIMATION SHIMMER POUR BARRE DE PROGRESSION
+   ======================================== */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Animation slide down pour les alertes */
+@keyframes slideDown {
+  0% { 
+    opacity: 0; 
+    transform: translateY(-10px); 
+  }
+  100% { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out forwards;
+}
+
+/* Classe pour le gradient de progression */
+.progress-gradient {
+  background-size: 200% 100%;
+  animation: gradient-shift 3s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* ========================================
+   ANIMATION HIGHLIGHT NOTIFICATION
+   ======================================== */
+
+/* Animation de surbrillance rouge sobre pour les sections notifiées */
+@keyframes highlight-pulse {
+  0% { 
+    box-shadow: 0 0 0 0 rgba(207, 41, 44, 0.4);
+  }
+  50% { 
+    box-shadow: 0 0 0 8px rgba(207, 41, 44, 0);
+  }
+  100% { 
+    box-shadow: 0 0 0 0 rgba(207, 41, 44, 0);
+  }
+}
+
+@keyframes highlight-border {
+  0%, 100% {
+    border-color: rgba(207, 41, 44, 0.3);
+  }
+  50% {
+    border-color: rgba(207, 41, 44, 0.6);
+  }
+}
+
+.animate-highlight-pulse {
+  animation: highlight-pulse 1.5s ease-out 2;
+}
+
+.highlight-section {
+  position: relative;
+  border: 2px solid rgba(207, 41, 44, 0.3);
+  border-radius: 1rem;
+  animation: highlight-border 1.5s ease-in-out 2, highlight-pulse 1.5s ease-out 2;
+  transition: all 0.5s ease-out;
+}
+
+/* Effet de glow subtil */
+.highlight-glow {
+  box-shadow: 
+    0 0 0 2px rgba(207, 41, 44, 0.15),
+    0 0 20px rgba(207, 41, 44, 0.1),
+    0 4px 12px rgba(207, 41, 44, 0.08);
+  animation: highlight-pulse 1.5s ease-out 2;
+}
+
+/* Animation pulse unique pour les consignes spécifiques */
+@keyframes pulse-once {
+  0% {
+    box-shadow: 0 0 0 0 rgba(207, 41, 44, 0.4);
+    transform: scale(1);
+  }
+  25% {
+    box-shadow: 0 0 0 8px rgba(207, 41, 44, 0.2);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(207, 41, 44, 0);
+    transform: scale(1.02);
+  }
+  75% {
+    box-shadow: 0 0 0 8px rgba(207, 41, 44, 0);
+    transform: scale(1.01);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(207, 41, 44, 0);
+    transform: scale(1);
+  }
+}
+
+.animate-pulse-once {
+  animation: pulse-once 2s ease-out 2;
+}
+
+/* Scroll smooth vers la section */
+.scroll-mt-highlight {
+  scroll-margin-top: 6rem;
 }

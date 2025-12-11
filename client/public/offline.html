@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#cf292c">
+  <title>Hors ligne - MonPlanning</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    .icon {
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 30px;
+      background: #cf292c;
+      border-radius: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 40px rgba(207, 41, 44, 0.3);
+    }
+    .icon svg {
+      width: 60px;
+      height: 60px;
+      fill: white;
+    }
+    h1 {
+      color: #333;
+      font-size: 24px;
+      margin-bottom: 15px;
+    }
+    p {
+      color: #666;
+      font-size: 16px;
+      line-height: 1.6;
+      margin-bottom: 30px;
+    }
+    .btn {
+      display: inline-block;
+      background: #cf292c;
+      color: white;
+      padding: 15px 30px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:active {
+      transform: scale(0.98);
+    }
+    .status {
+      margin-top: 30px;
+      padding: 15px;
+      background: rgba(207, 41, 44, 0.1);
+      border-radius: 12px;
+      color: #cf292c;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+      </svg>
+    </div>
+    <h1>Vous êtes hors ligne</h1>
+    <p>
+      Pas de connexion Internet détectée. 
+      Vérifiez votre connexion WiFi ou données mobiles.
+    </p>
+    <a href="/" class="btn" onclick="window.location.reload()">
+      Réessayer
+    </a>
+    <div class="status">
+      💡 Vos dernières données consultées sont disponibles
+    </div>
+  </div>
+  <script>
+    // Recharger automatiquement quand la connexion revient
+    window.addEventListener('online', () => {
+      window.location.reload();
+    });
+  </script>
+</body>
+</html>

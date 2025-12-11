@@ -1,11 +1,13 @@
 import { NavLink } from "react-router-dom";
-import { HomeIcon, ClockIcon, CalendarIcon, UserIcon, QrCodeIcon } from "@heroicons/react/24/outline";
+import { HomeIcon, ClockIcon, CalendarIcon, UserIcon, QrCodeIcon, BellIcon, BoltIcon } from "@heroicons/react/24/outline";
 import { useState, useContext } from "react";
 import { QRCodeCanvas } from 'qrcode.react';
-import { X, Zap } from "lucide-react";
+import { X } from "lucide-react";
 import { ThemeContext } from '../context/ThemeContext';
+import NotificationsModal from './NotificationsModal';
+import { useNotifications } from '../hooks/useNotifications';
 
-// Liste centralisée
+// Navigation mobile optimisée - 5 éléments essentiels
 const NAV_ITEMS = (pendingLeaves, hasNotifications) => [
   { key: 'home', to: '/home', label: 'Accueil', icon: HomeIcon },
   { key: 'pointage', to: '/pointage', label: 'Pointage', icon: ClockIcon },
@@ -17,8 +19,19 @@ const NAV_ITEMS = (pendingLeaves, hasNotifications) => [
 export default function BottomNav({ pendingLeaves = 0, hasNotifications = false }) {
   const items = NAV_ITEMS(pendingLeaves, hasNotifications);
   const [showQuickQR, setShowQuickQR] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const { theme } = useContext(ThemeContext); // eslint-disable-line no-unused-vars
-  const token = localStorage.getItem('token');
+  
+  // Hook centralisé pour les notifications
+  const {
+    notifications,
+    unreadCount,
+    loading: loadingNotifs,
+    fetchNotifications,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification
+  } = useNotifications();
 
   const openQuickQR = (e) => {
     e.preventDefault();
@@ -27,6 +40,12 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
 
   const closeQuickQR = () => {
     setShowQuickQR(false);
+  };
+
+  const openNotifications = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowNotifications(true);
   };
 
   // Mobile: Bottom navigation (existing styles)
@@ -57,7 +76,7 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
     <>
       {/* Desktop: Top Navigation Bar - Optimisé pour la lisibilité */}
       <nav className="hidden lg:block fixed top-0 left-0 right-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm shadow-black/3 dark:shadow-black/15" role="navigation" aria-label="Navigation principale">
-        <div className="mx-auto max-w-7xl px-6 py-2">
+        <div className="px-4 py-2">
           <div className="flex items-center justify-between h-10">
             {/* Logo/Brand - Logo restaurant optimisé */}
             <div className="flex items-center gap-2">
@@ -108,6 +127,22 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
                   </button>
                 </div>
               )}
+              
+              {/* Desktop Notifications Button */}
+              <div className="relative ml-2">
+                <button 
+                  onClick={openNotifications}
+                  className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50"
+                  aria-label="Notifications"
+                >
+                  <BellIcon className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-600 text-white text-[10px] leading-[18px] text-center font-semibold shadow-sm">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -115,6 +150,47 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
 
       {/* Desktop Content Spacer - Hauteur réduite */}
       <div className="hidden lg:block h-14"></div>
+
+      {/* Mobile: Top Header Bar - avec safe-area pour iOS PWA */}
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-800/60 shadow-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <div className="flex items-center justify-between px-4 py-3">
+          {/* Logo + Titre */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-600 flex items-center justify-center shadow-sm">
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8.1 13.34l2.83-2.83L3.91 3.5c-1.56 1.56-1.56 4.09 0 5.66l4.19 4.18zm6.78-1.81c1.53.71 3.68.21 5.27-1.38 1.91-1.91 2.28-4.65.81-6.12-1.46-1.46-4.2-1.1-6.12.81-1.59 1.59-2.09 3.74-1.38 5.27L3.7 19.87l1.41 1.41L12 14.41l6.88 6.88 1.41-1.41-6.88-6.88 1.47-1.47z"/>
+              </svg>
+            </div>
+            <h1 className="text-base font-semibold text-slate-900 dark:text-white">Espace Employé</h1>
+          </div>
+          
+          {/* Icône Notification Mobile */}
+          <button 
+            onClick={openNotifications}
+            className="relative p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            aria-label="Notifications"
+          >
+            <BellIcon className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary-600 text-white text-[10px] leading-[18px] text-center font-semibold shadow-sm">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </header>
+      
+      {/* Modal Notifications - Utilisé pour mobile et desktop */}
+      <NotificationsModal
+        isOpen={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkAsRead={markAsRead}
+        onMarkAllAsRead={markAllAsRead}
+        onDelete={deleteNotification}
+        loading={loadingNotifs}
+      />
 
       {/* Mobile: Bottom Navigation Bar */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/60 dark:border-slate-800/60 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.4)] px-4 pt-2 pb-[calc(env(safe-area-inset-bottom,0)+10px)] sm:px-6" role="navigation" aria-label="Navigation principale">
@@ -148,61 +224,73 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
         </div>
       </nav>
 
-      {/* Modal QR Code Fullscreen - Mode Rapide */}
+      {/* Modal QR Code Fullscreen - Compact et aéré, avec safe-area pour iOS */}
       {showQuickQR && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm transition-colors">
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-3 lg:p-4" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4rem)' }}>
+          <div className="relative bg-white dark:bg-slate-800 rounded-xl lg:rounded-2xl shadow-2xl w-full max-w-[90vw] lg:max-w-md max-h-full overflow-auto transition-all duration-300">
             <button
               onClick={closeQuickQR}
-              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 flex items-center justify-center transition-colors z-10"
+              className="absolute top-2 right-2 lg:top-3 lg:right-3 w-8 h-8 lg:w-9 lg:h-9 rounded-full bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 flex items-center justify-center transition-all duration-200 hover:scale-110 z-10"
               aria-label="Fermer"
             >
-              <X className="w-5 h-5 text-gray-600 dark:text-slate-300" />
+              <X className="w-4 h-4 text-gray-600 dark:text-slate-300" />
             </button>
             
-            <div className="p-8 text-center">
-              {/* Header */}
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center">
-                  <QrCodeIcon className="w-6 h-6 text-white" />
+            <div className="p-4 lg:p-6 text-center">
+              {/* Header compact */}
+              <div className="flex items-center justify-center gap-2 mb-3 lg:mb-4">
+                <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 rounded-lg flex items-center justify-center shadow-md shadow-primary-500/30">
+                  <QrCodeIcon className="w-5 h-5 lg:w-6 lg:h-6 text-white" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100">Mon QR Code</h3>
-                  <p className="text-sm text-gray-500 dark:text-slate-400">Mode rapide</p>
+                <div className="text-left">
+                  <h3 className="text-base lg:text-xl font-bold text-gray-900 dark:text-slate-100 leading-tight">Mon QR Code</h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Présentez-le à la badgeuse</p>
                 </div>
               </div>
               
-              {/* QR Code */}
-              <div className="bg-white p-6 rounded-2xl mb-6 shadow-inner">
-                <QRCodeCanvas 
-                  value={token || ''} 
-                  size={240}
-                  className="mx-auto"
-                  level="M"
-                  includeMargin={true}
-                />
+              {/* QR Code compact */}
+              <div className="relative group mb-3 lg:mb-4">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary-400/15 to-primary-600/15 rounded-xl blur-lg transition-all duration-300 opacity-50" />
+                <div className="relative bg-white p-3 lg:p-4 rounded-lg shadow-lg border border-gray-100 dark:border-slate-700">
+                  <QRCodeCanvas 
+                    value={localStorage.getItem('token') || ''} 
+                    size={window.innerWidth >= 1024 ? 240 : 200}
+                    className="mx-auto"
+                    level="H"
+                    includeMargin={true}
+                  />
+                </div>
               </div>
               
-              {/* Instructions */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                  <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                    Présentez ce code à la badgeuse
+              {/* Instructions compactes */}
+              <div className="space-y-2 lg:space-y-3">
+                <div className="flex items-center gap-2 p-2.5 lg:p-3 bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <BoltIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                  <p className="text-xs lg:text-sm font-medium text-blue-800 dark:text-blue-200 text-left">
+                    Présentez ce code à la badgeuse pour pointer
                   </p>
                 </div>
                 
-                <div className="text-xs text-gray-500 dark:text-slate-400 space-y-1">
-                  <p>• Gardez votre téléphone stable</p>
-                  <p>• Assurez-vous d'avoir un bon éclairage</p>
-                  <p>• Distance recommandée: 15-30cm</p>
+                <div className="grid grid-cols-3 gap-2 text-[10px] lg:text-xs text-gray-600 dark:text-slate-400">
+                  <div className="flex flex-col items-center gap-1 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+                    <span className="text-sm lg:text-base">📱</span>
+                    <span className="text-center leading-tight">Téléphone stable</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+                    <span className="text-sm lg:text-base">💡</span>
+                    <span className="text-center leading-tight">Bon éclairage</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+                    <span className="text-sm lg:text-base">📏</span>
+                    <span className="text-center leading-tight">15-30cm</span>
+                  </div>
                 </div>
               </div>
               
-              {/* Bouton fermeture */}
+              {/* Bouton compact */}
               <button
                 onClick={closeQuickQR}
-                className="mt-6 w-full bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-900 dark:text-slate-100 font-medium py-3 px-4 rounded-xl transition-colors"
+                className="mt-3 lg:mt-4 w-full bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-600 hover:from-gray-200 hover:to-gray-300 dark:hover:from-slate-600 dark:hover:to-slate-500 text-gray-900 dark:text-slate-100 font-semibold py-2 lg:py-2.5 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md text-xs lg:text-sm"
               >
                 Fermer
               </button>

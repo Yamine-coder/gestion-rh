@@ -36,13 +36,53 @@ console.log('🟢 [BOOT] statsRoutes loaded');
 console.log('🟡 [BOOT] Requiring anomaliesRoutes...');
 const anomaliesRoutes = require('./routes/anomaliesRoutes');
 console.log('🟢 [BOOT] anomaliesRoutes loaded');
+console.log('🟡 [BOOT] Requiring navigoRoutes...');
+const navigoRoutes = require('./routes/navigoRoutes');
+console.log('🟢 [BOOT] navigoRoutes loaded');
+console.log('🟡 [BOOT] Requiring modificationsRoutes...');
+const modificationsRoutes = require('./routes/modificationsRoutes');
+console.log('🟢 [BOOT] modificationsRoutes loaded');
+console.log('🟡 [BOOT] Requiring profilRoutes...');
+const profilRoutes = require('./routes/profilRoutes');
+console.log('🟢 [BOOT] profilRoutes loaded');
+console.log('🟡 [BOOT] Requiring documentsRoutes...');
+const documentsRoutes = require('./routes/documentsRoutes');
+console.log('🟢 [BOOT] documentsRoutes loaded');
+console.log('🟡 [BOOT] Requiring notificationsRoutes...');
+const notificationsRoutes = require('./routes/notificationsRoutes');
+console.log('🟢 [BOOT] notificationsRoutes loaded');
+console.log('🟡 [BOOT] Requiring paiementExtrasRoutes...');
+const paiementExtrasRoutes = require('./routes/paiementExtrasRoutes');
+console.log('🟢 [BOOT] paiementExtrasRoutes loaded');
+console.log('🟡 [BOOT] Requiring alertesRoutes...');
+const alertesRoutes = require('./routes/alertesRoutes');
+console.log('🟢 [BOOT] alertesRoutes loaded');
+console.log('🟡 [BOOT] Requiring remplacementRoutes...');
+const remplacementRoutes = require('./routes/remplacementRoutes');
+console.log('🟢 [BOOT] remplacementRoutes loaded');
+console.log('🟡 [BOOT] Requiring consignesRoutes...');
+const consignesRoutes = require('./routes/consignesRoutes');
+console.log('🟢 [BOOT] consignesRoutes loaded');
+console.log('🟡 [BOOT] Requiring fichesPosteRoutes...');
+const fichesPosteRoutes = require('./routes/fichesPosteRoutes');
+console.log('🟢 [BOOT] fichesPosteRoutes loaded');
+
+// Import du scheduler d'anomalies temps réel
+const anomalyScheduler = require('./services/anomalyScheduler');
+console.log('🟢 [BOOT] anomalyScheduler loaded');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middlewares globaux
 app.use(cors());
-app.use(bodyParser.json());
+// Augmenter la limite pour les créations en masse de shifts
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+
+// Servir les fichiers statiques (uploads)
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes principales
 app.use('/auth', authRoutes);           // Login / signup
@@ -55,6 +95,16 @@ app.use("/api/comparison", comparisonRoutes); // Comparaison planning vs réalit
 app.use("/api/rapports", rapportRoutes);   // Rapports de présence/absence
 app.use("/api/stats", statsRoutes);    // Statistiques détaillées et rapports employés
 app.use("/api/anomalies", anomaliesRoutes); // Gestion des anomalies
+app.use("/api/navigo", navigoRoutes); // Gestion des justificatifs Navigo
+app.use("/api/modifications", modificationsRoutes); // Modifications employés et demandes de validation
+app.use("/api/profil", profilRoutes); // Upload photo de profil
+app.use("/api/documents", documentsRoutes); // Upload documents administratifs (domicile, RIB, Navigo)
+app.use("/api/notifications", notificationsRoutes); // Notifications employés
+app.use("/api/paiements-extras", paiementExtrasRoutes); // Paiements extras / heures sup en espèces
+app.use("/api/alertes", alertesRoutes); // Alertes temps réel retards/absences
+app.use("/api/remplacements", remplacementRoutes); // Système de remplacement entre employés
+app.use("/api/consignes", consignesRoutes); // Consignes du jour + stats ponctualité
+app.use("/api/fiches-poste", fichesPosteRoutes); // Fiches de poste PDF par catégorie
 
 // Global Express error handler (placed before health/debug for catching async next(err))
 app.use((err, req, res, next) => {
@@ -104,6 +154,10 @@ console.log('🟡 [BOOT] Initialisation express terminée, démarrage écoute...
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Serveur backend lancé sur http://0.0.0.0:${PORT}`);
   console.log(`🌐 Accessible depuis le réseau sur http://192.168.1.94:${PORT}`);
+  
+  // Démarrage du scheduler d'anomalies temps réel
+  anomalyScheduler.start();
+  console.log('⏰ [SCHEDULER] Détection automatique des anomalies activée');
 });
 
 // Process-level crash diagnostics

@@ -3,6 +3,7 @@ const router = express.Router();
 const { authMiddleware: authenticateToken } = require('../middlewares/authMiddleware');
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const prisma = require('../prisma/client');
+const { toLocalDateString } = require('../utils/dateUtils');
 
 // 📊 Génération du rapport de présence/absence pour une période donnée
 router.get('/presence/:startDate/:endDate', authenticateToken, isAdmin, async (req, res) => {
@@ -82,14 +83,14 @@ router.get('/presence/:startDate/:endDate', authenticateToken, isAdmin, async (r
     // Traiter les shifts (planning)
     shifts.forEach(shift => {
       const employe = employesMap.get(shift.employeId);
-      const dateKey = shift.date.toISOString().split('T')[0];
+      const dateKey = toLocalDateString(shift.date);
       
       employe.jours.set(dateKey, {
         date: dateKey,
         type: shift.type,
         motif: shift.motif,
         segments: shift.segments || [],
-        heuresPrevues: shift.type === 'présence' ? calculatePlannedHours(shift.segments) : 0,
+        heuresPrevues: shift.type === 'travail' ? calculatePlannedHours(shift.segments) : 0,
         heuresReelles: 0,
         pointages: [],
         statut: shift.type === 'absence' ? 'absent' : 'prévu'
@@ -99,7 +100,7 @@ router.get('/presence/:startDate/:endDate', authenticateToken, isAdmin, async (r
     // Traiter les pointages réels
     const pointagesGroupes = new Map();
     pointages.forEach(pointage => {
-      const dateKey = pointage.horodatage.toISOString().split('T')[0];
+      const dateKey = toLocalDateString(pointage.horodatage);
       const userId = pointage.userId;
       
       if (!pointagesGroupes.has(userId)) {
@@ -125,7 +126,7 @@ router.get('/presence/:startDate/:endDate', authenticateToken, isAdmin, async (r
           jourData.heuresReelles = calculateRealHours(pointagesJour);
           
           if (jourData.heuresReelles > 0) {
-            jourData.statut = jourData.type === 'présence' ? 'présent' : 'présent_non_prévu';
+            jourData.statut = jourData.type === 'travail' ? 'présent' : 'présent_non_prévu';
           }
         }
       });
@@ -176,7 +177,7 @@ router.get('/ponctualite/:startDate/:endDate', authenticateToken, isAdmin, async
     const shifts = await prisma.shift.findMany({
       where: {
         date: { gte: debut, lte: fin },
-        type: 'présence'
+        type: 'travail'
       },
       include: {
         employe: {
@@ -203,7 +204,7 @@ router.get('/ponctualite/:startDate/:endDate', authenticateToken, isAdmin, async
     // Grouper les pointages par employé et par jour
     const pointagesParEmployeJour = new Map();
     pointages.forEach(p => {
-      const dateKey = p.horodatage.toISOString().split('T')[0];
+      const dateKey = toLocalDateString(p.horodatage);
       const key = `${p.userId}-${dateKey}`;
       
       if (!pointagesParEmployeJour.has(key)) {
@@ -215,7 +216,7 @@ router.get('/ponctualite/:startDate/:endDate', authenticateToken, isAdmin, async
     shifts.forEach(shift => {
       if (!shift.segments || shift.segments.length === 0) return;
 
-      const dateKey = shift.date.toISOString().split('T')[0];
+      const dateKey = toLocalDateString(shift.date);
       const pointagesKey = `${shift.employeId}-${dateKey}`;
       const pointagesJour = pointagesParEmployeJour.get(pointagesKey) || [];
 
@@ -277,7 +278,7 @@ router.get('/heures-supplementaires/:startDate/:endDate', authenticateToken, isA
           if (segment.isExtra) {
             heuresSupplementaires.push({
               employe: shift.employe,
-              date: shift.date.toISOString().split('T')[0],
+              date: toLocalDateString(shift.date),
               segment: segment,
               heures: calculateSegmentHours(segment),
               montant: segment.extraMontant || 0,
@@ -318,7 +319,8 @@ function calculatePlannedHours(segments) {
   if (!segments || segments.length === 0) return 0;
   
   return segments.reduce((total, segment) => {
-    if (segment.start && segment.end) {
+    // ⚠️ Exclure les segments extra (heures "au noir") des rapports officiels
+    if (segment.start && segment.end && !segment.isExtra) {
       return total + calculateSegmentHours(segment);
     }
     return total;
@@ -354,9 +356,10 @@ function calculateSegmentHours(segment) {
   
   let diffMinutes = endMinutes - startMinutes;
   
-  // Gérer le passage à minuit
+  // 🌙 RESTAURANT : Gérer le passage à minuit (ex: 19:00 → 00:30 = 5.5h)
   if (diffMinutes < 0) {
     diffMinutes += 24 * 60;
+    console.log(`   🌙 Shift franchit minuit: ${segment.start}→${segment.end} = ${(diffMinutes/60).toFixed(1)}h`);
   }
   
   return Math.round((diffMinutes / 60) * 100) / 100;

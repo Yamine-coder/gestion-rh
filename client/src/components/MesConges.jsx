@@ -1,10 +1,37 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import axios from "axios";
-import { Calendar, Plus, Clock, Check, X, FileText, RefreshCw } from "lucide-react";
+import { Calendar, CalendarCheck, Plus, Clock, Check, X, FileText, RefreshCw, Edit2, Trash2, AlertCircle, ChevronDown, ChevronUp, Filter, Search, Heart, GraduationCap, Stethoscope, DollarSign, Users, RotateCcw, Paperclip, ExternalLink, Upload, History } from "lucide-react";
 import BottomNav from "../components/BottomNav";
 import DemandeCongeForm from "../components/DemandeCongeForm";
+import DatePickerCustom from "../components/DatePickerCustom";
+import { getTypeConge } from "../config/typesConges";
+import useNotificationHighlight from "../hooks/useNotificationHighlight";
+import API_URL from "../config/api";
+
+// Types nécessitant un justificatif
+const TYPES_JUSTIFICATIF_OBLIGATOIRE = ['maladie', 'maternite', 'paternite', 'deces'];
+const TYPES_JUSTIFICATIF_OPTIONNEL = ['mariage', 'formation'];
+
+// Fonction pour vérifier si un type de congé nécessite un justificatif
+const needsJustificatif = (type) => {
+  if (!type) return false;
+  const typeNormalized = type.toLowerCase();
+  return TYPES_JUSTIFICATIF_OBLIGATOIRE.some(t => typeNormalized.includes(t)) ||
+         TYPES_JUSTIFICATIF_OPTIONNEL.some(t => typeNormalized.includes(t));
+};
+
+// Fonction pour obtenir le label propre d'un type de congé
+const getTypeLabel = (type) => {
+  if (!type) return "Autre";
+  const config = getTypeConge(type);
+  return config ? config.label : type;
+};
 
 function MesConges() {
+  const location = useLocation();
+  const { isHighlighted: isCongesListHighlighted, highlightId } = useNotificationHighlight('conges-list');
+  
   const [conges, setConges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -12,18 +39,58 @@ function MesConges() {
   const [stats, setStats] = useState({ total: 0, approuve: 0, enAttente: 0, refuse: 0 });
   const [lastCreatedId, setLastCreatedId] = useState(null); // Badge "Nouveau"
   const [toast, setToast] = useState(null); // Notifications feedback
-  const [isScrolled, setIsScrolled] = useState(false); // État du scroll
+  const [editingConge, setEditingConge] = useState(null); // Congé en cours d'édition
+  const [deletingConge, setDeletingConge] = useState(null); // Congé à supprimer (pour confirmation)
+  const [confirmingEdit, setConfirmingEdit] = useState(null); // Congé à modifier (confirmation)
+  const [showHistorique, setShowHistorique] = useState(false); // Afficher/masquer l'historique
+  
+  // State partagé pour le justificatif (remonté depuis DemandeCongeForm)
+  const [sharedJustificatif, setSharedJustificatif] = useState(null);
+  const [sharedJustificatifPreview, setSharedJustificatifPreview] = useState(null);
+  
+  // Modal d'upload de justificatif pour congés existants
+  const [uploadingJustificatif, setUploadingJustificatif] = useState(null); // Congé pour lequel on upload
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const uploadInputRef = useRef(null);
+  
+  // Filtres pour l'historique
+  const [filterType, setFilterType] = useState("tous"); // tous, CP, RTT, maladie, etc.
+  const [searchDate, setSearchDate] = useState(""); // Recherche par date
+  const [showFilterTypePicker, setShowFilterTypePicker] = useState(false); // Dropdown custom type
+  const filterTypeRef = useRef(null);
+  
+  // Configuration des types de congé avec icônes et couleurs
+  // Les valeurs correspondent aux codes stockés en base (voir typesConges.js)
+  // On inclut aussi les alias pour matcher les anciens formats en base
+  const typesCongeConfig = [
+    { value: "tous", label: "Tous les types", icon: Filter, color: "from-slate-500 to-slate-600", bgColor: "bg-slate-100 dark:bg-slate-700", textColor: "text-slate-700 dark:text-slate-300", aliases: [] },
+    { value: "CP", label: "Congés payés", icon: Calendar, color: "from-blue-500 to-blue-600", bgColor: "bg-blue-50 dark:bg-blue-900/30", textColor: "text-blue-700 dark:text-blue-300", aliases: ["Congés payés", "Congé payé", "cp"] },
+    { value: "RTT", label: "RTT", icon: Clock, color: "from-purple-500 to-purple-600", bgColor: "bg-purple-50 dark:bg-purple-900/30", textColor: "text-purple-700 dark:text-purple-300", aliases: ["rtt"] },
+    { value: "maladie", label: "Maladie", icon: Stethoscope, color: "from-red-500 to-red-600", bgColor: "bg-red-50 dark:bg-red-900/30", textColor: "text-red-700 dark:text-red-300", aliases: ["Congé maladie", "Maladie"] },
+    { value: "sans_solde", label: "Sans solde", icon: DollarSign, color: "from-gray-500 to-gray-600", bgColor: "bg-gray-50 dark:bg-gray-800/50", textColor: "text-gray-700 dark:text-gray-300", aliases: ["Congé sans solde", "Sans solde"] },
+    { value: "maternite", label: "Maternité", icon: Heart, color: "from-pink-500 to-pink-600", bgColor: "bg-pink-50 dark:bg-pink-900/30", textColor: "text-pink-700 dark:text-pink-300", aliases: ["Congé maternité", "Maternité"] },
+    { value: "paternite", label: "Paternité", icon: Heart, color: "from-cyan-500 to-cyan-600", bgColor: "bg-cyan-50 dark:bg-cyan-900/30", textColor: "text-cyan-700 dark:text-cyan-300", aliases: ["Congé paternité", "Paternité"] },
+    { value: "deces", label: "Décès", icon: Users, color: "from-gray-600 to-gray-700", bgColor: "bg-gray-100 dark:bg-gray-800/50", textColor: "text-gray-700 dark:text-gray-400", aliases: ["Congé décès", "Décès"] },
+    { value: "mariage", label: "Mariage", icon: Heart, color: "from-rose-500 to-rose-600", bgColor: "bg-rose-50 dark:bg-rose-900/30", textColor: "text-rose-700 dark:text-rose-300", aliases: ["Congé mariage", "Mariage"] },
+    { value: "formation", label: "Formation", icon: GraduationCap, color: "from-green-500 to-green-600", bgColor: "bg-green-50 dark:bg-green-900/30", textColor: "text-green-700 dark:text-green-300", aliases: ["Congé formation", "Formation"] },
+    { value: "autre", label: "Autre", icon: FileText, color: "from-orange-500 to-orange-600", bgColor: "bg-orange-50 dark:bg-orange-900/30", textColor: "text-orange-700 dark:text-orange-300", aliases: ["Autre"] },
+  ];
+
+  // Fonction pour vérifier si un type de congé correspond au filtre sélectionné
+  const matchesTypeFilter = (congeType, filterValue) => {
+    if (filterValue === "tous") return true;
+    const config = typesCongeConfig.find(t => t.value === filterValue);
+    if (!config) return false;
+    // Vérifier le code principal et tous les alias
+    const allMatches = [config.value, ...config.aliases].map(v => v.toLowerCase());
+    return allMatches.includes(congeType?.toLowerCase());
+  };
+  
+  const selectedFilterType = typesCongeConfig.find(t => t.value === filterType) || typesCongeConfig[0];
+  
   const token = localStorage.getItem("token");
-
-  // Gérer le scroll pour masquer les statistiques
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 100);
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   // Gérer la fermeture avec la touche Escape
   useEffect(() => {
@@ -47,6 +114,19 @@ function MesConges() {
     };
   }, [showForm]);
 
+  // Scroll automatique vers la section highlightée depuis notification
+  useEffect(() => {
+    if (location.state?.fromNotification && location.state?.highlightSection) {
+      const sectionId = location.state.highlightSection;
+      setTimeout(() => {
+        const element = document.getElementById(sectionId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500); // Délai un peu plus long pour laisser le temps au contenu de charger
+    }
+  }, [location.state, conges]); // Dépendance sur conges pour s'assurer que la liste est chargée
+
   const fetchConges = async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
@@ -55,7 +135,7 @@ function MesConges() {
     }
     
     try {
-      const res = await axios.get("http://localhost:5000/conges/mes-conges", {
+      const res = await axios.get(`${API_URL}/conges/mes-conges`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const congesData = res.data;
@@ -79,22 +159,197 @@ function MesConges() {
 
   const handleNouvelleDemande = async (data) => {
     try {
-      const res = await axios.post("http://localhost:5000/conges", data, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const created = res.data;
-      setLastCreatedId(created?._id || Date.now()); // Marquer comme nouveau
+      let congeId;
+      
+      if (editingConge) {
+        // Mode édition
+        await axios.put(`${API_URL}/conges/${editingConge.id}/update`, {
+          type: data.type,
+          debut: data.debut,
+          fin: data.fin,
+          motif: data.motif
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        congeId = editingConge.id;
+        
+        // Supprimer le justificatif si demandé
+        if (data.justificatifRemoved && editingConge.justificatif) {
+          try {
+            await axios.delete(`${API_URL}/conges/${congeId}/justificatif`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+          } catch (delErr) {
+            console.error("Erreur suppression justificatif:", delErr);
+          }
+        }
+        
+        setToast({ type: 'success', msg: 'Demande modifiée avec succès' });
+        setEditingConge(null);
+      } else {
+        // Mode création
+        const res = await axios.post(`${API_URL}/conges`, {
+          type: data.type,
+          debut: data.debut,
+          fin: data.fin,
+          motif: data.motif
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const created = res.data;
+        congeId = created?.id;
+        setLastCreatedId(congeId || Date.now());
+        setToast({ type: 'success', msg: 'Demande envoyée avec succès' });
+      }
+      
+      // Upload du justificatif si présent (nouveau fichier)
+      if (data.justificatif && congeId) {
+        const formData = new FormData();
+        formData.append('justificatif', data.justificatif);
+        
+        try {
+          await axios.post(`${API_URL}/conges/${congeId}/justificatif`, formData, {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'multipart/form-data'
+            },
+          });
+          setToast({ type: 'success', msg: editingConge ? 'Demande modifiée avec justificatif' : 'Demande envoyée avec justificatif' });
+        } catch (uploadErr) {
+          console.error("Erreur upload justificatif:", uploadErr);
+          setToast({ type: 'warning', msg: 'Demande enregistrée mais erreur lors de l\'upload' });
+        }
+      }
+      
       await fetchConges();
       setShowForm(false);
-      
-      // Toast de succès avec animation améliorée
-      setToast({ type: 'success', msg: '🎉 Demande envoyée avec succès ! Votre manager sera notifié.' });
       setTimeout(() => setToast(null), 5000);
       
     } catch (err) {
-      console.error("Erreur envoi demande congé :", err);
-      setToast({ type: 'error', msg: "Erreur lors de l'envoi de la demande" });
+      // Gérer l'erreur de chevauchement ou autres erreurs métier
+      const errorMsg = err.response?.data?.message || err.response?.data?.error;
+      if (errorMsg && (errorMsg.toLowerCase().includes('chevauche') || errorMsg.toLowerCase().includes('chevauchement'))) {
+        // Extraire les dates du message pour un affichage concis mais clair
+        const dateMatch = errorMsg.match(/(\d{2}\/\d{2}\/\d{4})/g);
+        if (dateMatch && dateMatch.length >= 2) {
+          setToast({ type: 'error', msg: `Conflit : congé existant du ${dateMatch[0]} au ${dateMatch[1]}` });
+        } else {
+          setToast({ type: 'error', msg: 'Conflit avec un congé existant sur cette période' });
+        }
+      } else if (errorMsg) {
+        setToast({ type: 'error', msg: errorMsg });
+      } else {
+        // Erreur technique non gérée - log pour debug
+        console.error("Erreur demande congé :", err);
+        setToast({ type: 'error', msg: editingConge ? "Erreur lors de la modification" : "Erreur lors de l'envoi" });
+      }
       setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleDeleteConge = async (congeId) => {
+    try {
+      await axios.delete(`${API_URL}/conges/${congeId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setToast({ type: 'success', msg: '🗑️ Demande annulée avec succès' });
+      setTimeout(() => setToast(null), 5000);
+      await fetchConges();
+      setDeletingConge(null);
+    } catch (err) {
+      console.error("Erreur suppression congà:", err);
+      setToast({ type: 'error', msg: "Erreur lors de l'annulation" });
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleEditConge = (conge) => {
+    setConfirmingEdit(conge);
+  };
+
+  const confirmEditConge = () => {
+    setEditingConge(confirmingEdit);
+    setConfirmingEdit(null);
+    // Initialiser le preview du justificatif si le congé en a un
+    if (confirmingEdit?.justificatif) {
+      setSharedJustificatifPreview(confirmingEdit.justificatif);
+    }
+    setShowForm(true);
+  };
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditingConge(null);
+    // Réinitialiser le justificatif partagé
+    setSharedJustificatif(null);
+    setSharedJustificatifPreview(null);
+  };
+
+  // ===== Fonctions pour l'upload de justificatif sur congé existant =====
+  const handleUploadFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Vérifier le type de fichier
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        setToast({ type: 'error', msg: 'Format non autorisé. Utilisez PDF, JPG, PNG ou WEBP.' });
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      // Vérifier la taille (10 MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setToast({ type: 'error', msg: 'Le fichier est trop volumineux (max 10 MB)' });
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      setUploadFile(file);
+      
+      // Créer une preview
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setUploadPreview({ type: 'image', url: event.target.result, name: file.name });
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setUploadPreview({ type: 'pdf', name: file.name });
+      }
+    }
+  };
+
+  const handleSubmitJustificatif = async () => {
+    if (!uploadFile || !uploadingJustificatif) return;
+    
+    setUploadLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('justificatif', uploadFile);
+      
+      await axios.post(`${API_URL}/conges/${uploadingJustificatif.id}/justificatif`, formData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        },
+      });
+      
+      setToast({ type: 'success', msg: '📎 Justificatif ajouté avec succès !' });
+      await fetchConges();
+      handleCloseUploadModal();
+    } catch (err) {
+      console.error("Erreur upload justificatif:", err);
+      setToast({ type: 'error', msg: "Erreur lors de l'upload du justificatif" });
+    } finally {
+      setUploadLoading(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleCloseUploadModal = () => {
+    setUploadingJustificatif(null);
+    setUploadFile(null);
+    setUploadPreview(null);
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = '';
     }
   };
 
@@ -103,27 +358,27 @@ function MesConges() {
     switch (statut) {
       case "approuvé":
         return { 
-          color: "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700", 
+          color: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400", 
           icon: Check, 
-          dotColor: "bg-green-500 dark:bg-green-400"
+          dotColor: "bg-emerald-500 dark:bg-emerald-400"
         };
       case "refusé":
         return { 
-          color: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700", 
+          color: "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400", 
           icon: X, 
-          dotColor: "bg-red-500 dark:bg-red-400"
+          dotColor: "bg-rose-500 dark:bg-rose-400"
         };
       case "en attente":
         return { 
-          color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700", 
+          color: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400", 
           icon: Clock, 
           dotColor: "bg-amber-500 dark:bg-amber-400"
         };
       default:
         return { 
-          color: "bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-700/40 dark:text-gray-300 dark:border-slate-600", 
+          color: "bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300", 
           icon: FileText, 
-          dotColor: "bg-gray-500 dark:bg-gray-400"
+          dotColor: "bg-slate-500 dark:bg-slate-400"
         };
     }
   };
@@ -136,298 +391,984 @@ function MesConges() {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   };
 
+  // Composant réutilisable pour afficher une carte de congé
+  const CongeCard = ({ conge, statusConfig, StatusIcon, dureeJours, isNew, handleEditConge, setDeletingConge, isHistorique = false, onAddJustificatif }) => (
+    <div 
+      className={`group bg-white dark:bg-slate-800 rounded-xl lg:rounded-2xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 p-4 lg:p-6 hover:shadow-lg transition-all duration-200 ${
+        isNew ? 'ring-2 ring-emerald-400/40 shadow-md' : ''
+      } ${isHistorique ? 'opacity-75' : ''}`}
+    >
+      {/* Layout Mobile: Stack vertical */}
+      <div className="lg:hidden space-y-4">
+        {/* Header mobile: Icé´ne + Type + Badge statut */}
+        <div className="flex items-start gap-3">
+          <div className={`flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center border ${
+            conge.statut === 'approuvé' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/30' :
+            conge.statut === 'refusé' ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/30' :
+            'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/30'
+          }`}>
+            <StatusIcon className={`w-5 h-5 ${
+              conge.statut === 'approuvé' ? 'text-emerald-600 dark:text-emerald-400' :
+              conge.statut === 'refusé' ? 'text-rose-600 dark:text-rose-400' :
+              'text-amber-600 dark:text-amber-400'
+            }`} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-base">
+                {getTypeLabel(conge.type)}
+              </h3>
+              {isNew && (
+                <span className="text-[9px] uppercase tracking-wider font-bold bg-emerald-500 text-white px-1.5 py-0.5 rounded">
+                  Nouveau
+                </span>
+              )}
+            </div>
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${statusConfig.color} border ${
+              conge.statut === 'approuvé' ? 'border-emerald-200 dark:border-emerald-800/30' :
+              conge.statut === 'refusé' ? 'border-rose-200 dark:border-rose-800/30' :
+              'border-amber-200 dark:border-amber-800/30'
+            }`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${statusConfig.dotColor}`}></div>
+              {conge.statut.charAt(0).toUpperCase() + conge.statut.slice(1)}
+            </span>
+          </div>
+        </div>
+        
+        {/* Dates et durée mobile */}
+        <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-3 space-y-2">
+          <div className="flex items-baseline gap-2 text-sm">
+            <Calendar className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="text-slate-500 dark:text-slate-400 text-xs mb-0.5">Période</div>
+              <div className="text-slate-900 dark:text-slate-100 font-medium">
+                {new Date(conge.dateDebut).toLocaleDateString('fr-FR', { 
+                  day: 'numeric', month: 'short'
+                })} - {new Date(conge.dateFin).toLocaleDateString('fr-FR', { 
+                  day: 'numeric', month: 'short', year: 'numeric' 
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-700/50">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Durée totale</span>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {dureeJours} jour{dureeJours > 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Motif de refus - Mobile */}
+        {conge.statut === 'refusé' && conge.motifRefus && (
+          <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/30 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-semibold text-rose-700 dark:text-rose-300 mb-1">Motif du refus</div>
+                <div className="text-sm text-rose-600 dark:text-rose-400">{conge.motifRefus}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Commentaire employé - Mobile */}
+        {conge.motifEmploye && (
+          <div className="bg-slate-50 dark:bg-slate-900/30 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <FileText className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Votre commentaire</div>
+                <div className="text-sm text-slate-700 dark:text-slate-300">{conge.motifEmploye}</div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Justificatif - Mobile */}
+        {conge.justificatif ? (
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 rounded-lg p-3">
+            <a 
+              href={`${API_URL}${conge.justificatif}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 transition-colors"
+            >
+              <Paperclip className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm font-medium">Justificatif joint</span>
+              <ExternalLink className="w-3 h-3 ml-auto" />
+            </a>
+          </div>
+        ) : needsJustificatif(conge.type) && conge.statut !== 'refusé' && onAddJustificatif && (
+          <button
+            onClick={() => onAddJustificatif(conge)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 text-amber-700 dark:text-amber-300 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors text-sm font-medium"
+          >
+            <Upload className="w-4 h-4" />
+            Ajouter un justificatif
+          </button>
+        )}
+        
+        {/* Boutons d'action mobile - uniquement pour congés en attente */}
+        {conge.statut === "en attente" && handleEditConge && setDeletingConge && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleEditConge(conge)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
+            >
+              <Edit2 className="w-4 h-4" />
+              Modifier
+            </button>
+            <button
+              onClick={() => setDeletingConge(conge)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
+            >
+              <Trash2 className="w-4 h-4" />
+              Annuler
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Layout Desktop: Horizontal */}
+      <div className="hidden lg:flex items-center gap-6">
+        {/* Icé´ne status */}
+        <div className={`flex-shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center border group-hover:scale-105 transition-transform ${
+          conge.statut === 'approuvé' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/30' :
+          conge.statut === 'refusé' ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800/30' :
+          'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/30'
+        }`}>
+          <StatusIcon className={`w-7 h-7 ${
+            conge.statut === 'approuvé' ? 'text-emerald-600 dark:text-emerald-400' :
+            conge.statut === 'refusé' ? 'text-rose-600 dark:text-rose-400' :
+            'text-amber-600 dark:text-amber-400'
+          }`} />
+        </div>
+        
+        {/* Contenu principal */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2.5 mb-2">
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-base">
+              {getTypeLabel(conge.type)}
+            </h3>
+            {isNew && (
+              <span className="text-[9px] uppercase tracking-wider font-bold bg-emerald-500 text-white px-2 py-0.5 rounded">
+                Nouveau
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+            <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{new Date(conge.dateDebut).toLocaleDateString('fr-FR', { 
+              day: 'numeric', month: 'short'
+            })} - {new Date(conge.dateFin).toLocaleDateString('fr-FR', { 
+              day: 'numeric', month: 'short', year: 'numeric' 
+            })}</span>
+          </div>
+          {/* Motif de refus - Desktop */}
+          {conge.statut === 'refusé' && conge.motifRefus && (
+            <div className="mt-2 flex items-start gap-2 text-sm text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span><strong>Motif :</strong> {conge.motifRefus}</span>
+            </div>
+          )}
+          {/* Commentaire employé - Desktop */}
+          {conge.motifEmploye && (
+            <div className="mt-2 flex items-start gap-2 text-sm text-slate-500 dark:text-slate-400">
+              <FileText className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span className="italic">"{conge.motifEmploye}"</span>
+            </div>
+          )}
+          {/* Justificatif - Desktop */}
+          {conge.justificatif ? (
+            <div className="mt-2">
+              <a 
+                href={`${API_URL}${conge.justificatif}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                Justificatif
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          ) : needsJustificatif(conge.type) && conge.statut !== 'refusé' && onAddJustificatif && (
+            <div className="mt-2">
+              <button
+                onClick={() => onAddJustificatif(conge)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Ajouter justificatif
+              </button>
+            </div>
+          )}
+        </div>
+        
+        {/* Badge statut + Durée + Actions */}
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${statusConfig.color} ${
+            conge.statut === 'approuvé' ? 'border-emerald-200 dark:border-emerald-800/30' :
+            conge.statut === 'refusé' ? 'border-rose-200 dark:border-rose-800/30' :
+            'border-amber-200 dark:border-amber-800/30'
+          }`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${statusConfig.dotColor}`}></div>
+            {conge.statut.charAt(0).toUpperCase() + conge.statut.slice(1)}
+          </span>
+          
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+            <Clock className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+            <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">{dureeJours}j</span>
+          </div>
+          
+          {/* Boutons d'action desktop */}
+          {conge.statut === "en attente" && handleEditConge && setDeletingConge && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleEditConge(conge)}
+                className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                title="Modifier la demande"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setDeletingConge(conge)}
+                className="p-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                title="Annuler la demande"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   useEffect(() => {
     fetchConges();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-  <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 pb-24 lg:pt-14 transition-colors">
+  <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 pb-navbar lg:pb-8 lg:pt-14 transition-colors pt-header">
       
-      {/* Toast notifications modernes et élégantes - optimisé mobile */}
+      {/* Toast notifications épurées */}
       {toast && (
         <div
           role="status"
           aria-live="polite"
-          className={`fixed top-4 lg:top-6 left-1/2 -translate-x-1/2 z-[60] px-3 lg:px-6 py-2.5 lg:py-4 rounded-lg lg:rounded-2xl shadow-2xl backdrop-blur-md border-2 text-xs lg:text-sm flex items-center gap-2 lg:gap-4 animate-in slide-in-from-top-4 fade-in duration-500 min-w-[280px] lg:min-w-[320px] mx-3 lg:mx-0 transition-colors ${
+          className={`fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-3 animate-in slide-in-from-top-2 fade-in duration-300 min-w-[280px] max-w-[420px] mx-4 ${
             toast.type === 'success'
-              ? 'bg-white/95 dark:bg-slate-800/90 border-green-300/60 dark:border-green-600/60 text-green-800 dark:text-green-300 shadow-green-200/40 dark:shadow-green-900/20'
-              : 'bg-white/95 dark:bg-slate-800/90 border-red-300/60 dark:border-red-600/60 text-red-800 dark:text-red-300 shadow-red-200/40 dark:shadow-red-900/20'
+              ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
+              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
           }`}
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 5rem)' }}
         >
-          <div className={`w-2 h-2 lg:w-3 lg:h-3 rounded-full animate-pulse shadow-lg ${toast.type === 'success' ? 'bg-green-500 dark:bg-green-400' : 'bg-red-500 dark:bg-red-400'}`}></div>
-          <span className="font-medium flex-1 leading-tight">{toast.msg}</span>
+          {toast.type === 'success' ? (
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+          ) : (
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+              <X className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+            </div>
+          )}
+          <span className="flex-1 text-sm leading-snug font-medium">{toast.msg}</span>
           <button
             onClick={() => setToast(null)}
-            aria-label="Fermer la notification"
-            className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 flex items-center justify-center transition-all duration-200 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-slate-500 flex-shrink-0"
+            aria-label="Fermer"
+            className="flex-shrink-0 w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center transition-colors ml-1"
           >
-            <X className="w-3 h-3 lg:w-4 lg:h-4 text-gray-600 dark:text-gray-200" />
+            <X className="w-4 h-4 text-slate-400" />
           </button>
         </div>
       )}
 
-      {/* Header épuré et moderne - optimisé mobile */}
-      <div className="bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm border-b border-gray-100 dark:border-slate-800 shadow-sm sticky top-0 lg:top-14 z-10 transition-colors">
-        <div className="px-3 py-3 lg:px-4 lg:py-6">
-          <div className="flex items-center gap-2 lg:gap-3">
-            <div className="w-7 h-7 lg:w-10 lg:h-10 bg-gradient-to-br from-[#cf292c] to-red-600 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-red-500/20 transform transition-transform hover:scale-105 flex-shrink-0">
-              <Calendar className="w-3.5 h-3.5 lg:w-5 lg:h-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-base lg:text-xl font-semibold text-gray-900 dark:text-gray-100 tracking-tight truncate">Mes congés</h1>
-              <p className="text-xs lg:text-sm text-gray-500 dark:text-gray-400 truncate">Gérez vos demandes d'absence</p>
+      {/* ===== FORMULAIRE UNIFIÉ (Mobile + Desktop) ===== */}
+      {showForm && (
+        <>
+          {/* Backdrop - fullscreen avec z-index élevé */}
+          <div 
+            className="fixed inset-0 bg-black/40 lg:bg-slate-900/40 backdrop-blur-sm z-[60]"
+            onClick={handleCloseForm}
+          />
+          
+          {/* Container adaptatif - fullscreen collé en bas */}
+          <div className="fixed inset-0 z-[61] flex items-end lg:items-center lg:justify-center lg:p-6">
+            {/* Sheet mobile / Modal desktop */}
+            <div className="w-full lg:w-[640px] max-h-full lg:max-h-[85vh] flex flex-col bg-white dark:bg-slate-900 rounded-t-3xl lg:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom lg:zoom-in-95 duration-300">
+              
+              {/* Header mobile uniquement */}
+              <div className="lg:hidden flex items-center justify-between px-4 pt-3 pb-1">
+                <div className="w-8" />
+                <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
+                <button
+                  onClick={handleCloseForm}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  aria-label="Fermer"
+                >
+                  <X className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                </button>
+              </div>
+              
+              {/* Contenu scrollable - UNE SEULE instance du formulaire */}
+              <div className="overflow-y-auto flex-1 overscroll-contain pb-safe" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+                <DemandeCongeForm 
+                  onSubmit={handleNouvelleDemande} 
+                  onClose={handleCloseForm}
+                  initialData={editingConge}
+                  isEditing={!!editingConge}
+                  justificatif={sharedJustificatif}
+                  setJustificatif={setSharedJustificatif}
+                  justificatifPreview={sharedJustificatifPreview}
+                  setJustificatifPreview={setSharedJustificatifPreview}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* Bouton flottant "+" avec améliorations UX complètes - optimisé mobile */}
-      <div className="fixed bottom-28 lg:bottom-8 right-3 lg:right-6 z-50">
-        {/* Tooltip - plus compact mobile */}
-        <div className={`absolute bottom-full right-0 mb-2 px-2.5 lg:px-3 py-1.5 lg:py-2 bg-gray-900 dark:bg-gray-700 text-white text-[10px] lg:text-xs rounded-md lg:rounded-lg shadow-lg transition-all duration-200 whitespace-nowrap ${
-          showForm ? 'opacity-0 pointer-events-none transform scale-95' : 'opacity-0 group-hover:opacity-100 transform scale-95 group-hover:scale-100'
-        }`}>
-          <span className="lg:hidden">{showForm ? 'Fermer' : 'Nouvelle demande'}</span>
-          <span className="hidden lg:inline">{showForm ? 'Fermer le formulaire' : 'Créer une nouvelle demande'}</span>
-          <div className="absolute top-full right-2 lg:right-3 w-1.5 h-1.5 lg:w-2 lg:h-2 bg-gray-900 dark:bg-gray-700 rotate-45 transform -translate-y-0.5 lg:-translate-y-1"></div>
+      {/* ===== DESKTOP : Bouton "Nouvelle demande" - masqué quand formulaire ouvert ===== */}
+      {!showForm && (
+        <div className="hidden lg:block fixed bottom-8 right-8 z-[60]">
+          <button
+            onClick={() => { setEditingConge(null); setShowForm(true); }}
+            aria-label="Nouvelle demande de congé"
+            className="group relative flex items-center gap-3 px-6 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 focus:outline-none shadow-xl bg-primary-500 text-white shadow-primary-500/40 hover:shadow-primary-500/60 hover:bg-primary-600"
+          >
+            <Plus className="w-5 h-5" strokeWidth={2.5} />
+            <span>Nouvelle demande</span>
+          </button>
         </div>
+      )}
+
+      {/* Container max-width pour cohérence avec navbar */}
+      <div className="mx-auto max-w-7xl px-3 lg:px-6 py-3 lg:py-6">
         
-        <button
-          onClick={() => setShowForm(!showForm)}
-          aria-expanded={showForm}
-          aria-label={showForm ? 'Fermer le formulaire de demande' : 'Ouvrir le formulaire de nouvelle demande'}
-          className={`group relative flex items-center justify-center lg:justify-start gap-0 lg:gap-3 w-14 h-14 lg:w-auto lg:h-auto lg:px-6 lg:py-3 rounded-full lg:rounded-2xl text-sm font-semibold transition-all duration-300 transform hover:scale-110 active:scale-95 focus:outline-none focus-visible:ring-4 focus-visible:ring-offset-2 shadow-2xl border-2 ${
-            showForm 
-              ? 'bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-slate-700 shadow-gray-500/60 dark:shadow-slate-900/80 border-gray-200 dark:border-slate-600 focus-visible:ring-gray-300 dark:focus-visible:ring-slate-400' 
-              : 'bg-gradient-to-r from-[#e11d48] via-[#cf292c] to-[#b91c1c] text-white hover:from-[#dc2626] hover:via-[#b91c1c] hover:to-[#991b1b] shadow-red-600/50 hover:shadow-red-600/70 border-red-400/20 focus-visible:ring-red-300'
-          } hover:shadow-3xl`}
-        >
-          {/* Effet de brillance au hover */}
-          <div className="absolute inset-0 rounded-full lg:rounded-2xl bg-gradient-to-r from-white/0 via-white/20 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-          
-          {/* Indicateur d'état actif amélioré - plus petit mobile */}
-          {showForm && (
-            <div className="absolute -top-0.5 -right-0.5 lg:-top-1 lg:-right-1 w-3 h-3 lg:w-4 lg:h-4 bg-gradient-to-r from-green-400 to-green-600 rounded-full animate-pulse shadow-lg border border-white dark:border-slate-800">
-              <div className="absolute inset-0.5 bg-white/30 rounded-full animate-ping"></div>
+        {/* Header mobile sobre avec fond subtil */}
+        <div className="lg:hidden mb-4">
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 rounded-xl p-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-primary-50 dark:bg-primary-900/20 rounded-lg flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-primary-500 dark:text-primary-400" />
+              </div>
+              <div>
+                <h1 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Mes congés</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Gérez vos demandes</p>
+              </div>
             </div>
-          )}
-          
-          {/* Icône avec animation améliorée - taille réduite mobile */}
-          <div className="relative z-10">
-            {showForm ? (
-              <X className="w-6 h-6 lg:w-5 lg:h-5 transition-all duration-300 group-hover:rotate-180 group-hover:scale-125 filter drop-shadow-sm" strokeWidth={2.5} />
-            ) : (
-              <Plus className="w-6 h-6 lg:w-5 lg:h-5 transition-all duration-300 group-hover:rotate-90 group-hover:scale-125 filter drop-shadow-sm" strokeWidth={2.5} />
+            {!showForm && (
+              <button
+                onClick={() => { setEditingConge(null); setShowForm(true); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 active:scale-95 bg-primary-500 text-white hover:bg-primary-600"
+              >
+                <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
+                <span>Nouveau</span>
+              </button>
             )}
           </div>
-          
-          {/* Texte desktop */}
-          <span className="hidden lg:inline relative z-10 font-semibold tracking-wide">
-            {showForm ? 'Annuler' : 'Nouvelle demande'}
-          </span>
-        </button>
-      </div>
+        </div>
 
-  <div className="px-3 lg:px-4 py-3 lg:py-6">
-        {/* Statistiques avec animations - masquées pendant le scroll, compactes mobile */}
-        <div className={`grid grid-cols-2 lg:grid-cols-4 gap-2.5 lg:gap-4 mb-3 lg:mb-6 transition-all duration-300 ${
-          isScrolled ? 'opacity-0 -translate-y-4 pointer-events-none h-0 overflow-hidden mb-0' : 'opacity-100 translate-y-0'
-        }`}>
-          <div className="group bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-lg lg:rounded-2xl border border-gray-200/60 dark:border-slate-700/60 p-2.5 lg:p-4 hover:shadow-md hover:shadow-gray-500/5 dark:hover:shadow-slate-900/30 transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] lg:text-sm text-gray-500 dark:text-gray-400 font-medium">Total</p>
-                <p className="text-lg lg:text-2xl font-bold text-gray-900 dark:text-gray-100 mt-0.5 lg:mt-1 transition-transform group-hover:scale-105">{stats.total}</p>
-              </div>
-              <div className="w-6 h-6 lg:w-10 lg:h-10 bg-gray-100 dark:bg-slate-700 rounded-md lg:rounded-xl flex items-center justify-center group-hover:bg-gray-200 dark:group-hover:bg-slate-600 transition-colors">
-                <FileText className="w-3 h-3 lg:w-5 lg:h-5 text-gray-600 dark:text-gray-300 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
-              </div>
+        {/* Statistiques */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6 lg:mb-8">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/50 p-4 lg:p-5 hover:border-slate-300/60 dark:hover:border-slate-600/50 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Total</p>
+              <FileText className="w-4 h-4 text-slate-400 dark:text-slate-500" />
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100">{stats.total}</p>
           </div>
           
-          <div className="group bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-lg lg:rounded-2xl border border-gray-200/60 dark:border-slate-700/60 p-2.5 lg:p-4 hover:shadow-md hover:shadow-amber-500/10 dark:hover:shadow-amber-900/20 transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] lg:text-sm text-gray-500 dark:text-gray-400 font-medium">En attente</p>
-                <p className="text-lg lg:text-2xl font-bold text-amber-600 dark:text-amber-400 mt-0.5 lg:mt-1 transition-transform group-hover:scale-105">{stats.enAttente}</p>
-              </div>
-              <div className="w-6 h-6 lg:w-10 lg:h-10 bg-amber-50 dark:bg-amber-900/30 rounded-md lg:rounded-xl flex items-center justify-center group-hover:bg-amber-100 dark:group-hover:bg-amber-800/40 transition-colors">
-                <Clock className="w-3 h-3 lg:w-5 lg:h-5 text-amber-500 dark:text-amber-400 group-hover:text-amber-600 dark:group-hover:text-amber-300" />
-              </div>
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/50 p-4 lg:p-5 hover:border-amber-200 dark:hover:border-amber-800/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">En attente</p>
+              <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400" />
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-amber-600 dark:text-amber-400">{stats.enAttente}</p>
           </div>
           
-          <div className="group bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-lg lg:rounded-2xl border border-gray-200/60 dark:border-slate-700/60 p-2.5 lg:p-4 hover:shadow-md hover:shadow-green-500/10 dark:hover:shadow-green-900/20 transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] lg:text-sm text-gray-500 dark:text-gray-400 font-medium">Approuvées</p>
-                <p className="text-lg lg:text-2xl font-bold text-green-600 dark:text-green-400 mt-0.5 lg:mt-1 transition-transform group-hover:scale-105">{stats.approuve}</p>
-              </div>
-              <div className="w-6 h-6 lg:w-10 lg:h-10 bg-green-50 dark:bg-green-900/30 rounded-md lg:rounded-xl flex items-center justify-center group-hover:bg-green-100 dark:group-hover:bg-green-800/40 transition-colors">
-                <Check className="w-3 h-3 lg:w-5 lg:h-5 text-green-500 dark:text-green-400 group-hover:text-green-600 dark:group-hover:text-green-300" />
-              </div>
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/50 p-4 lg:p-5 hover:border-emerald-200 dark:hover:border-emerald-800/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Approuvées</p>
+              <Check className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-emerald-600 dark:text-emerald-400">{stats.approuve}</p>
           </div>
           
-          <div className="group bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-lg lg:rounded-2xl border border-gray-200/60 dark:border-slate-700/60 p-2.5 lg:p-4 hover:shadow-md hover:shadow-red-500/10 dark:hover:shadow-red-900/20 transition-all duration-200 cursor-pointer">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] lg:text-sm text-gray-500 dark:text-gray-400 font-medium">Refusées</p>
-                <p className="text-lg lg:text-2xl font-bold text-red-600 dark:text-red-400 mt-0.5 lg:mt-1 transition-transform group-hover:scale-105">{stats.refuse}</p>
-              </div>
-              <div className="w-6 h-6 lg:w-10 lg:h-10 bg-red-50 dark:bg-red-900/30 rounded-md lg:rounded-xl flex items-center justify-center group-hover:bg-red-100 dark:group-hover:bg-red-800/40 transition-colors">
-                <X className="w-3 h-3 lg:w-5 lg:h-5 text-red-500 dark:text-red-400 group-hover:text-red-600 dark:group-hover:text-red-300" />
-              </div>
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/50 p-4 lg:p-5 hover:border-rose-200 dark:hover:border-rose-800/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Refusées</p>
+              <X className="w-4 h-4 text-rose-500 dark:text-rose-400" />
             </div>
+            <p className="text-2xl lg:text-3xl font-bold text-rose-600 dark:text-rose-400">{stats.refuse}</p>
           </div>
         </div>
 
-        {/* Modal de formulaire avec overlay et animations fluides */}
-        {showForm && (
-          <>
-            {/* Overlay avec effet de fondu progressif */}
-            <div 
-              className="fixed inset-0 bg-gradient-to-br from-black/30 via-black/40 to-black/50 backdrop-blur-md z-40 animate-in fade-in duration-500"
-              onClick={() => setShowForm(false)}
-              aria-label="Fermer le formulaire"
-            />
-            
-            {/* Modal centrée avec animation élégante */}
-            <div className="fixed inset-0 z-50 overflow-y-auto">
-              <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
-                <div className="w-full max-w-2xl animate-in zoom-in-90 slide-in-from-bottom-8 duration-500 ease-out">
-                  <DemandeCongeForm 
-                    onSubmit={handleNouvelleDemande} 
-                    onClose={() => setShowForm(false)}
-                  />
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Liste des congés moderne et sobre - compacte mobile */}
-        <div className="space-y-3 lg:space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base lg:text-lg font-semibold text-gray-900 dark:text-gray-100 tracking-tight">Mes demandes</h2>
-            <button
-              onClick={() => fetchConges(true)}
-              aria-label="Actualiser la liste des demandes de congés"
-              className="group flex items-center gap-1.5 lg:gap-2 text-xs lg:text-sm text-gray-500 dark:text-gray-400 hover:text-[#cf292c] dark:hover:text-[#cf292c] transition-all duration-200 px-2.5 lg:px-3 py-1 lg:py-1.5 rounded-md lg:rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#cf292c]/30"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 lg:w-4 lg:h-4 transition-transform ${refreshing ? 'animate-spin' : 'group-hover:rotate-90'}`} />
-              <span className="hidden sm:inline">Actualiser</span>
-            </button>
-          </div>
+        {/* Liste des congés avec sections organisées */}
+        <div className="space-y-6">
 
           {loading ? (
-            <div className="space-y-4" aria-busy="true" aria-label="Chargement des demandes de congés">
-              {/* Skeleton loading moderne */}
+            <div className="space-y-3 lg:space-y-4" aria-busy="true" aria-label="Chargement des demandes de congés">
               {[1, 2, 3].map(i => (
-                <div key={i} className="bg-white/60 dark:bg-slate-800/50 backdrop-blur-sm rounded-2xl border border-gray-200/50 dark:border-slate-700/50 p-5 animate-pulse">
-                  <div className="flex gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gray-200/70 dark:bg-slate-700/70 motion-safe:animate-pulse" />
+                <div key={i} className="bg-white dark:bg-slate-800 rounded-xl lg:rounded-2xl border border-slate-200 dark:border-slate-700 p-4 lg:p-6 animate-pulse">
+                  <div className="flex items-center gap-4 lg:gap-6">
+                    <div className="w-11 h-11 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl bg-slate-200 dark:bg-slate-700" />
                     <div className="flex-1 space-y-3">
-                      <div className="h-4 bg-gray-200/70 dark:bg-slate-700/70 rounded-lg w-40" />
-                      <div className="h-3 bg-gray-200/60 dark:bg-slate-700/60 rounded w-64" />
-                      <div className="flex gap-2">
-                        <div className="h-3 bg-gray-200/60 dark:bg-slate-700/60 rounded w-24" />
-                        <div className="h-3 bg-gray-200/60 dark:bg-slate-700/60 rounded w-20" />
-                      </div>
+                      <div className="h-5 bg-slate-200 dark:bg-slate-700 rounded w-32" />
+                      <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-48" />
                     </div>
-                    <div className="w-24 space-y-2">
-                      <div className="h-6 bg-gray-200/60 dark:bg-slate-700/60 rounded-lg" />
-                      <div className="h-6 bg-gray-200/50 dark:bg-slate-700/50 rounded-lg" />
+                    <div className="hidden lg:flex items-center gap-3">
+                      <div className="h-8 w-24 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+                      <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded-lg" />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : conges.length === 0 ? (
-            <div className="bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-slate-700/60 p-8 text-center transition-colors">
-              <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Calendar className="w-8 h-8 text-gray-400" />
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200/60 dark:border-slate-700/50 p-16 lg:p-24 text-center">
+              {/* Icé´ne stylisée avec accent rouge */}
+              <div className="inline-flex mb-6 relative">
+                {/* Glow subtil rouge */}
+                <div className="absolute inset-0 bg-primary-500/10 rounded-2xl blur-xl"></div>
+                <div className="relative w-20 h-20 lg:w-24 lg:h-24 bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-700/50 dark:to-slate-800/30 rounded-2xl flex items-center justify-center border border-slate-200/60 dark:border-slate-700/50 shadow-sm">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 via-transparent to-transparent rounded-2xl"></div>
+                  <Calendar className="relative w-10 h-10 lg:w-12 lg:h-12 text-primary-500/80" strokeWidth={1.5} />
+                </div>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">Aucune demande</h3>
-              <p className="text-sm text-gray-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">Vous n'avez pas encore fait de demande de congé. Commencez par créer votre première demande.</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="group inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#cf292c] to-red-600 text-white rounded-xl hover:shadow-lg shadow-red-500/25 transition-all duration-200 text-sm font-medium transform hover:scale-[1.02]"
-              >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-45" />
-                Créer une demande
-              </button>
+              
+              {/* Texte stylisé */}
+              <h3 className="text-lg lg:text-xl font-semibold text-slate-800 dark:text-slate-200 mb-3">
+                Aucune demande de congé
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[200px] lg:max-w-none mx-auto">
+                Créez votre première demande avec le bouton
+                <span className="inline-flex items-center justify-center w-5 h-5 bg-primary-500 text-white rounded-full shadow-sm mx-1 align-middle">
+                  <Plus className="w-3 h-3" strokeWidth={3} />
+                </span>
+                ci-dessous
+              </p>
             </div>
           ) : (
-            conges.map((conge, index) => {
-              const statusConfig = getStatusConfig(conge.statut);
-              const StatusIcon = statusConfig.icon;
-              const dureeJours = getDureeJours(conge.dateDebut, conge.dateFin);
-              const isNew = lastCreatedId && (conge._id === lastCreatedId || conge.id === lastCreatedId);
-              
-              return (
-                <div 
-                  key={conge._id || index} 
-                  className={`group bg-white/70 dark:bg-slate-800/70 backdrop-blur-sm rounded-2xl border border-gray-200/60 dark:border-slate-700/60 p-5 hover:shadow-lg hover:shadow-gray-500/5 dark:hover:shadow-slate-900/40 transition-all duration-300 cursor-pointer focus-within:ring-2 focus-within:ring-[#cf292c]/30 ${
-                    isNew ? 'ring-2 ring-green-300/50 shadow-green-100/50' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-start gap-4">
-                        <div className="flex-shrink-0">
-                          <div className="w-12 h-12 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-600 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform">
-                            <StatusIcon className="w-6 h-6 text-gray-600 dark:text-gray-300" />
-                          </div>
-                        </div>
-                        
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-semibold text-gray-900 dark:text-slate-100 mb-2 group-hover:text-[#cf292c] transition-colors flex items-center gap-2">
-                                {conge.type}
-                                {isNew && (
-                                  <span className="text-[10px] uppercase tracking-wide font-semibold bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full motion-safe:animate-pulse">
-                                    Nouveau
-                                  </span>
-                                )}
-                              </h3>
-                              <div className="space-y-1">
-                                <div className="text-sm text-gray-600 dark:text-slate-300 flex items-center gap-2">
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                  Du {new Date(conge.dateDebut).toLocaleDateString('fr-FR', { 
-                                    day: 'numeric', month: 'long', year: 'numeric' 
-                                  })}
-                                </div>
-                                <div className="text-sm text-gray-600 dark:text-slate-300 flex items-center gap-2">
-                                  <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                  au {new Date(conge.dateFin).toLocaleDateString('fr-FR', { 
-                                    day: 'numeric', month: 'long', year: 'numeric' 
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="text-right">
-                              <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${statusConfig.color}`}>
-                                <div className={`w-2 h-2 rounded-full ${statusConfig.dotColor}`}></div>
-                                {conge.statut.charAt(0).toUpperCase() + conge.statut.slice(1)}
-                              </span>
-                              <div className="mt-3 px-3 py-1 bg-gray-50 dark:bg-slate-700/60 rounded-lg">
-                                <div className="text-sm font-medium text-gray-700 dark:text-slate-200">{dureeJours} jour{dureeJours > 1 ? 's' : ''}</div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+            <>
+              {/* SECTION 1: Congés à venir (approuvés avec date future) */}
+              {(() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const congesAVenir = conges.filter(c => 
+                  c.statut === "approuvé" && new Date(c.dateDebut) >= today
+                ).sort((a, b) => new Date(a.dateDebut) - new Date(b.dateDebut));
+                
+                return congesAVenir.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
+                        <CalendarCheck className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Congés à venir</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{congesAVenir.length} congé{congesAVenir.length > 1 ? 's' : ''} approuvé{congesAVenir.length > 1 ? 's' : ''}</p>
                       </div>
                     </div>
+                    <div className="space-y-3">
+                      {congesAVenir.map((conge, index) => {
+                        const statusConfig = getStatusConfig(conge.statut);
+                        const StatusIcon = statusConfig.icon;
+                        const dureeJours = getDureeJours(conge.dateDebut, conge.dateFin);
+                        const isNew = lastCreatedId && conge.id === lastCreatedId;
+                        
+                        return (
+                          <CongeCard key={conge.id || index} conge={conge} statusConfig={statusConfig} StatusIcon={StatusIcon} dureeJours={dureeJours} isNew={isNew} onAddJustificatif={setUploadingJustificatif} />
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })()}
+
+              {/* SECTION 2: Demandes en attente de validation */}
+              {(() => {
+                const congesEnAttente = conges.filter(c => c.statut === "en attente")
+                  .sort((a, b) => {
+                    // Trier par date de création (plus récent en premier)
+                    // Utiliser createdAt du backend, sinon fallback sur id
+                    const getTimestamp = (c) => {
+                      if (c.createdAt) return new Date(c.createdAt).getTime();
+                      // Fallback: id plus grand = plus récent (auto-increment)
+                      return c.id || 0;
+                    };
+                    return getTimestamp(b) - getTimestamp(a);
+                  });
+                
+                return congesEnAttente.length > 0 && (
+                  <div 
+                    id="conges-list"
+                    className={`space-y-3 scroll-mt-highlight transition-all duration-500 rounded-xl ${
+                      isCongesListHighlighted ? 'highlight-glow p-2 -m-2' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center">
+                        <Clock className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">En attente</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{congesEnAttente.length} demande{congesEnAttente.length > 1 ? 's' : ''} en cours</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {congesEnAttente.map((conge, index) => {
+                        const statusConfig = getStatusConfig(conge.statut);
+                        const StatusIcon = statusConfig.icon;
+                        const dureeJours = getDureeJours(conge.dateDebut, conge.dateFin);
+                        const isNew = lastCreatedId && conge.id === lastCreatedId;
+                        
+                        return (
+                          <CongeCard key={conge.id || index} conge={conge} statusConfig={statusConfig} StatusIcon={StatusIcon} dureeJours={dureeJours} isNew={isNew} handleEditConge={handleEditConge} setDeletingConge={setDeletingConge} onAddJustificatif={setUploadingJustificatif} />
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* SECTION 3: Historique (congés passés + refusés) - Collapsible avec filtres */}
+              {(() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                let historique = conges.filter(c => 
+                  c.statut === "refusé" || (c.statut === "approuvé" && new Date(c.dateFin) < today)
+                ).sort((a, b) => new Date(b.dateFin) - new Date(a.dateFin));
+                
+                // Appliquer les filtres
+                if (filterType !== "tous") {
+                  historique = historique.filter(c => matchesTypeFilter(c.type, filterType));
+                }
+                
+                if (searchDate) {
+                  historique = historique.filter(c => {
+                    // Normaliser les dates pour comparer uniquement jour/mois/année (sans heure)
+                    const normalizeDate = (d) => {
+                      const date = new Date(d);
+                      return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+                    };
+                    const searchTime = normalizeDate(searchDate);
+                    const debutTime = normalizeDate(c.dateDebut);
+                    const finTime = normalizeDate(c.dateFin);
+                    return searchTime >= debutTime && searchTime <= finTime;
+                  });
+                }
+                
+                const historiqueTotal = conges.filter(c => 
+                  c.statut === "refusé" || (c.statut === "approuvé" && new Date(c.dateFin) < today)
+                ).length;
+                
+                return historiqueTotal > 0 && (
+                  <div className="space-y-3 mt-6">
+                    {/* Bouton Historique avec design amélioré */}
+                    <button
+                      onClick={() => setShowHistorique(!showHistorique)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-300 ${
+                        showHistorique 
+                          ? 'bg-gradient-to-r from-slate-600 to-slate-700 shadow-lg shadow-slate-500/20' 
+                          : 'bg-gradient-to-r from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-800/80 hover:from-slate-200 hover:to-slate-300/80 dark:hover:from-slate-700 dark:hover:to-slate-700/80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+                          showHistorique 
+                            ? 'bg-white/20' 
+                            : 'bg-slate-500'
+                        }`}>
+                          <History className={`w-5 h-5 ${showHistorique ? 'text-white' : 'text-white'}`} />
+                        </div>
+                        <div className="text-left">
+                          <h3 className={`text-sm font-semibold ${showHistorique ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>Historique des congés</h3>
+                          <p className={`text-xs ${showHistorique ? 'text-white/70' : 'text-slate-500 dark:text-slate-400'}`}>
+                            {historiqueTotal} congé{historiqueTotal > 1 ? 's' : ''} passé{historiqueTotal > 1 ? 's' : ''} ou refusé{historiqueTotal > 1 ? 's' : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 ${
+                        showHistorique 
+                          ? 'bg-white/20 rotate-180' 
+                          : 'bg-slate-300/50 dark:bg-slate-700'
+                      }`}>
+                        <ChevronDown className={`w-5 h-5 ${showHistorique ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                      </div>
+                    </button>
+                    
+                    {showHistorique && (
+                      <div className="space-y-3 animate-in slide-in-from-top-2 fade-in duration-300">
+                        {/* Filtres compacts pour mobile */}
+                        <div className="bg-white dark:bg-slate-800 rounded-xl p-3 border border-slate-200/60 dark:border-slate-700/50">
+                          {/* Header des filtres compact */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 bg-primary-50 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+                                <Filter className="w-3.5 h-3.5 text-primary-500" />
+                              </div>
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Filtres</span>
+                            </div>
+                            {(filterType !== "tous" || searchDate) && (
+                              <button
+                                onClick={() => { setFilterType("tous"); setSearchDate(""); setShowFilterTypePicker(false); }}
+                                className="w-6 h-6 flex items-center justify-center text-primary-500 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-md transition-colors"
+                                title="Réinitialiser les filtres"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                          
+                          {/* Filtres en ligne */}
+                          <div className="flex gap-2">
+                            {/* Filtre par type */}
+                            <div className="flex-1 relative" ref={filterTypeRef}>
+                              <button
+                                type="button"
+                                onClick={() => setShowFilterTypePicker(!showFilterTypePicker)}
+                                className={`w-full h-9 flex items-center gap-2 px-2.5 border rounded-lg bg-slate-50 dark:bg-slate-700/50 text-left text-xs transition-all duration-200 ${
+                                  showFilterTypePicker 
+                                    ? 'border-primary-500 ring-1 ring-primary-500/20' 
+                                    : 'border-slate-200 dark:border-slate-600'
+                                }`}
+                              >
+                                <selectedFilterType.icon className={`w-3.5 h-3.5 ${selectedFilterType.textColor} flex-shrink-0`} />
+                                <span className="flex-1 font-medium text-slate-700 dark:text-slate-300 truncate text-xs">{selectedFilterType.label}</span>
+                                <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${showFilterTypePicker ? 'rotate-180' : ''}`} />
+                              </button>
+                                
+                                {/* Dropdown list */}
+                                {showFilterTypePicker && (
+                                  <>
+                                    <div 
+                                      className="fixed inset-0 z-10" 
+                                      onClick={() => setShowFilterTypePicker(false)}
+                                    />
+                                    <div className="absolute z-20 mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                      <ul className="max-h-48 overflow-y-auto overscroll-contain">
+                                        {typesCongeConfig.map((t) => {
+                                          const TypeIcon = t.icon;
+                                          const isSelected = t.value === filterType;
+                                          return (
+                                            <li
+                                              key={t.value}
+                                              onClick={() => { setFilterType(t.value); setShowFilterTypePicker(false); }}
+                                              className={`flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors text-xs ${
+                                                isSelected 
+                                                  ? 'bg-primary-50 dark:bg-primary-900/30' 
+                                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
+                                              }`}
+                                            >
+                                              <TypeIcon className={`w-3.5 h-3.5 ${t.textColor}`} />
+                                              <span className={`flex-1 ${isSelected ? 'font-semibold text-primary-700 dark:text-primary-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                {t.label}
+                                              </span>
+                                              {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-primary-500" />}
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+                                  </>
+                                )}
+                            </div>
+                            
+                            {/* Recherche par date - DatePickerCustom compact avec bouton clear responsive */}
+                            <div className="flex-1 [&>div>div>button]:h-9 [&>div>div>button]:py-0 [&>div>div>button]:px-2.5 [&>div>div>button]:pr-10 [&>div>div>button]:rounded-lg [&>div>div>button]:text-xs [&>div>div>button]:border-slate-200 [&>div>div>button]:bg-slate-50">
+                              <div className="relative flex items-center">
+                                <DatePickerCustom
+                                  value={searchDate}
+                                  onChange={(date) => setSearchDate(date)}
+                                  placeholder="Date"
+                                />
+                                {searchDate && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchDate(""); }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 sm:w-5 sm:h-5 flex items-center justify-center rounded-md bg-slate-400/90 hover:bg-red-500 active:bg-red-600 transition-colors z-30 shadow-sm touch-manipulation"
+                                    aria-label="Effacer la date"
+                                  >
+                                    <X className="w-3.5 h-3.5 sm:w-3 sm:h-3 text-white" strokeWidth={2.5} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Badges filtres actifs + Résultats - Compact */}
+                          {(filterType !== "tous" || searchDate) && (
+                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                              {filterType !== "tous" && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${selectedFilterType.bgColor} ${selectedFilterType.textColor}`}>
+                                  <selectedFilterType.icon className="w-2.5 h-2.5" />
+                                  {selectedFilterType.label}
+                                  <button onClick={() => setFilterType("tous")} className="ml-0.5 hover:opacity-70">
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              )}
+                              {searchDate && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                  <Calendar className="w-2.5 h-2.5" />
+                                  {new Date(searchDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                  <button onClick={() => setSearchDate("")} className="ml-0.5 hover:opacity-70">
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              )}
+                              <span className="ml-auto text-[10px] font-medium text-slate-500">
+                                {historique.length}/{historiqueTotal}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Liste filtrée */}
+                        {historique.length > 0 ? (
+                          <div className="space-y-3">
+                            {historique.map((conge, index) => {
+                              const statusConfig = getStatusConfig(conge.statut);
+                              const StatusIcon = statusConfig.icon;
+                              const dureeJours = getDureeJours(conge.dateDebut, conge.dateFin);
+                              
+                              return (
+                                <CongeCard key={conge.id || index} conge={conge} statusConfig={statusConfig} StatusIcon={StatusIcon} dureeJours={dureeJours} isNew={false} isHistorique onAddJustificatif={setUploadingJustificatif} />
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                            <div className="w-12 h-12 mx-auto mb-3 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center">
+                              <Search className="w-6 h-6 text-slate-400" />
+                            </div>
+                            <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Aucun congé trouvé</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Essayez de modifier vos filtres</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </>
           )}
         </div>
       </div>
+
+      {/* Modal de confirmation de modification */}
+      {confirmingEdit && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-in fade-in duration-300"
+            onClick={() => setConfirmingEdit(null)}
+          />
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 border border-gray-200 dark:border-slate-700">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+                    <Edit2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
+                      Modifier cette demande ?
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+                      Vous allez modifier votre demande de <strong>{confirmingEdit.type}</strong> du{' '}
+                      {new Date(confirmingEdit.dateDebut).toLocaleDateString('fr-FR')} au{' '}
+                      {new Date(confirmingEdit.dateFin).toLocaleDateString('fr-FR')}.
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-6 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                      ℹ️ La demande restera "en attente" après modification et devra être à nouveau validée par votre manager.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setConfirmingEdit(null)}
+                        className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        onClick={confirmEditConge}
+                        className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 text-sm font-medium shadow-lg shadow-blue-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 transform hover:scale-[1.02]"
+                      >
+                        Continuer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal d'upload de justificatif */}
+      {uploadingJustificatif && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-in fade-in duration-300"
+            onClick={handleCloseUploadModal}
+          />
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 border border-gray-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
+                    Ajouter un justificatif
+                  </h3>
+                  <button
+                    onClick={handleCloseUploadModal}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5 text-slate-500" />
+                  </button>
+                </div>
+                
+                <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+                  Ajoutez un justificatif pour votre demande de <strong>{getTypeLabel(uploadingJustificatif.type)}</strong> du{' '}
+                  {new Date(uploadingJustificatif.dateDebut).toLocaleDateString('fr-FR')} au{' '}
+                  {new Date(uploadingJustificatif.dateFin).toLocaleDateString('fr-FR')}.
+                </p>
+                
+                {/* Zone d'upload */}
+                <input
+                  type="file"
+                  ref={uploadInputRef}
+                  onChange={handleUploadFileChange}
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                />
+                
+                {!uploadPreview ? (
+                  <button
+                    type="button"
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="w-full flex flex-col items-center justify-center py-8 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl cursor-pointer hover:border-primary-400 dark:hover:border-primary-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all mb-4"
+                  >
+                    <Upload className="w-10 h-10 text-slate-400 dark:text-slate-500 mb-2" />
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                      Cliquez pour sélectionner un fichier
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                      PDF, JPG, PNG ou WEBP (max 10 MB)
+                    </span>
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {uploadPreview?.type === 'image' && uploadPreview?.url ? (
+                        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-emerald-200 dark:border-emerald-700">
+                          <img src={uploadPreview.url} alt="Preview" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-800/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300 truncate">
+                          {uploadPreview?.name}
+                        </p>
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          Fichier prêt
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUploadFile(null); setUploadPreview(null); if (uploadInputRef.current) uploadInputRef.current.value = ''; }}
+                      className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleCloseUploadModal}
+                    className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors text-sm font-medium"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleSubmitJustificatif}
+                    disabled={!uploadFile || uploadLoading}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-xl hover:from-primary-600 hover:to-primary-700 transition-all duration-200 text-sm font-medium shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {uploadLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Envoi...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Envoyer
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Modal de confirmation de suppression */}
+      {deletingConge && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-in fade-in duration-300"
+            onClick={() => setDeletingConge(null)}
+          />
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 border border-gray-200 dark:border-slate-700">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-rose-600 dark:text-rose-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100 mb-2">
+                      Annuler cette demande ?
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-slate-400 mb-6">
+                      Vous êtes sur le point d'annuler votre demande de <strong>{getTypeLabel(deletingConge.type)}</strong> du{' '}
+                      {new Date(deletingConge.dateDebut).toLocaleDateString('fr-FR')} au{' '}
+                      {new Date(deletingConge.dateFin).toLocaleDateString('fr-FR')}.
+                      <br /><br />
+                      Cette action est irréversible.
+                    </p>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setDeletingConge(null)}
+                        className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        onClick={() => handleDeleteConge(deletingConge.id)}
+                        className="flex-1 px-4 py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 text-white rounded-xl hover:from-rose-600 hover:to-rose-700 transition-all duration-200 text-sm font-medium shadow-lg shadow-rose-500/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 transform hover:scale-[1.02]"
+                      >
+                        Confirmer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       <BottomNav />
     </div>

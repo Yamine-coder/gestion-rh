@@ -5,7 +5,7 @@ const { authMiddleware: authenticateToken, adminMiddleware } = require('../middl
 const { generateQRCode } = require('../controllers/qrController');
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const { getTousLesConges, marquerCongesCommeVus, getDemandesNonVues } = require('../controllers/congeController');
-const { creerEmploye, modifierEmploye, supprimerEmploye } = require('../controllers/adminController');
+const { creerEmploye, modifierEmploye, marquerDepart, annulerDepart, supprimerEmploye } = require('../controllers/adminController');
 const { getTousLesEmployes } = require('../controllers/employeController');
 const { getDashboardStats } = require('../controllers/adminController');
 const { getAllPointages } = require('../controllers/statsController');
@@ -87,6 +87,8 @@ router.get('/employes/:id', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 router.put('/employes/:id', authenticateToken, isAdmin, modifierEmploye);
+router.put('/employes/:id/depart', authenticateToken, isAdmin, marquerDepart);
+router.put('/employes/:id/annuler-depart', authenticateToken, isAdmin, annulerDepart);
 router.delete('/employes/:id', authenticateToken, isAdmin, supprimerEmploye);
 
 router.get('/employes/:id/qrcode', authenticateToken, isAdmin, generateQRCode);

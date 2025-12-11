@@ -1,19 +1,102 @@
 import { useState, useEffect, useRef } from "react";
-import { Calendar, Send, AlertTriangle, FileText, Info, X, Heart, GraduationCap, Stethoscope, Clock, DollarSign, Users } from "lucide-react";
+import { Calendar, Send, AlertTriangle, FileText, Info, X, Heart, GraduationCap, Stethoscope, Clock, DollarSign, Users, Upload, Paperclip, Trash2, CheckCircle } from "lucide-react";
+import DatePickerCustom from './DatePickerCustom';
+import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
 
-function DemandeCongeForm({ onSubmit, onClose }) {
+// Types nécessitant un justificatif obligatoire
+const TYPES_JUSTIFICATIF_OBLIGATOIRE = ['maladie', 'maternite', 'paternite', 'deces'];
+// Types où le justificatif est optionnel mais recommandé
+const TYPES_JUSTIFICATIF_OPTIONNEL = ['mariage', 'formation'];
+
+function DemandeCongeForm({ 
+  onSubmit, 
+  onClose, 
+  initialData = null, 
+  isEditing = false,
+  // Props partagés pour le justificatif (remontés dans le parent)
+  justificatif,
+  setJustificatif,
+  justificatifPreview,
+  setJustificatifPreview
+}) {
   // Récupérer le dernier type choisi ou utiliser par défaut
   const getLastType = () => {
+    if (initialData) return initialData.type;
     const saved = localStorage.getItem('lastCongeType');
-    return saved || "congé payé";
+    return saved || "CP";
   };
   
   const [type, setType] = useState(getLastType());
-  const [debut, setDebut] = useState("");
-  const [fin, setFin] = useState("");
-  const [motif, setMotif] = useState("");
+  const [debut, setDebut] = useState(initialData ? toLocalDateString(new Date(initialData.dateDebut)) : "");
+  const [fin, setFin] = useState(initialData ? toLocalDateString(new Date(initialData.dateFin)) : "");
+  const [motif, setMotif] = useState(initialData?.motif || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  // Tracker si un justificatif existant a été supprimé (pour mode édition)
+  const [justificatifRemoved, setJustificatifRemoved] = useState(false);
+  
+  const fileInputRef = useRef(null);
+  
+  // Initialiser le preview si on édite un congé existant avec un justificatif
+  useEffect(() => {
+    if (initialData?.justificatif && !justificatifPreview) {
+      setJustificatifPreview(initialData.justificatif);
+    }
+  }, [initialData]);
+
+  // Vérifier si le type sélectionné nécessite un justificatif
+  const isJustificatifRequired = TYPES_JUSTIFICATIF_OBLIGATOIRE.includes(type);
+  const isJustificatifOptional = TYPES_JUSTIFICATIF_OPTIONNEL.includes(type);
+  const showJustificatifField = isJustificatifRequired || isJustificatifOptional;
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Vérifier le type de fichier
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        setErrors(prev => ({ ...prev, justificatif: 'Format non autorisé. Utilisez PDF, JPG, PNG ou WEBP.' }));
+        return;
+      }
+      // Vérifier la taille (10 MB max)
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, justificatif: 'Le fichier est trop volumineux (max 10 MB)' }));
+        return;
+      }
+      setJustificatif(file);
+      
+      // Créer une preview : miniature pour images, nom pour PDF
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setJustificatifPreview({
+            type: 'image',
+            url: event.target.result,
+            name: file.name
+          });
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setJustificatifPreview({
+          type: 'pdf',
+          name: file.name
+        });
+      }
+      setErrors(prev => ({ ...prev, justificatif: null }));
+    }
+  };
+
+  const removeJustificatif = () => {
+    // Si on est en mode édition et qu'il y avait un justificatif existant, marquer comme supprimé
+    if (isEditing && initialData?.justificatif) {
+      setJustificatifRemoved(true);
+    }
+    setJustificatif(null);
+    setJustificatifPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,18 +116,21 @@ function DemandeCongeForm({ onSubmit, onClose }) {
     const aujourdhui = new Date();
     aujourdhui.setHours(0, 0, 0, 0);
     
-    if (dateDebut >= dateFin) {
-      newErrors.dates = "La date de fin doit être postérieure à la date de début";
+    // Permettre les congés d'une journée (même date début et fin)
+    if (dateDebut > dateFin) {
+      newErrors.dates = "La date de fin ne peut pas être antérieure à la date de début";
     }
     
     if (dateDebut < aujourdhui) {
       newErrors.dates = "Vous ne pouvez pas demander un congé dans le passé";
     }
 
-    // Vérifier si la demande est trop longue (plus de 30 jours)
-    const dureeJours = getDureeJours();
-    if (dureeJours > 30) {
-      newErrors.duree = "Les congés de plus de 30 jours nécessitent une validation spéciale";
+    // Note: Les congés de plus de 30 jours sont autorisés mais signalés au manager
+    // La validation se fait côté manager, pas côté employé
+
+    // Vérifier si le justificatif est obligatoire mais manquant
+    if (isJustificatifRequired && !justificatif && !justificatifPreview) {
+      newErrors.justificatif = "Un justificatif est obligatoire pour ce type de congé";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -57,7 +143,8 @@ function DemandeCongeForm({ onSubmit, onClose }) {
       // Sauvegarder le type pour la prochaine fois
       localStorage.setItem('lastCongeType', type);
       
-      await onSubmit({ type, debut, fin, motif });
+      // Envoyer avec le fichier si présent, et le flag de suppression si applicable
+      await onSubmit({ type, debut, fin, motif, justificatif, justificatifRemoved });
       
       // Animation de succès avant la fermeture
       setErrors({});
@@ -66,6 +153,8 @@ function DemandeCongeForm({ onSubmit, onClose }) {
       setDebut("");
       setFin("");
       setMotif("");
+      setJustificatif(null);
+      setJustificatifPreview(null);
       setType(getLastType());
       
       // Fermer avec un délai pour permettre l'animation de succès
@@ -96,10 +185,10 @@ function DemandeCongeForm({ onSubmit, onClose }) {
   // Vérifier si c'est une demande urgente (moins de 7 jours)
   const isUrgent = debut && Math.ceil((new Date(debut) - new Date()) / (1000 * 60 * 60 * 24)) <= 7;
 
-  // Configuration des types de congé avec icônes et couleurs
+  // Configuration des types de congé avec icônes et couleurs - Synchronisé avec typesConges.js
   const typesConge = [
     {
-      value: "congé payé",
+      value: "CP",
       label: "Congé payé",
       icon: Calendar,
       color: "from-blue-500 to-blue-600",
@@ -117,7 +206,7 @@ function DemandeCongeForm({ onSubmit, onClose }) {
       description: "Jours de récupération pour la réduction du temps de travail"
     },
     {
-      value: "sans solde",
+      value: "sans_solde",
       label: "Sans solde",
       icon: DollarSign,
       color: "from-gray-500 to-gray-600",
@@ -127,12 +216,48 @@ function DemandeCongeForm({ onSubmit, onClose }) {
     },
     {
       value: "maladie",
-      label: "Congé maladie",
+      label: "Maladie",
       icon: Stethoscope,
       color: "from-red-500 to-red-600",
       bgColor: "bg-red-50 dark:bg-red-900/30",
       textColor: "text-red-700 dark:text-red-300",
       description: "Justificatif médical requis"
+    },
+    {
+      value: "maternite",
+      label: "Maternité",
+      icon: Heart,
+      color: "from-pink-500 to-pink-600",
+      bgColor: "bg-pink-50 dark:bg-pink-900/30",
+      textColor: "text-pink-700 dark:text-pink-300",
+      description: "Congé maternité"
+    },
+    {
+      value: "paternite",
+      label: "Paternité",
+      icon: Heart,
+      color: "from-blue-500 to-blue-600",
+      bgColor: "bg-blue-50 dark:bg-blue-900/30",
+      textColor: "text-blue-700 dark:text-blue-300",
+      description: "Congé paternité"
+    },
+    {
+      value: "deces",
+      label: "Décès",
+      icon: Users,
+      color: "from-gray-500 to-gray-600",
+      bgColor: "bg-gray-50 dark:bg-gray-900/30",
+      textColor: "text-gray-700 dark:text-gray-300",
+      description: "Congé pour événement familial"
+    },
+    {
+      value: "mariage",
+      label: "Mariage",
+      icon: Heart,
+      color: "from-pink-500 to-pink-600",
+      bgColor: "bg-pink-50 dark:bg-pink-900/30",
+      textColor: "text-pink-700 dark:text-pink-300",
+      description: "Congé pour mariage"
     },
     {
       value: "formation",
@@ -141,25 +266,16 @@ function DemandeCongeForm({ onSubmit, onClose }) {
       color: "from-green-500 to-green-600",
       bgColor: "bg-green-50 dark:bg-green-900/30",
       textColor: "text-green-700 dark:text-green-300",
-      description: "Formation liée à votre poste ou développement professionnel"
+      description: "Formation professionnelle"
     },
     {
-      value: "maternité",
-      label: "Maternité/Paternité",
-      icon: Heart,
-      color: "from-pink-500 to-pink-600",
-      bgColor: "bg-pink-50 dark:bg-pink-900/30",
-      textColor: "text-pink-700 dark:text-pink-300",
-      description: "Congé légal pour naissance ou adoption"
-    },
-    {
-      value: "exceptionnel",
-      label: "Congé exceptionnel",
-      icon: Users,
+      value: "autre",
+      label: "Autre",
+      icon: FileText,
       color: "from-orange-500 to-orange-600",
       bgColor: "bg-orange-50 dark:bg-orange-900/30",
       textColor: "text-orange-700 dark:text-orange-300",
-      description: "Événements familiaux : mariage, décès, déménagement..."
+      description: "Autre type de congé"
     }
   ];
 
@@ -229,37 +345,39 @@ function DemandeCongeForm({ onSubmit, onClose }) {
   }, [focusIndex, showTypePicker]);
 
   return (
-  <div className="bg-white dark:bg-slate-900 border border-gray-200/60 dark:border-slate-700/60 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto transition-colors max-w-full overflow-x-hidden">
-      {/* En-tête moderne avec bouton de fermeture - optimisé mobile */}
-    <div className="px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-gray-50/80 to-white/80 dark:from-slate-800/80 dark:to-slate-800/60 border-b border-gray-200/60 dark:border-slate-700/60 sticky top-0 z-10 transition-colors">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 mr-3">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#cf292c] to-red-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg shadow-red-500/20 flex-shrink-0">
-              <Send className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+  <div className="bg-white dark:bg-slate-800 lg:border-2 lg:border-slate-300/60 lg:dark:border-slate-600/60 lg:rounded-2xl lg:shadow-2xl transition-colors w-full flex flex-col overflow-hidden">
+      {/* En-tête moderne - optimisé mobile - FIXÉ en haut */}
+    <div className="px-4 lg:px-5 py-3 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 transition-colors flex-shrink-0 rounded-t-2xl">
+        <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Send className="w-5 h-5 text-white" />
             </div>
             <div className="min-w-0 flex-1">
-        <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 tracking-tight truncate">Nouvelle demande</h2>
-        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">Remplissez les informations</p>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
+                {isEditing ? 'Modifier la demande' : 'Nouvelle demande de congé'}
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                {isEditing ? 'Modifiez les informations ci-dessous' : 'Remplissez le formulaire ci-dessous'}
+              </p>
             </div>
-          </div>
-          
-          {/* Bouton de fermeture - plus petit sur mobile */}
-          {onClose && (
-            <button
-              onClick={onClose}
-        className="group w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 flex items-center justify-center transition-all duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-slate-500 flex-shrink-0"
-              aria-label="Fermer le formulaire"
-            >
-        <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-200 group-hover:text-gray-800 dark:group-hover:text-gray-100" />
-            </button>
-          )}
+            {/* Bouton fermer - visible uniquement sur desktop */}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="hidden lg:flex w-9 h-9 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                aria-label="Fermer le formulaire"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-hidden max-w-full w-full">
+      <form onSubmit={handleSubmit} className="p-4 lg:p-5 space-y-3 lg:space-y-4 overflow-y-auto overscroll-contain max-w-full w-full flex-1">
         {/* Type de congé avec liste moderne - optimisé mobile */}
-        <div className="space-y-2 sm:space-y-3 overflow-hidden max-w-full w-full min-w-0">
-          <label className="block text-sm sm:text-sm font-semibold text-gray-700 dark:text-gray-200">
+        <div className="space-y-1.5 lg:space-y-1.5 overflow-hidden max-w-full w-full min-w-0">
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
             Type de congé
           </label>
           
@@ -272,13 +390,13 @@ function DemandeCongeForm({ onSubmit, onClose }) {
               aria-expanded={showTypePicker}
               ref={triggerRef}
               onKeyDown={(e)=>{ if(['Enter',' '].includes(e.key)){ e.preventDefault(); setShowTypePicker(true);} if(e.key==='ArrowDown'){e.preventDefault(); setShowTypePicker(true);} }}
-              className="w-full flex items-center gap-3 pl-10 sm:pl-12 pr-4 sm:pr-5 py-2.5 sm:py-3 border border-gray-300/60 dark:border-slate-600 rounded-lg sm:rounded-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-left text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/30 hover:border-gray-400 dark:hover:border-slate-500 transition-all"
+              className="w-full flex items-center gap-3 pl-11 sm:pl-12 pr-4 sm:pr-5 py-2.5 sm:py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-left text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 hover:border-slate-400 dark:hover:border-slate-500 transition-colors relative"
             >
-              <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2">
+              <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 flex items-center justify-center z-10">
                 <selectedTypeConfig.icon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 dark:text-gray-500" />
               </div>
               <span className="flex-1 truncate font-medium">{selectedTypeConfig.label}</span>
-              <span className={`${selectedTypeConfig.bgColor} ${selectedTypeConfig.textColor} inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-xs font-semibold border border-transparent`}>Choisir</span>
+              <span className={`${selectedTypeConfig.bgColor} ${selectedTypeConfig.textColor} inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-xs font-semibold border border-transparent flex-shrink-0`}>Choisir</span>
             </button>
             {showTypePicker && (
               <div className="mt-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden animate-in fade-in w-full" role="dialog" aria-label="Liste des types de congé">
@@ -325,213 +443,306 @@ function DemandeCongeForm({ onSubmit, onClose }) {
             )}
           </div>
           
-          {/* Description moderne du type sélectionné */}
-          <div className={`${selectedTypeConfig.bgColor} rounded-lg px-3 py-2.5 transition-all duration-200 border border-gray-100 dark:border-slate-700/50 w-full min-w-0`}> 
-            <div className="flex items-start gap-2">
-              <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center ${selectedTypeConfig.textColor} bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm flex-shrink-0 mt-0.5 shadow-sm`}>
-                <selectedTypeConfig.icon className="w-3 h-3 sm:w-4 sm:h-4" />
+          {/* Description moderne du type sélectionné - compacte */}
+          <div className={`${selectedTypeConfig.bgColor} rounded-lg px-3 py-2 transition-all duration-200 border border-gray-100 dark:border-slate-700/50 w-full min-w-0`}> 
+            <div className="flex items-center gap-2.5">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${selectedTypeConfig.textColor} bg-white/80 dark:bg-slate-700/80 flex-shrink-0`}>
+                <selectedTypeConfig.icon className="w-3.5 h-3.5" />
               </div>
-              <div className="flex-1">
-                <div className={`text-xs sm:text-sm font-semibold ${selectedTypeConfig.textColor} mb-1 flex items-center gap-1.5`}>
-                  {selectedTypeConfig.label}
-                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${selectedTypeConfig.color.replace('from-', 'bg-').replace(' to-blue-600', '').replace(' to-purple-600', '').replace(' to-gray-600', '').replace(' to-red-600', '').replace(' to-green-600', '').replace(' to-pink-600', '').replace(' to-orange-600', '')}`}></span>
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-                  {selectedTypeConfig.description}
-                </div>
+              <div className="flex-1 flex items-center gap-2">
+                <span className={`text-sm font-semibold ${selectedTypeConfig.textColor}`}>{selectedTypeConfig.label}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">— {selectedTypeConfig.description}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Dates avec validation visuelle - améliorées mobile */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Date de début
-            </label>
-            <div className="relative group">
-              <Calendar className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 dark:text-gray-500 group-hover:text-[#cf292c] transition-colors pointer-events-none" />
-              <input
-                type="date"
-                value={debut}
-                onChange={(e) => setDebut(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                aria-label="Date de début du congé"
-                className={`w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 border rounded-lg sm:rounded-xl text-sm focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:border-gray-400 dark:hover:border-slate-500 text-gray-700 dark:text-gray-200 focus:outline-none ${
-                  errors.dates ? 'border-red-300 focus:border-red-400 focus:ring-red-100 dark:border-red-600 dark:focus:border-red-500' : 'border-gray-300/60 dark:border-slate-600'
-                }`}
-                required
-              />
-            </div>
+        {/* Dates avec DatePicker custom élégant */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="relative z-20">
+            <DatePickerCustom
+              label="Date de début"
+              value={debut}
+              onChange={setDebut}
+              min={getCurrentDateString()}
+              placeholder="Choisir la date"
+              error={errors.dates}
+              position="left"
+            />
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Date de fin
-            </label>
-            <div className="relative group">
-              <Calendar className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 dark:text-gray-500 group-hover:text-[#cf292c] transition-colors pointer-events-none" />
-              <input
-                type="date"
-                value={fin}
-                onChange={(e) => setFin(e.target.value)}
-                min={debut || new Date().toISOString().split('T')[0]}
-                aria-label="Date de fin du congé"
-                className={`w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 border rounded-lg sm:rounded-xl text-sm focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:border-gray-400 dark:hover:border-slate-500 text-gray-700 dark:text-gray-200 focus:outline-none ${
-                  errors.dates ? 'border-red-300 focus:border-red-400 focus:ring-red-100 dark:border-red-600 dark:focus:border-red-500' : 'border-gray-300/60 dark:border-slate-600'
-                }`}
-                required
-              />
-            </div>
+          <div className="relative z-10">
+            <DatePickerCustom
+              label="Date de fin"
+              value={fin}
+              onChange={setFin}
+              min={debut || getCurrentDateString()}
+              placeholder="Choisir la date"
+              error={errors.dates}
+              position="right"
+            />
           </div>
         </div>
 
-        {/* Messages d'erreur - compacts mobile */}
+        {/* Messages d'erreur - compacts */}
         {errors.dates && (
-          <div className="bg-red-50/80 dark:bg-red-900/30 border border-red-200/60 dark:border-red-700/60 rounded-lg sm:rounded-xl p-3">
-            <div className="flex items-start gap-2">
+          <div className="bg-red-50/80 dark:bg-red-900/30 border border-red-200/60 dark:border-red-700/60 rounded-lg p-2.5 lg:p-2">
+            <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />
-              <div className="text-sm text-red-700 dark:text-red-300 font-medium">{errors.dates}</div>
+              <div className="text-xs lg:text-sm text-red-700 dark:text-red-300 font-medium">{errors.dates}</div>
             </div>
           </div>
         )}
 
-        {/* Motif optionnel - optimisé mobile */}
-        {(type === "sans solde" || type === "exceptionnel" || type === "formation") && (
+        {/* Commentaire/Justification - toujours affiché, optionnel sauf pour certains types */}
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
+            {type === "maladie" ? "Justification" : 
+             type === "formation" ? "Détails de la formation" :
+             type === "sans_solde" ? "Motif" :
+             type === "autre" ? "Précisez le motif" :
+             "Commentaire"} 
+            <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">
+              {(type === "sans_solde" || type === "maladie" || type === "autre") ? "(obligatoire)" : "(optionnel)"}
+            </span>
+          </label>
+          <div className="relative">
+            <FileText className="absolute left-3 top-2.5 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none" />
+            <textarea
+              value={motif}
+              onChange={(e) => setMotif(e.target.value)}
+              placeholder={
+                type === "maladie" ? "Décrivez votre situation (certificat médical requis)..." :
+                type === "formation" ? "Détails de la formation (organisme, thème, durée)..." : 
+                type === "sans_solde" ? "Motif de votre demande..." :
+                type === "autre" ? "Précisez le type d'absence et le motif..." :
+                type === "CP" ? "Ajoutez un commentaire si nécessaire..." :
+                "Précisez les détails de votre demande..."
+              }
+              rows={2}
+              className="w-full pl-10 pr-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-colors bg-white dark:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 resize-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+              required={type === "sans_solde" || type === "maladie" || type === "autre"}
+            />
+          </div>
+          {type === "maladie" && !showJustificatifField && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>Un certificat médical devra être fourni ultérieurement</span>
+            </p>
+          )}
+        </div>
+
+        {/* 📎 Upload de justificatif - Conditionnel selon le type */}
+        {showJustificatifField && (
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Motif {type === "sans solde" || type === "exceptionnel" ? "(obligatoire)" : "(optionnel)"}
+              Justificatif
+              <span className={`text-xs ml-1 ${isJustificatifRequired ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                ({isJustificatifRequired ? 'obligatoire' : 'recommandé'})
+              </span>
             </label>
+            
+            {/* Zone d'upload */}
             <div className="relative">
-              <FileText className="absolute left-3 sm:left-4 top-3 sm:top-4 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 dark:text-gray-500 pointer-events-none" />
-              <textarea
-                value={motif}
-                onChange={(e) => setMotif(e.target.value)}
-                placeholder={
-                  type === "formation" ? "Détails de la formation..." : 
-                  type === "exceptionnel" ? "Précisez l'événement..." : 
-                  "Motif de la demande..."
-                }
-                rows={3}
-                className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 border border-gray-300/60 dark:border-slate-600 rounded-lg sm:rounded-xl text-sm focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:border-gray-400 dark:hover:border-slate-500 resize-none text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500"
-                required={type === "sans solde" || type === "exceptionnel"}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                className="hidden"
               />
+              
+              {!justificatifPreview ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center justify-center gap-2 w-full py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:border-primary-400 dark:hover:border-primary-500 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
+                >
+                  <Upload className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    Cliquez pour ajouter un fichier
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Miniature pour images ou icône pour PDF */}
+                    {justificatifPreview?.type === 'image' && justificatifPreview?.url ? (
+                      <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-emerald-200 dark:border-emerald-700">
+                        <img 
+                          src={justificatifPreview.url} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : typeof justificatifPreview === 'string' && justificatifPreview.startsWith('/') ? (
+                      // Justificatif existant (URL serveur) - vérifier si c'est une image
+                      justificatifPreview.match(/\.(jpg|jpeg|png|webp)$/i) ? (
+                        <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-emerald-200 dark:border-emerald-700">
+                          <img 
+                            src={`http://localhost:5000${justificatifPreview}`}
+                            alt="Justificatif" 
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-800/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                      )
+                    ) : (
+                      <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-800/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300 truncate">
+                        {typeof justificatifPreview === 'string' && justificatifPreview.startsWith('/') 
+                          ? 'Justificatif existant' 
+                          : justificatifPreview?.name || justificatifPreview}
+                      </p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        {justificatifPreview?.type === 'image' ? 'Image prête' : justificatifPreview?.type === 'pdf' ? 'PDF prêt' : 'Fichier prêt'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={removeJustificatif}
+                    className="p-2 text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    title="Supprimer le fichier"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
+            
+            {/* Message d'erreur */}
+            {errors.justificatif && (
+              <p className="text-xs text-red-500 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <span>{errors.justificatif}</span>
+              </p>
+            )}
+            
+            {/* Info sur le type de justificatif attendu */}
+            <p className="text-xs text-slate-500 dark:text-slate-400 flex items-start gap-1.5">
+              <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>
+                {type === 'maladie' && "Certificat médical ou arrêt de travail"}
+                {type === 'maternite' && "Certificat médical de grossesse"}
+                {type === 'paternite' && "Acte de naissance de l'enfant"}
+                {type === 'deces' && "Acte de décès ou certificat"}
+                {type === 'mariage' && "Acte de mariage (peut être fourni après)"}
+                {type === 'formation' && "Convocation ou attestation de formation"}
+              </span>
+            </p>
           </div>
         )}
 
-        {/* Informations sur la durée améliorées - compactes mobile */}
+        {/* Informations sur la durée - Design épuré */}
         {dureeJours && (
-          <div className="space-y-3 sm:space-y-4">
-            <div className="bg-gradient-to-r from-blue-50/80 to-indigo-50/80 dark:from-blue-900/30 dark:to-indigo-900/30 backdrop-blur-sm border border-blue-200/60 dark:border-blue-800/60 rounded-lg sm:rounded-2xl p-3 sm:p-4 transition-colors">
-              <div className="flex items-start gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 dark:bg-blue-900/50 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 dark:text-blue-400" />
+          <div className="space-y-3">
+            <div className="bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 rounded-xl p-4 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700/50 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Calendar className="w-5 h-5 text-slate-600 dark:text-slate-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1 sm:gap-2 mb-0.5 sm:mb-1">
-                    <span className="text-sm sm:text-base font-semibold text-blue-900 dark:text-blue-300">
-                      Durée : {dureeJours} jour{dureeJours > 1 ? 's' : ''}
-                    </span>
+                  <span className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                    Durée : {dureeJours} jour{dureeJours > 1 ? 's' : ''}
+                  </span>
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    Du {new Date(debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au {new Date(fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </div>
-                  <div className="text-xs sm:text-sm text-blue-700 dark:text-blue-300 leading-tight">
-                    Du {new Date(debut).toLocaleDateString('fr-FR', { 
-                      day: 'numeric', month: 'short', year: 'numeric' 
-                    })} au {new Date(fin).toLocaleDateString('fr-FR', { 
-                      day: 'numeric', month: 'short', year: 'numeric' 
-                    })}
-                  </div>
-                  
-                  {dureeJours > 5 && (
-                    <div className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs text-blue-600 dark:text-blue-300 bg-blue-100/50 dark:bg-blue-900/40 rounded-md px-2 py-1">
-                      💡 Pensez à organiser votre travail en amont
-                    </div>
-                  )}
                 </div>
               </div>
+              {dureeJours > 5 && (
+                <div className="mt-3 text-xs text-slate-600 dark:text-slate-400 bg-slate-100/70 dark:bg-slate-700/50 rounded-lg px-3 py-2">
+                  💡 Pensez à organiser votre travail en amont
+                </div>
+              )}
             </div>
 
-            {/* Avertissement pour durée excessive - compact mobile */}
+            {/* Avertissement pour durée excessive - Design sobre */}
             {errors.duree && (
-              <div className="bg-orange-50/80 dark:bg-orange-900/30 border border-orange-200/60 dark:border-orange-700/60 rounded-lg sm:rounded-2xl p-3 sm:p-4">
-                <div className="flex items-start gap-2 sm:gap-3">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-orange-100 dark:bg-orange-900/50 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Info className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-orange-900 dark:text-orange-300 mb-0.5 sm:mb-1">Durée importante</div>
-                    <div className="text-xs sm:text-sm text-orange-700 dark:text-orange-300">{errors.duree}</div>
-                  </div>
+              <div className="bg-slate-50/80 dark:bg-slate-800/50 border border-slate-300/60 dark:border-slate-600/60 rounded-xl p-3">
+                <div className="flex items-center gap-3">
+                  <Info className="w-5 h-5 text-slate-600 dark:text-slate-400 flex-shrink-0" />
+                  <span className="text-sm text-slate-600 dark:text-slate-400">{errors.duree}</span>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* Avertissement pour demandes urgentes amélioré - compact mobile */}
+        {/* Avertissement pour demandes urgentes */}
         {isUrgent && (
-          <div className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 dark:from-amber-900/30 dark:to-orange-900/30 backdrop-blur-sm border border-amber-200/60 dark:border-amber-700/60 rounded-lg sm:rounded-2xl p-3 sm:p-4 transition-colors">
-            <div className="flex items-start gap-2 sm:gap-3">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-100 dark:bg-amber-900/50 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 dark:text-amber-400" />
+          <div className="bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/60 rounded-xl p-4 transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-amber-100 dark:bg-amber-800/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="flex-1">
-                <div className="text-sm sm:text-base font-semibold text-amber-900 dark:text-amber-300 mb-0.5 sm:mb-1">Demande urgente</div>
-                <div className="text-xs sm:text-sm text-amber-700 dark:text-amber-300 mb-1 sm:mb-2">
-                  Votre congé commence dans moins de 7 jours.
-                </div>
-                <div className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-900/40 rounded-md px-2 py-1">
-                  📞 Contactez votre manager pour accélérer la validation
-                </div>
+                <span className="text-sm font-semibold text-amber-800 dark:text-amber-200 block mb-1">Demande urgente</span>
+                <span className="text-sm text-amber-700 dark:text-amber-300">
+                  Votre congé commence dans moins de 7 jours. Contactez votre manager pour accélérer la validation.
+                </span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Messages d'erreur de soumission - compacts mobile */}
+        {/* Messages d'erreur de soumission - compacts */}
         {errors.submit && (
-          <div className="bg-red-50/80 dark:bg-red-900/30 border border-red-200/60 dark:border-red-700/60 rounded-lg sm:rounded-xl p-3">
-            <div className="flex items-start gap-2">
+          <div className="bg-red-50/80 dark:bg-red-900/30 border border-red-200/60 dark:border-red-700/60 rounded-lg p-2 lg:p-2">
+            <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />
-              <div className="text-sm text-red-700 dark:text-red-300 font-medium">{errors.submit}</div>
+              <div className="text-xs lg:text-sm text-red-700 dark:text-red-300 font-medium">{errors.submit}</div>
             </div>
           </div>
         )}
 
-        {/* Bouton de soumission amélioré - optimisé mobile */}
-        <button
-          type="submit"
-          disabled={isSubmitting || !debut || !fin || (type === "sans solde" && !motif) || (type === "exceptionnel" && !motif)}
-          aria-label={isSubmitting ? 'Envoi en cours...' : 'Envoyer la demande de congé'}
-          className="group w-full flex items-center justify-center gap-2 sm:gap-3 bg-gradient-to-r from-[#cf292c] to-red-600 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-xl sm:rounded-2xl hover:shadow-lg hover:shadow-red-500/20 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 text-sm sm:text-base transform hover:scale-[1.01] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#cf292c]/60 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900"
-        >
-          {isSubmitting ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-2 border-white border-t-transparent"></div>
-              <span>Envoi en cours...</span>
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:translate-x-0.5" />
-              <span>Envoyer la demande</span>
-            </>
-          )}
-        </button>
-
-        {/* Note informative améliorée - compacte mobile */}
-        <div className="text-center pt-2 space-y-1 sm:space-y-2">
-          <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1.5 sm:gap-2">
-            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full"></div>
-            Votre demande sera envoyée à votre manager pour validation
-            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-gray-300 dark:bg-slate-600 rounded-full"></div>
-          </div>
+        {/* Bouton d'action principal */}
+        <div className="space-y-3 pt-2">
+          <button
+            type="submit"
+            disabled={isSubmitting || !debut || !fin || ((type === "sans_solde" || type === "maladie" || type === "autre") && !motif)}
+            aria-label={isSubmitting ? 'Envoi en cours...' : 'Envoyer la demande de congé'}
+            className="group w-full flex items-center justify-center gap-3 bg-gradient-to-r from-[#cf292c] to-red-600 text-white font-semibold py-3.5 px-6 rounded-xl hover:shadow-lg hover:shadow-red-500/25 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-200 text-sm transform hover:scale-[1.01] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#cf292c]/60 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-2 border-white border-t-transparent"></div>
+                <span>{isEditing ? 'Modification...' : 'Envoi en cours...'}</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:translate-x-0.5" />
+                <span>{isEditing ? 'Modifier la demande' : 'Envoyer la demande'}</span>
+              </>
+            )}
+          </button>
           
-          {isUrgent && (
-            <div className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-300 font-medium">
-              ⚡ Demande urgente - Traitement prioritaire
-            </div>
+          {/* Lien Annuler discret - desktop uniquement */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="hidden lg:block w-full text-center text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors py-2"
+            >
+              Annuler
+            </button>
           )}
+        </div>
+
+        {/* Note informative */}
+        <div className="text-center pb-2">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            Votre demande sera envoyée à votre manager pour validation
+          </div>
         </div>
       </form>
     </div>

@@ -21,6 +21,26 @@ module.exports = {
           800: '#921a1c',
           900: '#5a0f11'
         }
+      },
+      keyframes: {
+        slideDown: {
+          from: {
+            opacity: '0',
+            transform: 'translateY(-20px)'
+          },
+          to: {
+            opacity: '1',
+            transform: 'translateY(0)'
+          }
+        },
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' }
+        }
+      },
+      animation: {
+        slideDown: 'slideDown 0.3s ease-out',
+        fadeIn: 'fadeIn 0.2s ease-out'
       }
     },
   },

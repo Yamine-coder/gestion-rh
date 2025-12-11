@@ -75,7 +75,7 @@ const Badgeuse = () => {
       try {
         const decoded = jwtDecode(result);
         const userEmail = decoded.email || '';
-        const userPrenom = userEmail.split('@')[0] || '👤';
+        const userPrenom = userEmail.split('@')[0] || 'Utilisateur';
         setPrenom(userPrenom);
 
         const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5000";

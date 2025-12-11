@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toLocalDateString } from '../utils/parisTimeUtils';
 
 const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, formatEmployeeName }) => {
   // État pour les jours de la semaine
@@ -92,7 +93,7 @@ const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, forma
     const monday = new Date(today);
     monday.setDate(today.getDate() + diff);
     
-    setDateDebut(monday.toISOString().split('T')[0]);
+    setDateDebut(toLocalDateString(monday));
   }, []);
 
   // Fonction pour vérifier les chevauchements entre créneaux
@@ -124,9 +125,9 @@ const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, forma
     for (let i = 0; i < creneaux.length; i++) {
       const creneau = creneaux[i];
       
-      // Vérifier que début < fin
-      if (creneau.debut >= creneau.fin) {
-        erreurs.push(`Le créneau ${i + 1} a une heure de fin antérieure ou égale à l'heure de début`);
+      // 🌙 RESTAURANT : Autoriser shifts de nuit, rejeter seulement durée nulle
+      if (creneau.debut === creneau.fin) {
+        erreurs.push(`Le créneau ${i + 1} a une durée nulle`);
       }
       
       // Vérifier les chevauchements avec les autres créneaux
@@ -137,9 +138,13 @@ const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, forma
       }
       
       // Avertissement pour les créneaux très courts (< 30 min)
-      const duree = (timeToMinutes(creneau.fin) - timeToMinutes(creneau.debut)) / 60;
+      let dureeMinutes = timeToMinutes(creneau.fin) - timeToMinutes(creneau.debut);
+      // 🌙 RESTAURANT : Gérer les shifts de nuit
+      if (dureeMinutes < 0) dureeMinutes += 24 * 60;
+      const duree = dureeMinutes / 60;
+      
       if (duree < 0.5 && duree > 0) {
-        warnings.push(`Le créneau ${i + 1} est très court (${duree * 60} minutes)`);
+        warnings.push(`Le créneau ${i + 1} est très court (${Math.round(duree * 60)} minutes)`);
       }
       
       // Avertissement pour les créneaux très longs (> 12h)
@@ -172,10 +177,11 @@ const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, forma
       const debut = timeToMinutes(creneau.debut);
       const fin = timeToMinutes(creneau.fin);
       
-      if (fin > debut) {
-        return total + (fin - debut);
-      }
-      return total;
+      // 🌙 RESTAURANT : Gérer les shifts de nuit (19:00 → 00:30)
+      let duree = fin - debut;
+      if (duree < 0) duree += 24 * 60; // Franchit minuit
+      
+      return total + duree;
     }, 0);
   };
 
@@ -338,24 +344,19 @@ const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, forma
           // Calculer la date pour ce jour
           const dateJour = new Date(dateDebut);
           dateJour.setDate(dateJour.getDate() + index);
-          const dateStr = dateJour.toISOString().split('T')[0];
+          const dateStr = toLocalDateString(dateJour);
           
           // Créer un shift avec tous les segments (créneaux)
           const shift = {
             employeId: parseInt(selectedEmployee),
             date: dateStr,
-            type: 'présence',
+            type: 'travail',
             segments: jour.creneaux.map(creneau => ({
               start: creneau.debut,
               end: creneau.fin,
               commentaire: '',
               aValider: false,
-              isExtra: false,
-              extraMontant: '',
-              paymentStatus: 'à_payer',
-              paymentMethod: '',
-              paymentDate: '',
-              paymentNote: ''
+              isExtra: false
             }))
           };
           
@@ -512,7 +513,9 @@ const ModalCreationRapidePlanning = ({ isOpen, onClose, onSave, employees, forma
                 )}
                 
                 {jour.active && jour.creneaux.map((creneau, creneauIndex) => {
-                  const dureeMinutes = timeToMinutes(creneau.fin) - timeToMinutes(creneau.debut);
+                  let dureeMinutes = timeToMinutes(creneau.fin) - timeToMinutes(creneau.debut);
+                  // 🌙 RESTAURANT : Gérer les shifts de nuit
+                  if (dureeMinutes < 0) dureeMinutes += 24 * 60;
                   const dureeValide = dureeMinutes > 0;
                   const { erreurs } = validateCreneauxJour(jour.creneaux);
                   const hasError = erreurs.some(err => err.includes(`créneau ${creneauIndex + 1}`));

@@ -39,6 +39,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
         nom: true, 
         prenom: true, 
         telephone: true, 
+        adresse: true,
+        iban: true,
         categorie: true, 
         dateEmbauche: true,
         createdAt: true,
@@ -67,12 +69,16 @@ router.put('/profile', authMiddleware, async (req, res) => {
 
     const { nom, prenom, email, currentPassword, newPassword } = req.body;
     
+    console.log('📝 Mise à jour profil - Données reçues:', { nom, prenom, email, userId: req.userId });
+    
     // Données à mettre à jour
     const updateData = {};
     
     if (nom) updateData.nom = nom.trim();
     if (prenom) updateData.prenom = prenom.trim();
-    if (email) updateData.email = email.trim();
+    if (email) updateData.email = email.toLowerCase().trim(); // Normaliser l'email
+
+    console.log('📝 UpdateData à envoyer:', updateData);
 
     // Si l'utilisateur veut changer son mot de passe
     if (newPassword && currentPassword) {

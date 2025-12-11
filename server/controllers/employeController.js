@@ -1,4 +1,5 @@
 const prisma = require('../prisma/client');
+const { enrichUserWithCategories } = require('../utils/categoriesHelper');
 
 const getTousLesEmployes = async (req, res) => {
   try {
@@ -24,8 +25,13 @@ const getTousLesEmployes = async (req, res) => {
           prenom: true,
           role: true,
           categorie: true,
+          categories: true, // ✅ Ajout du champ catégories multiples
           statut: true,
           createdAt: true,
+          // Champs de départ pour le turnover
+          dateSortie: true,
+          motifDepart: true,
+          commentaireDepart: true,
         },
       });
 
@@ -36,15 +42,19 @@ const getTousLesEmployes = async (req, res) => {
         return res.status(404).json({ error: "Utilisateur non trouvé" });
       }
 
-      console.log('✅ [EMPLOYE CONTROLLER] Retour utilisateur unique');
-      return res.json(utilisateur);
+      // Enrichir avec categoriesArray
+      const enrichedUser = enrichUserWithCategories(utilisateur);
+      console.log('✅ [EMPLOYE CONTROLLER] Retour utilisateur unique avec categories:', enrichedUser.categoriesArray);
+      return res.json(enrichedUser);
     }
 
-    console.log('🔍 [EMPLOYE CONTROLLER] Récupération de TOUS les utilisateurs');
+    console.log('🔍 [EMPLOYE CONTROLLER] Récupération de TOUS les employés opérationnels');
 
-    // Récupérer TOUS les utilisateurs (employés ET admins)
+    // Récupérer UNIQUEMENT les employés (pas admins, managers, RH)
     const utilisateurs = await prisma.user.findMany({
-      // Plus de filtre sur le rôle - on récupère employés ET admins
+      where: {
+        role: 'employee' // Uniquement les employés opérationnels
+      },
       select: {
         id: true,
         email: true,
@@ -52,22 +62,30 @@ const getTousLesEmployes = async (req, res) => {
         prenom: true,
         role: true,
         categorie: true,
+        categories: true, // ✅ Ajout du champ catégories multiples
         statut: true,
         createdAt: true,
+        // Champs de départ pour le turnover
+        dateSortie: true,
+        motifDepart: true,
+        commentaireDepart: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    console.log(`📋 [EMPLOYE CONTROLLER] Liste utilisateurs récupérée: ${utilisateurs.length} utilisateurs`);
-    console.log('- Répartition:', utilisateurs.reduce((acc, u) => {
+    // Enrichir chaque utilisateur avec categoriesArray
+    const enrichedUsers = utilisateurs.map(user => enrichUserWithCategories(user));
+
+    console.log(`📋 [EMPLOYE CONTROLLER] Liste utilisateurs récupérée: ${enrichedUsers.length} utilisateurs`);
+    console.log('- Répartition:', enrichedUsers.reduce((acc, u) => {
       acc[u.role] = (acc[u.role] || 0) + 1;
       return acc;
     }, {}));
 
-    console.log('✅ [EMPLOYE CONTROLLER] Retour liste complète');
-    res.json(utilisateurs);
+    console.log('✅ [EMPLOYE CONTROLLER] Retour liste complète avec categories');
+    res.json(enrichedUsers);
   } catch (error) {
     console.error("❌ [EMPLOYE CONTROLLER] Erreur récupération utilisateurs", error);
     console.error("❌ [EMPLOYE CONTROLLER] Stack:", error.stack);

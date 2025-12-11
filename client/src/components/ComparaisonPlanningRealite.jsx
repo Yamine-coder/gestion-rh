@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './ComparaisonPlanningRealite.css';
+import { getCurrentDateString } from '../utils/parisTimeUtils';
+import { User, Calendar, ClipboardList } from 'lucide-react';
 
 const ComparaisonPlanningRealite = () => {
   const [comparaisons, setComparaisons] = useState([]);
@@ -7,8 +9,8 @@ const ComparaisonPlanningRealite = () => {
   const [error, setError] = useState('');
   const [filtres, setFiltres] = useState({
     employeId: '',
-    dateDebut: new Date().toISOString().split('T')[0],
-    dateFin: new Date().toISOString().split('T')[0],
+    dateDebut: getCurrentDateString(),
+    dateFin: getCurrentDateString(),
   });
 
   // Charger les données de comparaison
@@ -143,14 +145,14 @@ const ComparaisonPlanningRealite = () => {
           {comparaisons.map((comp, index) => (
             <div key={`${comp.date}-${comp.employeId}`} className="comparaison-card">
               <div className="comparaison-header-card">
-                <h3>📅 {new Date(comp.date).toLocaleDateString('fr-FR')}</h3>
-                <span className="employe-badge">👤 Employé #{comp.employeId}</span>
+                <h3 className="flex items-center gap-2"><Calendar className="w-4 h-4" /> {new Date(comp.date).toLocaleDateString('fr-FR')}</h3>
+                <span className="employe-badge flex items-center gap-1"><User className="w-3 h-3" /> Employé #{comp.employeId}</span>
               </div>
 
               <div className="comparaison-content">
                 {/* Planning prévu */}
                 <div className="section-planifie">
-                  <h4>📋 Planning Prévu</h4>
+                  <h4 className="flex items-center gap-2"><ClipboardList className="w-4 h-4" /> Planning Prévu</h4>
                   <div className="creneaux-list">
                     {comp.planifie.map((creneau, idx) => (
                       <div key={idx} className="creneau creneau--prevu">

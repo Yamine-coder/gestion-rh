@@ -44,7 +44,7 @@ const ReplacementSuggestionModal = ({
           new Date(s.date).toDateString() === new Date(targetDate).toDateString()
         );
         
-        if (hasShift && hasShift.type === 'présence') {
+        if (hasShift && hasShift.type === 'travail') {
           availability = 'busy';
           score -= 30;
         } else if (hasShift && hasShift.type === 'absence') {

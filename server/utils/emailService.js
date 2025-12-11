@@ -79,6 +79,10 @@ const createTransporter = () => {
 
 // Envoi email de récupération de mot de passe
 const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
+  const restaurantName = 'Chez Antoine';
+  const supportPhone = '07 58 87 54 64';
+  const supportEmail = 'moussaouiyamine1@gmail.com';
+  
   try {
     // Vérifier la limitation d'envoi d'emails
     if (!canSendEmail(email, 'recuperation')) {
@@ -93,50 +97,95 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
     const transporter = createTransporter();
     
     const mailOptions = {
-      from: process.env.EMAIL_FROM || '"Gestion RH" <noreply@gesrh.com>',
+      from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to: email,
-      subject: '🔐 Récupération de mot de passe - Gestion RH',
+      subject: `Récupération de mot de passe - ${restaurantName}`,
       html: `
-        <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; text-align: center;">
-            <h1 style="color: white; margin: 0;">🔐 Récupération de mot de passe</h1>
-          </div>
-          
-          <div style="padding: 30px; background: #f9f9f9;">
-            <h2 style="color: #333;">Bonjour ${prenom} ${nom},</h2>
-            
-            <p style="color: #666; line-height: 1.6;">
-              Nous avons reçu une demande de récupération de mot de passe pour votre compte.
-            </p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" 
-                 style="background: #667eea; color: white; padding: 15px 30px; 
-                        text-decoration: none; border-radius: 5px; display: inline-block;">
-                📧 Réinitialiser mon mot de passe
-              </a>
-            </div>
-            
-            <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0;">
-              <p style="margin: 0; color: #856404;">
-                <strong>⚠️ Important :</strong><br>
-                • Ce lien est valide pendant <strong>24 heures</strong><br>
-                • Si vous n'avez pas demandé cette récupération, ignorez cet email<br>
-                • Pour votre sécurité, vous devrez changer votre mot de passe
-              </p>
-            </div>
-            
-            <p style="color: #888; font-size: 14px;">
-              Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br>
-              <code style="background: #f1f1f1; padding: 5px;">${resetUrl}</code>
-            </p>
-          </div>
-          
-          <div style="background: #333; color: #ccc; padding: 20px; text-align: center; font-size: 12px;">
-            <p>© ${new Date().getFullYear()} Gestion RH - Système de gestion du personnel</p>
-            <p>Cet email a été généré automatiquement, ne répondez pas à ce message.</p>
-          </div>
-        </div>
+        <!DOCTYPE html>
+        <html lang="fr">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Récupération de mot de passe</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5;">
+            <tr>
+              <td style="padding: 40px 20px;">
+                <table role="presentation" width="500" cellspacing="0" cellpadding="0" style="margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0;">
+                  
+                  <!-- Header -->
+                  <tr>
+                    <td style="background-color: #cf292c; padding: 28px 32px;">
+                      <h1 style="color: #ffffff; margin: 0; font-size: 18px; font-weight: 600;">
+                        ${restaurantName}
+                      </h1>
+                    </td>
+                  </tr>
+                  
+                  <!-- Contenu -->
+                  <tr>
+                    <td style="padding: 32px;">
+                      <h2 style="color: #333333; margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">
+                        Bonjour ${prenom},
+                      </h2>
+                      
+                      <p style="color: #555555; font-size: 14px; line-height: 1.5; margin: 0 0 20px 0;">
+                        Vous avez demandé la réinitialisation de votre mot de passe.
+                      </p>
+                      
+                      <!-- Bouton -->
+                      <div style="text-align: center; margin: 28px 0;">
+                        <a href="${resetUrl}" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-weight: 500; font-size: 14px;">
+                          Réinitialiser le mot de passe
+                        </a>
+                      </div>
+                      
+                      <!-- Alerte -->
+                      <div style="background: #fff8e6; border-radius: 4px; padding: 14px; margin: 20px 0; border-left: 3px solid #f5a623;">
+                        <p style="color: #8a6d3b; margin: 0; font-size: 12px; line-height: 1.5;">
+                          <strong>Important :</strong><br>
+                          - Ce lien est valide pendant 24 heures<br>
+                          - Il ne peut être utilisé qu'une seule fois<br>
+                          - Si vous n'avez pas fait cette demande, ignorez cet email
+                        </p>
+                      </div>
+                      
+                      <!-- Lien alternatif -->
+                      <p style="color: #888888; font-size: 11px; margin: 20px 0 0 0;">
+                        Si le bouton ne fonctionne pas, copiez ce lien :<br>
+                        <a href="${resetUrl}" style="color: #cf292c; word-break: break-all;">${resetUrl}</a>
+                      </p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Support -->
+                  <tr>
+                    <td style="background-color: #fafafa; padding: 16px 32px; border-top: 1px solid #e0e0e0;">
+                      <p style="color: #888888; font-size: 11px; margin: 0 0 4px 0;">Besoin d'aide ?</p>
+                      <p style="color: #555555; font-size: 12px; margin: 0;">
+                        <a href="tel:${supportPhone.replace(/\s/g, '')}" style="color: #cf292c; text-decoration: none;">${supportPhone}</a>
+                        &nbsp;·&nbsp;
+                        <a href="mailto:${supportEmail}" style="color: #cf292c; text-decoration: none;">${supportEmail}</a>
+                      </p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding: 12px 32px; text-align: center; border-top: 1px solid #e0e0e0;">
+                      <p style="color: #aaaaaa; font-size: 10px; margin: 0;">
+                        © ${new Date().getFullYear()} ${restaurantName}
+                      </p>
+                    </td>
+                  </tr>
+                  
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
       `
     };
 
@@ -159,9 +208,19 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
  * @param {string} nom - Nom de l'employé
  * @param {string} prenom - Prénom de l'employé
  * @param {string} motDePasse - Mot de passe temporaire
+ * @param {string[]} categories - Liste des catégories de l'employé
  * @returns {Promise<object>} Résultat de l'opération
  */
-const envoyerIdentifiants = async (email, nom, prenom, motDePasse) => {
+const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = []) => {
+  // Informations de contact support
+  const supportPhone = '07 58 87 54 64';
+  const supportEmail = 'moussaouiyamine1@gmail.com';
+  const restaurantName = 'Chez Antoine';
+  
+  // Formater les catégories pour l'affichage
+  const categoriesDisplay = categories.length > 0 
+    ? categories.join(' • ') 
+    : 'Membre de l\'équipe';
   try {
     // Vérifier la limitation d'envoi d'emails
     if (!canSendEmail(email, 'identifiants')) {
@@ -177,127 +236,130 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse) => {
     const transporter = createTransporter();
     
     console.log(`📧 Préparation de l'email pour ${email}...`);
+    console.log(`📋 Catégories: ${categoriesDisplay}`);
+    
     const mailOptions = {
-      from: process.env.EMAIL_FROM || '"Gestion RH" <noreply@gesrh.com>',
+      from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
       to: email,
-      subject: '👋 Bienvenue dans l\'équipe - Vos identifiants de connexion',
+      subject: `Bienvenue chez ${restaurantName} - Vos identifiants`,
       html: `
         <!DOCTYPE html>
         <html lang="fr">
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Bienvenue dans l'équipe</title>
+          <title>Bienvenue</title>
         </head>
-        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #f9f9f9;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width: 650px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <!-- En-tête avec logo -->
+        <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5;">
             <tr>
-              <td style="padding: 25px 0; text-align: center; background-color: #cf292c;">
-                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">Bienvenue dans l'équipe!</h1>
-              </td>
-            </tr>
-            
-            <!-- Contenu principal -->
-            <tr>
-              <td style="padding: 30px 40px;">
-                <p style="margin: 0 0 20px; line-height: 1.5; font-size: 16px;">Bonjour <strong>${prenom} ${nom}</strong>,</p>
-                <p style="margin: 0 0 25px; line-height: 1.5; font-size: 16px;">Nous sommes ravis de vous accueillir dans notre équipe. Votre compte a été créé avec succès sur notre plateforme de gestion RH. Vous trouverez ci-dessous vos identifiants de connexion :</p>
-                
-                <!-- Bloc d'identifiants -->
-                <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f7f7f7; border-radius: 8px; margin: 0 0 30px;">
+              <td style="padding: 40px 20px;">
+                <table role="presentation" width="500" cellspacing="0" cellpadding="0" style="margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0;">
+                  
+                  <!-- Header avec couleur de la charte -->
                   <tr>
-                    <td style="padding: 25px;">
-                      <table cellpadding="0" cellspacing="0" border="0" width="100%">
-                        <tr>
-                          <td style="padding: 8px 0;"><strong style="font-size: 15px;">Portail de connexion :</strong></td>
-                          <td style="padding: 8px 0;"><a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/login" style="color: #cf292c; text-decoration: none; font-size: 15px;">${process.env.CLIENT_URL || 'http://localhost:3000'}/login</a></td>
-                        </tr>
-                        <tr>
-                          <td style="padding: 8px 0;"><strong style="font-size: 15px;">Identifiant :</strong></td>
-                          <td style="padding: 8px 0;"><span style="font-size: 15px;">${email}</span></td>
-                        </tr>
-                        <tr>
-                          <td style="padding: 8px 0;"><strong style="font-size: 15px;">Mot de passe temporaire :</strong></td>
-                          <td style="padding: 8px 0;"><code style="font-family: monospace; background-color: #fffbeb; padding: 3px 8px; border: 1px solid #fef3c7; border-radius: 4px; font-size: 15px;">${motDePasse}</code></td>
-                        </tr>
-                      </table>
-                      <p style="margin: 20px 0 0; font-size: 14px; color: #666; font-style: italic;">Important : Vous devrez changer ce mot de passe lors de votre première connexion.</p>
+                    <td style="background-color: #cf292c; padding: 28px 32px;">
+                      <h1 style="color: #ffffff; margin: 0; font-size: 18px; font-weight: 600;">
+                        ${restaurantName}
+                      </h1>
                     </td>
                   </tr>
-                </table>
-                
-                <!-- Section Premiers pas -->
-                <h2 style="margin: 30px 0 15px; color: #444; font-size: 20px; font-weight: 600;">Vos premiers pas</h2>
-                <p style="margin: 0 0 20px; line-height: 1.5; font-size: 16px;">Voici quelques ressources pour bien démarrer :</p>
-                
-                <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 30px;">
+                  
+                  <!-- Contenu -->
                   <tr>
-                    <td width="60" style="vertical-align: top; padding: 0 0 15px;">
-                      <div style="width: 50px; height: 50px; background-color: #edf2ff; border-radius: 50%; text-align: center; line-height: 50px; font-size: 20px; color: #4263eb;">1</div>
-                    </td>
-                    <td style="vertical-align: top; padding: 0 0 15px;">
-                      <h3 style="margin: 0 0 5px; font-size: 16px; font-weight: 600; color: #444;">Connectez-vous à votre compte</h3>
-                      <p style="margin: 0; line-height: 1.5; font-size: 15px; color: #555;">Utilisez les identifiants ci-dessus pour vous connecter à notre plateforme et définir votre mot de passe permanent.</p>
+                    <td style="padding: 32px;">
+                      <h2 style="color: #333333; margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">
+                        Bienvenue ${prenom},
+                      </h2>
+                      
+                      <p style="color: #555555; font-size: 14px; line-height: 1.5; margin: 0 0 20px 0;">
+                        Votre compte a été créé. Voici vos identifiants de connexion.
+                      </p>
+                      
+                      <!-- Catégories -->
+                      ${categories.length > 0 ? `
+                      <div style="margin-bottom: 20px;">
+                        <p style="color: #888888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Poste${categories.length > 1 ? 's' : ''}</p>
+                        <div>
+                          ${categories.map(cat => `<span style="display: inline-block; background: #f5f5f5; color: #333333; padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; margin-right: 4px; margin-bottom: 4px; border: 1px solid #e0e0e0;">${cat}</span>`).join('')}
+                        </div>
+                      </div>
+                      ` : ''}
+                      
+                      <!-- Identifiants -->
+                      <div style="background: #fafafa; border-radius: 6px; padding: 20px; margin: 20px 0; border: 1px solid #e0e0e0;">
+                        <p style="color: #888888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 12px 0;">Identifiants de connexion</p>
+                        
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                          <tr>
+                            <td style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                              <span style="color: #888888; font-size: 11px;">Email</span><br>
+                              <span style="color: #333333; font-size: 14px; font-weight: 500;">${email}</span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 8px 0;">
+                              <span style="color: #888888; font-size: 11px;">Mot de passe temporaire</span><br>
+                              <code style="display: inline-block; background: #cf292c; color: #ffffff; padding: 8px 12px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: 600; letter-spacing: 1px; margin-top: 4px;">${motDePasse}</code>
+                            </td>
+                          </tr>
+                        </table>
+                      </div>
+                      
+                      <!-- Alerte -->
+                      <div style="background: #fff8e6; border-radius: 4px; padding: 12px; margin: 20px 0; border-left: 3px solid #f5a623;">
+                        <p style="color: #8a6d3b; margin: 0; font-size: 12px; line-height: 1.4;">
+                          <strong>Important :</strong> Modifiez ce mot de passe lors de votre première connexion.
+                        </p>
+                      </div>
+                      
+                      <!-- Bouton -->
+                      <div style="text-align: center; margin: 24px 0 20px 0;">
+                        <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/login" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 4px; font-weight: 500; font-size: 13px;">
+                          Se connecter
+                        </a>
+                      </div>
+                      
+                      <!-- Étapes -->
+                      <div style="border-top: 1px solid #e0e0e0; padding-top: 20px; margin-top: 8px;">
+                        <p style="color: #888888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 0;">Étapes</p>
+                        <p style="color: #555555; font-size: 12px; margin: 4px 0;">1. Connectez-vous</p>
+                        <p style="color: #555555; font-size: 12px; margin: 4px 0;">2. Changez votre mot de passe</p>
+                        <p style="color: #555555; font-size: 12px; margin: 4px 0;">3. Consultez votre planning</p>
+                      </div>
                     </td>
                   </tr>
+                  
+                  <!-- Support -->
                   <tr>
-                    <td width="60" style="vertical-align: top; padding: 0 0 15px;">
-                      <div style="width: 50px; height: 50px; background-color: #fff3bf; border-radius: 50%; text-align: center; line-height: 50px; font-size: 20px; color: #e67700;">2</div>
-                    </td>
-                    <td style="vertical-align: top; padding: 0 0 15px;">
-                      <h3 style="margin: 0 0 5px; font-size: 16px; font-weight: 600; color: #444;">Complétez votre profil</h3>
-                      <p style="margin: 0; line-height: 1.5; font-size: 15px; color: #555;">Vérifiez et complétez les informations de votre profil pour nous aider à mieux vous connaître.</p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td width="60" style="vertical-align: top; padding: 0 0 15px;">
-                      <div style="width: 50px; height: 50px; background-color: #d3f9d8; border-radius: 50%; text-align: center; line-height: 50px; font-size: 20px; color: #2b8a3e;">3</div>
-                    </td>
-                    <td style="vertical-align: top; padding: 0 0 15px;">
-                      <h3 style="margin: 0 0 5px; font-size: 16px; font-weight: 600; color: #444;">Découvrez nos fonctionnalités</h3>
-                      <p style="margin: 0; line-height: 1.5; font-size: 15px; color: #555;">Explorez le système de gestion des pointages, des congés et d'autres fonctionnalités à votre disposition.</p>
-                    </td>
-                  </tr>
-                </table>
-                
-                <!-- Besoin d'aide -->
-                <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #eef6ff; border-radius: 8px; margin: 30px 0;">
-                  <tr>
-                    <td style="padding: 20px;">
-                      <h3 style="margin: 0 0 10px; font-size: 17px; color: #0a58ca;">Besoin d'aide ?</h3>
-                      <p style="margin: 0 0 15px; line-height: 1.5; font-size: 15px;">Si vous avez des questions ou rencontrez des difficultés, n'hésitez pas à contacter notre équipe RH :</p>
-                      <p style="margin: 0; font-size: 15px;">
-                        <a href="mailto:rh@example.com" style="color: #0a58ca; text-decoration: none;">rh@example.com</a> ou au <strong>01 23 45 67 89</strong>
+                    <td style="background-color: #fafafa; padding: 16px 32px; border-top: 1px solid #e0e0e0;">
+                      <p style="color: #888888; font-size: 11px; margin: 0 0 4px 0;">Besoin d'aide ?</p>
+                      <p style="color: #555555; font-size: 12px; margin: 0;">
+                        <a href="tel:${supportPhone.replace(/\s/g, '')}" style="color: #cf292c; text-decoration: none;">${supportPhone}</a>
+                        &nbsp;·&nbsp;
+                        <a href="mailto:${supportEmail}" style="color: #cf292c; text-decoration: none;">${supportEmail}</a>
                       </p>
                     </td>
                   </tr>
+                  
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding: 12px 32px; text-align: center; border-top: 1px solid #e0e0e0;">
+                      <p style="color: #aaaaaa; font-size: 10px; margin: 0;">
+                        © ${new Date().getFullYear()} ${restaurantName}
+                      </p>
+                    </td>
+                  </tr>
+                  
                 </table>
-                
-                <p style="margin: 30px 0 0; line-height: 1.5; font-size: 16px;">Nous vous souhaitons une excellente intégration,</p>
-                <p style="margin: 5px 0 0; line-height: 1.5; font-size: 16px;"><strong>L'équipe RH</strong></p>
               </td>
-            </tr>
-            
-            <!-- Pied de page -->
-            <tr>
-              <td style="padding: 20px; text-align: center; background-color: #f5f5f5; border-top: 1px solid #eaeaea;">
-                <p style="margin: 0 0 10px; font-size: 13px; color: #777;">Ce message est généré automatiquement, merci de ne pas y répondre.</p>
-                <p style="margin: 0; font-size: 13px; color: #777;">© ${new Date().getFullYear()} ${process.env.COMPANY_NAME || 'Notre Entreprise'} - Tous droits réservés</p>
-              </td>
-            </tr>
-          </table>
-          
-          <!-- Espace supplémentaire en bas -->
-          <table width="100%">
-            <tr>
-              <td style="height: 30px;"></td>
             </tr>
           </table>
         </body>
         </html>
       `
     };
+
     
     console.log(`📬 Envoi de l'email...`);
     const info = await transporter.sendMail(mailOptions);

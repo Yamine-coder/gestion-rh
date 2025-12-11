@@ -1,38 +1,36 @@
-// Test direct de l'API pour voir si elle fonctionne
-
-const axios = require('axios');
+﻿const fetch = require('node-fetch');
 
 async function testAPI() {
-  try {
-    console.log('🧪 Test de l\'API rapport...');
-    
-    // D'abord tester la connexion
-    const loginResponse = await axios.post('http://localhost:5000/auth/login', {
-      email: 'test@admin.com',
-      password: 'test123'
+  // Obtenir un token pour Jordan
+  const loginRes = await fetch('http://localhost:5000/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'jordan.morina@example.com', password: 'password123' })
+  });
+  const loginData = await loginRes.json();
+  
+  if (!loginData.token) {
+    console.log('Erreur login:', loginData);
+    return;
+  }
+  
+  console.log('Token obtenu pour Jordan');
+  
+  // Tester l'API anomalies pour le 5 décembre
+  const anomRes = await fetch('http://localhost:5000/api/anomalies?dateDebut=2025-12-05&dateFin=2025-12-05', {
+    headers: { 'Authorization': 'Bearer ' + loginData.token }
+  });
+  const anomData = await anomRes.json();
+  
+  console.log('');
+  console.log('Anomalies retournées:');
+  if (anomData.anomalies) {
+    anomData.anomalies.forEach(a => {
+      console.log('  -', a.type, '| gravite:', a.gravite, '| statut:', a.statut);
     });
-    
-    const token = loginResponse.data.token;
-    console.log('✅ Login réussi');
-    
-    // Tester l'endpoint rapport pour l'employé 2
-    const employeId = 2;
-    console.log(`📊 Test rapport pour employé ${employeId}...`);
-    
-    const rapportResponse = await axios.get(`http://localhost:5000/api/stats/employe/${employeId}/rapport`, {
-      params: { periode: 'mois' },
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    console.log('✅ Réponse API reçue:');
-    console.log('Heures prévues:', rapportResponse.data.heuresPreveues);
-    console.log('Heures travaillées:', rapportResponse.data.heuresTravaillees);
-    console.log('Heures par jour:', rapportResponse.data.heuresParJour?.length || 0, 'entrées');
-    
-    return rapportResponse.data;
-    
-  } catch (error) {
-    console.error('❌ Erreur:', error.response?.data || error.message);
+    console.log('Total:', anomData.anomalies.length);
+  } else {
+    console.log('Pas d anomalies ou erreur:', anomData);
   }
 }
 

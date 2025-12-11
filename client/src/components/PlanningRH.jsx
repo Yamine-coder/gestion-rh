@@ -1,8 +1,10 @@
-// src/components/PlanningRH.jsx
+﻿// src/components/PlanningRH.jsx
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import axios from "axios";
 import { normalizeDateLocal, getCurrentDateString, isToday } from '../utils/parisTimeUtils';
+import { DEBUG_MODE, debugLog, debugWarn, debugError } from '../utils/debugMode';
+import { getCategorieEmploye as getCategorieEmployeUtil } from '../utils/categoriesConfig';
 // Import uuid retiré - plus besoin d'IDs uniques pour les segments
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
@@ -210,8 +212,7 @@ function formatDateForInput(dateString) {
 }
 
 // Générer la semaine courante (lundi à dimanche)
-// (Ancien bloc d'affichage d'anomalies supprimé - il avait été collé au niveau racine par erreur)
-// Créneau drag & drop (support compactMode)
+// Créneau drag & drop - Style Skello
 function SegmentDraggable({ segment, employeId, date, index, type, compactMode=false }) {
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.SEGMENT,
@@ -236,57 +237,45 @@ function SegmentDraggable({ segment, employeId, date, index, type, compactMode=f
       : `${durationMins}min`;
   }
 
-  const coreClass = getSegmentStyle(segment);
+  // Couleurs style Skello - plus douces et professionnelles
+  const getSkelloColor = () => {
+    if (segment.isExtra) return 'bg-orange-500';
+    if (segment.aValider) return 'bg-purple-500';
+    return 'bg-blue-500';
+  };
+
+  const coreClass = getSkelloColor();
+  
   if(compactMode){
     return (
       <div
         ref={drag}
-        className={`rounded-md px-1.5 py-1 text-[10px] leading-tight font-semibold cursor-move select-none shadow-sm transition border text-white flex items-center gap-1 ${coreClass} ${isDragging? 'opacity-40 scale-95':'hover:brightness-110'}`}
-        title={`Créneau ${segment.start}-${segment.end} (${durationText})${segment.isExtra ? ` - EXTRA${segment.extraMontant ? ' ' + segment.extraMontant + '€' : ''}` : ''}${segment.commentaire ? ' - ' + segment.commentaire : ''}`}
+        className={`rounded px-1.5 py-0.5 text-[10px] font-medium cursor-move select-none text-white flex items-center gap-1 ${coreClass} ${isDragging? 'opacity-40':'hover:opacity-90'} transition-opacity`}
+        title={`${segment.start}-${segment.end}${segment.isExtra ? ' (EXTRA)' : ''}${segment.commentaire ? ' - ' + segment.commentaire : ''}`}
       >
         <span>{segment.start}–{segment.end}</span>
-        {segment.isExtra && <span className="text-[8px] bg-white/25 px-1 rounded">EXTRA</span>}
-        {segment.aValider && <span className="text-[8px] bg-white/25 px-1 rounded">⏳</span>}
+        {segment.isExtra && <span className="w-1 h-1 rounded-full bg-red-400" />}
       </div>
     );
   }
+  
   return (
     <div
       ref={drag}
-      className={`rounded-md p-2 text-xs font-medium cursor-move select-none shadow-sm transition transform border text-white ${coreClass} ${isDragging ? "opacity-40 scale-95" : "hover:brightness-110"}`}
-      title={`Créneau ${segment.start}-${segment.end} (${durationText})${segment.isExtra ? ` - EXTRA${segment.extraMontant ? ' ' + segment.extraMontant + '€' : ''}` : ''}${segment.commentaire ? ' - ' + segment.commentaire : ''}`}
+      className={`rounded px-2 py-1.5 text-[11px] font-medium cursor-move select-none text-white ${coreClass} ${isDragging ? "opacity-40" : "hover:opacity-90"} transition-opacity`}
+      title={`${segment.start}-${segment.end}${segment.isExtra ? ' (EXTRA' + (segment.extraMontant ? ' ' + segment.extraMontant + '€' : '') + ')' : ''}${segment.commentaire ? ' - ' + segment.commentaire : ''}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <span className="w-1 h-4 rounded-full bg-white/40 flex-shrink-0" />
-          <span className="font-semibold tracking-wide">
-            {segment.start}–{segment.end}
-          </span>
-        </div>
-      </div>
-      <div className="flex items-center gap-1 mt-1 flex-wrap">
+        <span className="font-semibold">
+          {segment.start}–{segment.end}
+        </span>
         {segment.isExtra && (
-          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 ${
-            segment.paymentStatus === 'payé' 
-              ? 'bg-white/90 text-emerald-700' 
-              : 'bg-white/30 text-white'
-          }`}>
-            EXTRA{segment.extraMontant ? ` ${segment.extraMontant}€` : ''}
-            {segment.paymentStatus === 'payé' && ' ✓'}
-          </span>
-        )}
-        {segment.aValider && (
-          <span className="bg-white/90 text-amber-700 px-1.5 py-0.5 rounded text-[9px] font-bold">
-            À VALIDER
-          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" title="Extra" />
         )}
       </div>
       {segment.commentaire && (
-        <div className="text-[9px] text-white/90 mt-1 flex items-start gap-1">
-          <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-message-circle flex-shrink-0 mt-0.5">
-            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-          </svg>
-          <span className="italic">{segment.commentaire}</span>
+        <div className="text-[9px] opacity-80 mt-0.5 truncate">
+          {segment.commentaire}
         </div>
       )}
     </div>
@@ -311,11 +300,11 @@ function CellDrop({
 }) {
   const [{ isOver, canDrop }, drop] = useDrop({
     accept: ItemTypes.SEGMENT,
-    canDrop: () => !conge, // drag interdit si congé prioritaire
+    canDrop: () => !conge,
     drop: (item) => {
       if (!conge) moveSegment(item, employeId, date);
-     }
-   });
+    }
+  });
 
   // Récupérer les écarts pour cette cellule si le mode comparaison est activé
   const ecarts = showComparaison ? getEcartsForEmployeeDate(employeId, date) : [];
@@ -323,342 +312,154 @@ function CellDrop({
   // Priorité : Congé validé
   if (conge) {
     return (
-      <td
+      <div
         ref={drop}
         title={`${resumeCell(conge, shift)} - Déplacement interdit (congé prioritaire)`}
-        className={`relative p-2 ${cellSizeClass} text-center align-top transition rounded-md shadow-sm border border-red-200 bg-[#ffe5e5] ${
-          isOver && !canDrop ? 'ring-2 ring-red-400 bg-red-100' : ''
+        className={`flex-1 min-w-[110px] relative p-2 ${cellSizeClass} text-center transition border-r border-gray-200 bg-orange-50 ${
+          isOver && !canDrop ? 'ring-2 ring-inset ring-orange-400' : ''
         }`}
       >
-        <div className="absolute inset-0 rounded-md ring-1 ring-red-300/60 pointer-events-none" />
         {isOver && !canDrop && (
-          <div className="absolute inset-0 flex items-center justify-center bg-red-100/80 rounded-md">
-            <span className="text-red-600 font-medium text-xs">❌ Interdit</span>
+          <div className="absolute inset-0 flex items-center justify-center bg-orange-100/80">
+            <span className="text-orange-600 font-medium text-xs">❌ Interdit</span>
           </div>
         )}
         <CongeBadge conge={conge} />
-        {/* Afficher les écarts même en cas de congé (important pour les anomalies) */}
-        {showComparaison && ecarts.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-1">
-            {ecarts.map((ecart, idx) => {
-              const f = formatEcart(ecart);
-              const isAnomalie = ecart.type === 'absence_planifiee_avec_pointage';
-              
-              if (isAnomalie) {
-                return (
-                  <div key={idx} className="w-full">
-                    <div
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${f.bg} ${f.color} border-2 ${
-                        ecart.statut === 'validee' ? 'border-green-400' :
-                        ecart.statut === 'refusee' ? 'border-red-400' :
-                        ecart.statut === 'traitee' ? 'border-blue-400' :
-                        'border-red-300 hover:border-red-400'
-                      } cursor-pointer`}
-                      title={`${ecart.description || f.label}${ecart.statut ? `\nStatut: ${ecart.statut}` : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAnomalieClick(employeId, date, ecart);
-                      }}
-                    >
-                      <span className="text-xs">{f.icon}</span>
-                      <span className="whitespace-nowrap flex-1">
-                        ANOMALIE!
-                        {ecart.statut && (
-                          <span className="ml-1 text-[8px] font-bold">
-                            ({ecart.statut === 'validee' ? '✅' : ecart.statut === 'refusee' ? '❌' : '🔄'})
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-xs">⚙️</span>
-                    </div>
-                    {/* Actions rapides - masquer pour les anomalies déjà traitées */}
-                    {!['validee', 'refusee', 'traitee'].includes(ecart.statut) && (
-                      <div className="mt-1">
-                        <EcartActions 
-                          ecarts={[ecart]}
-                          employeId={employeId}
-                          date={date}
-                          onUpdate={() => {
-                            // Recharger les données après traitement
-                            handleQuickAction?.(employeId, date, ecart, 'update');
-                          }}
-                          compact={true}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              } else {
-                // 🔧 GESTION AMÉLIORÉE des nouveaux types avec hors-plage et heures sup
-                const isHorsPlage = ecart.type === 'hors_plage_in' || ecart.type === 'hors_plage_out' || ecart.type === 'hors_plage_out_critique';
-                const isCritique = ecart.gravite === 'critique' || ecart.gravite === 'hors_plage' || ecart.type === 'retard_critique' || ecart.type === 'depart_premature_critique' || ecart.type === 'hors_plage_out_critique';
-                const isAValider = ecart.gravite === 'a_valider' || ecart.type === 'heures_sup_a_valider';
-                const isAutoValide = ecart.type === 'heures_sup_auto_validees';
-                const isOK = ecart.gravite === 'ok' || ecart.gravite === 'info' || ecart.type?.includes('acceptable') || ecart.type?.includes('_a_l_heure') || isAutoValide;
-                
-                const displayText = f.label + (f.formattedTime ? ` ${f.formattedTime}` : '');
-                const borderClass = isHorsPlage ? 'border-purple-400' :
-                                  isCritique ? 'border-red-400' :
-                                  isAValider ? 'border-amber-400' :
-                                  isOK ? 'border-green-300' :
-                                  'border-yellow-300';
-                
-                return (
-                  <div
-                    key={idx}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${f.bg} ${f.color} border ${f.borderClass || borderClass} ${
-                      isHorsPlage ? 'animate-pulse' : ''
-                    } cursor-pointer hover:brightness-95 group relative`}
-                    title={`${ecart.description || f.label}${f.validatedBy ? `\nValidé par: ${f.validatedBy}` : ''}${f.adminNote ? `\nNote: ${f.adminNote}` : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Ne pas permettre de modifier les anomalies déjà validées ou refusées
-                      if (!['validee', 'refusee', 'traitee'].includes(ecart.statut)) {
-                        handleAnomalieClick(employeId, date, ecart);
-                      }
-                    }}
-                  >
-                    <span className="text-xs">{f.icon}</span>
-                    <span className="truncate">{displayText}</span>
-                    {/* Badge de statut pour anomalies traitées */}
-                    {f.badge && (
-                      <span className={`px-1 py-0.5 rounded-sm text-[8px] font-bold ${
-                        ecart.statut === 'validee' ? 'bg-green-200 text-green-800' :
-                        ecart.statut === 'refusee' ? 'bg-red-200 text-red-800' :
-                        ecart.statut === 'traitee' ? 'bg-blue-200 text-blue-800' :
-                        'bg-white/70 text-purple-700'
-                      }`}>
-                        {f.badge}
-                      </span>
-                    )}
-                    {/* Indicateur visuel pour anomalies déjà traitées */}
-                    {['validee', 'refusee', 'traitee'].includes(ecart.statut) && (
-                      <span className="ml-0.5 text-xs">
-                        {ecart.statut === 'validee' ? '✅' : ecart.statut === 'refusee' ? '❌' : '🔄'}
-                      </span>
-                    )}
-                    {/* Menu d'actions au hover - uniquement pour anomalies non traitées */}
-                    {!['validee', 'refusee', 'traitee'].includes(ecart.statut) && (
-                      <div className="absolute left-0 top-full mt-1 hidden group-hover:flex bg-white shadow-lg border rounded-md p-2 z-50 min-w-[200px]">
-                        <div className="flex flex-col gap-1">
-                          <div className="text-xs font-medium text-gray-700">{f.label}</div>
-                          <div className="text-[10px] text-gray-500 mb-2">{ecart.description}</div>
-                          <EcartActions 
-                            ecarts={[ecart]}
-                            employeId={employeId}
-                            date={date}
-                            onUpdate={() => {
-                              handleQuickAction?.(employeId, date, ecart, 'update');
-                            }}
-                            compact={true}
-                          />
-                        </div>
-                      </div>
-                    )}
-                    {/* Affichage spécial pour anomalies traitées */}
-                    {['validee', 'refusee', 'traitee'].includes(ecart.statut) && (
-                      <div className="absolute left-0 top-full mt-1 hidden group-hover:flex bg-white shadow-lg border rounded-md p-2 z-50 min-w-[250px]">
-                        <div className="flex flex-col gap-1">
-                          <div className="text-xs font-medium text-gray-700">{f.label}</div>
-                          <div className="text-[10px] text-gray-500">{ecart.description}</div>
-                          {f.validatedBy && (
-                            <div className="text-[10px] text-gray-600 mt-2">
-                              <strong>Traité par:</strong> {f.validatedBy}
-                            </div>
-                          )}
-                          {f.validatedAt && (
-                            <div className="text-[10px] text-gray-600">
-                              <strong>Date:</strong> {new Date(f.validatedAt).toLocaleString('fr-FR')}
-                            </div>
-                          )}
-                          {f.adminNote && (
-                            <div className="text-[10px] text-gray-600 mt-1 p-2 bg-gray-50 rounded">
-                              <strong>Note admin:</strong> {f.adminNote}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-            })}
-          </div>
-        )}
-      </td>
+      </div>
     );
   }
 
   return (
-    <td
+    <div
       ref={drop}
       title={resumeCell(conge, shift)}
-      className={`group p-2 ${cellSizeClass} text-center align-top cursor-pointer transition rounded-md shadow-sm border ${
-        isWeekend(new Date(date)) ? 'bg-slate-50 border-gray-200' : 'bg-white border-gray-100'
-      } ${isOver && canDrop ? 'ring-1 ring-[#cf292c]' : ''} hover:bg-gray-50`}
+      className={`flex-1 min-w-[110px] group p-1 ${cellSizeClass} text-center cursor-pointer transition border-r overflow-hidden ${
+        isWeekend(new Date(date)) ? 'bg-gray-50/50 border-gray-200' : 'bg-white border-gray-200'
+      } ${isOver && canDrop ? 'ring-2 ring-inset ring-blue-400' : ''} hover:bg-blue-50/30`}
       onClick={() => onCellClick(employeId, date)}
     >
       {shift && shift.type === "présence" && shift.segments && shift.segments.length > 0 ? (
-        denseMode ? (
-          <div className="flex flex-col h-full gap-0.5">
-            {/* Mini-blocs horaires lisibles */}
-            <div className="flex flex-wrap gap-0.5 items-start">
-              {(() => {
-                const maxToShow = 3;
-                const segs = shift.segments.slice(0, maxToShow);
-                return (
-                  <>
-                    {segs.map((s,idx) => {
-                      if (!s.start || !s.end) return null;
-                      const [sh,sm] = s.start.split(':');
-                      const [eh,em] = s.end.split(':');
-                      const color = s.aValider ? 'bg-amber-400/90' : s.isExtra ? 'bg-emerald-600/90' : 'bg-blue-600/90';
-                      return (
-                        <span key={idx} className={`px-1.5 py-0.5 rounded text-[10px] leading-none font-semibold text-white shadow-sm ${color}`} title={`${s.start} – ${s.end}${s.commentaire? ' | '+s.commentaire:''}${s.isExtra? ' (EXTRA)':''}${s.aValider? ' (À valider)':''}`}>{sh}:{sm}–{eh}:{em}</span>
-                      );
-                    })}
-                    {shift.segments.length > maxToShow && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] leading-none font-medium bg-gray-200 text-gray-700" title={shift.segments.slice(maxToShow).map(s=>`${s.start}-${s.end}`).join(', ')}>+{shift.segments.length - maxToShow}</span>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-            {/* Durée totale */}
-            <div className="mt-auto flex items-center justify-between text-[9px] text-gray-600 font-medium">
-              <span className="truncate max-w-[70%]" title={shift.segments.map(s=>`${s.start}-${s.end}`).join(' • ')}>Total</span>
-              <span className="bg-gray-100 px-1 py-0.5 rounded">
-                {(() => {
-                  const totalMinutes = shift.segments.reduce((acc, seg) => {
-                    if (!seg.start || !seg.end) return acc;
-                    const [startH, startM] = seg.start.split(':').map(Number);
-                    const [endH, endM] = seg.end.split(':').map(Number);
-                    return acc + ((endH * 60 + endM) - (startH * 60 + startM));
-                  }, 0);
-                  const hours = Math.floor(totalMinutes / 60);
-                  const minutes = totalMinutes % 60;
-                  return hours > 0 ? `${hours}h${minutes > 0 ? minutes.toString().padStart(2,'0') : ''}` : `${minutes}m`;
-                })()}
-              </span>
-            </div>
-            {showComparaison && ecarts.length > 0 && (
-              <div className="flex flex-wrap gap-0.5 pt-0.5 border-t border-gray-100 mt-0.5">
-                {ecarts.map((ecart, idx) => {
-                  const f = formatEcart(ecart);
-                  return (
-                    <div key={idx} className={`flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium ${f.bg} ${f.color}`} title={ecart.description || f.label}>
-                      <span>{f.icon}</span>
-                    </div>
-                  );
-                })} 
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            {/* En-tête du shift avec durée totale */}
-            <div className="text-[9px] text-gray-500 font-medium flex items-center justify-between">
-              <span>Présence</span>
-              <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
-                {(() => {
-                  const totalMinutes = shift.segments.reduce((acc, seg) => {
-                    if (!seg.start || !seg.end) return acc;
-                    const [startH, startM] = seg.start.split(':').map(Number);
-                    const [endH, endM] = seg.end.split(':').map(Number);
-                    return acc + ((endH * 60 + endM) - (startH * 60 + startM));
-                  }, 0);
-                  const hours = Math.floor(totalMinutes / 60);
-                  const minutes = totalMinutes % 60;
-                  return hours > 0 ? `${hours}h${minutes > 0 ? minutes.toString().padStart(2, '0') : ''}` : `${minutes}min`;
-                })()}
-              </span>
-            </div>
-            {shift.segments.map((seg, i) => (
-              <SegmentDraggable
-                key={i}
-                segment={seg}
-                employeId={employeId}
-                date={date}
-                index={i}
-                type={shift.type}
-                motif={shift.motif}
-                compactMode={denseMode}
-              />
-            ))}
-            {showComparaison && ecarts.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {ecarts.map((ecart, idx) => {
-                  const f = formatEcart(ecart);
-                  const mins = Math.abs(ecart.dureeMinutes || 0);
-                  const plusGroup = ['retard','heures_supplementaires','heures_sup_auto_validees','heures_sup_a_valider'];
-                  const minusGroup = ['arrivee_anticipee','depart_anticipe'];
-                  const signe = plusGroup.includes(ecart.type) ? '+' : minusGroup.includes(ecart.type) ? '-' : '';
-                  const mTxt = mins > 0 ? `${signe}${mins}m` : '';
-                  let text;
-                  switch (ecart.type) {
-                    case 'retard': text = `Retard ${mTxt}`; break;
-                    case 'arrivee_anticipee': text = `Avance ${mTxt}`; break;
-                    case 'arrivee_a_l_heure': text = 'Arrivée ok'; break;
-                    case 'heures_supplementaires': text = `${mTxt} supp`; break;
-                    case 'heures_sup_auto_validees': text = `${mTxt} auto`; break;
-                    case 'heures_sup_a_valider': text = `${mTxt} à valid`; break;
-                    case 'hors_plage_out_critique': text = `${mTxt} crit`; break;
-                    case 'depart_anticipe': text = `Départ -${mins}m`; break;
-                    case 'depart_a_l_heure': text = 'Départ ok'; break;
-                    case 'absence_totale': text = 'Absent'; break;
-                    case 'presence_non_prevue': text = 'Non prévu'; break;
-                    case 'absence_planifiee_avec_pointage': text = 'ANOMALIE!'; break;
-                    case 'absence_conforme': text = 'Absence OK'; break;
-                    default: text = f.label;
-                  }
-                  // Vérifier si c'est un écart critique qui nécessite une action admin ou hors plage
-                  const needsAdminAction = ['retard_critique', 'depart_premature_critique', 'hors_plage_out_critique', 'hors_plage_in', 'presence_non_prevue', 'absence_planifiee_avec_pointage'].includes(ecart.type);
+        <div className="flex flex-col gap-1 h-full overflow-hidden">
+          {/* Créneaux de travail - Design moderne Workday/BambooHR */}
+          <div className="flex flex-col gap-0.5">
+            {shift.segments.map((s, idx) => {
+              if (!s.start || !s.end) return null;
+              
+              // Calcul durée
+              const [startH, startM] = s.start.split(':').map(Number);
+              const [endH, endM] = s.end.split(':').map(Number);
+              const durationMin = (endH * 60 + endM) - (startH * 60 + startM);
+              const durationH = (durationMin / 60).toFixed(1);
+              
+              // Système de couleurs professionnel
+              let bgGradient = 'from-blue-500 to-blue-600';
+              let borderColor = 'border-l-blue-400';
+              let statusIcon = null;
+              let statusBg = '';
+              
+              if (s.aValider) {
+                bgGradient = 'from-amber-500 to-orange-500';
+                borderColor = 'border-l-amber-400';
+                statusIcon = '⏳';
+                statusBg = 'bg-amber-500/10';
+              } else if (s.isExtra) {
+                bgGradient = 'from-emerald-500 to-teal-600';
+                borderColor = 'border-l-emerald-400';
+                statusIcon = '⭐';
+                statusBg = 'bg-emerald-500/10';
+              }
+              
+              return (
+                <div
+                  key={idx}
+                  className={`relative bg-gradient-to-r ${bgGradient} border-l-4 ${borderColor} rounded-r px-2 py-1 text-white shadow-sm hover:shadow-md transition-all overflow-hidden`}
+                  title={`${s.start} - ${s.end} (${durationH}h)${s.commentaire ? '\n📝 ' + s.commentaire : ''}${s.isExtra ? '\n⭐ Heures supplémentaires' : ''}${s.aValider ? '\n⏳ En attente de validation' : ''}`}
+                >
+                  {/* Barre de statut supérieure */}
+                  {statusIcon && (
+                    <div className={`absolute top-0 left-0 right-0 h-0.5 ${statusBg}`} />
+                  )}
                   
-                  return (
-                    <div key={idx} className="flex flex-col gap-1">
-                      <div
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${f.bg} ${f.color} ${needsAdminAction ? 'cursor-pointer hover:shadow-md hover:scale-105 transition-all border-2 border-red-300' : ''}`}
-                        title={`${ecart.description || text}${needsAdminAction ? ' - Cliquer pour traiter' : ''}`}
-                        onClick={needsAdminAction ? (e) => {
-                          e.stopPropagation();
-                          handleAnomalieClick(employeId, date, ecart);
-                        } : undefined}
-                      >
-                        <span className="text-xs">{f.icon}</span>
-                        <span className="whitespace-nowrap">{text}</span>
-                        {needsAdminAction && <span className="text-xs">⚙️</span>}
-                      </div>
-                      
-                      {/* Actions rapides (désormais cachées si statut déjà traité) */}
-                      {needsAdminAction && !['validee','refusee','corrigee','traitee'].includes(ecart.statut) && (
-                        <EcartActions 
-                          ecarts={[ecart]}
-                          employeId={employeId}
-                          date={date}
-                          onUpdate={() => {
-                            handleQuickAction?.(employeId, date, ecart, 'update');
-                          }}
-                          compact={true}
-                        />
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      {statusIcon && (
+                        <span className="text-xs flex-shrink-0">{statusIcon}</span>
                       )}
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-[11px]">{s.start}</span>
+                        <span className="text-[9px] opacity-70">→</span>
+                        <span className="font-bold text-[11px]">{s.end}</span>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <span className="text-[9px] opacity-90 font-semibold px-1.5 py-0.5 bg-white/20 rounded">{durationH}h</span>
+                  </div>
+                  
+                  {s.commentaire && (
+                    <div className="text-[8px] opacity-85 mt-0.5 truncate italic">
+                      📝 {s.commentaire}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )
+          
+          {/* Badges d'anomalies - Discrets mais informatifs */}
+          {showComparaison && ecarts.length > 0 && (
+            <div className="flex flex-wrap gap-1 items-center mt-1 pt-1 border-t border-gray-200/50">
+              {ecarts.map((ecart, idx) => {
+                const f = formatEcart(ecart);
+                const needsAction = ['retard_critique', 'depart_premature_critique', 'hors_plage_out_critique', 'hors_plage_in', 'presence_non_prevue', 'absence_planifiee_avec_pointage'].includes(ecart.type);
+                
+                // Configuration par type d'anomalie
+                let displayIcon = '🔵';
+                let displayLabel = '';
+                let badgeStyle = `${f.bg} ${f.color}`;
+                
+                if (ecart.type === 'presence_non_prevue') {
+                  displayIcon = '❓';
+                  displayLabel = 'Non prévu';
+                } else if (ecart.type.includes('retard')) {
+                  displayIcon = '⏰';
+                  const mins = Math.abs(ecart.dureeMinutes || 0);
+                  displayLabel = `+${mins}m`;
+                  badgeStyle = 'bg-orange-100 text-orange-700';
+                } else if (ecart.type.includes('hors_plage')) {
+                  displayIcon = '⚠️';
+                  displayLabel = 'Hors plage';
+                  badgeStyle = 'bg-purple-100 text-purple-700';
+                } else if (ecart.type.includes('heures_sup')) {
+                  displayIcon = '⭐';
+                  displayLabel = `+${Math.abs(ecart.dureeMinutes || 0)}m`;
+                  badgeStyle = 'bg-emerald-100 text-emerald-700';
+                }
+                
+                return (
+                  <div
+                    key={idx}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-semibold ${badgeStyle} ${needsAction ? 'ring-1 ring-offset-1 ring-current cursor-pointer hover:ring-2 hover:scale-105' : 'opacity-80'} transition-all`}
+                    title={f.label + (needsAction ? ' - Cliquer pour traiter' : '')}
+                    onClick={needsAction ? (e) => {
+                      e.stopPropagation();
+                      handleAnomalieClick(employeId, date, ecart);
+                    } : undefined}
+                  >
+                    <span className="text-[10px]">{displayIcon}</span>
+                    {displayLabel && <span>{displayLabel}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : shift && shift.type === "absence" ? (
-        <div className="rounded-md px-2 py-2 text-xs font-medium bg-[#ffd6d6] text-[#cf292c] flex flex-col items-center space-y-1">
-          <div className="flex items-center gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="m15 9-6 6"/>
-              <path d="m9 9 6 6"/>
-            </svg>
-            <span className="font-semibold tracking-wider leading-none">{shift.motif}</span>
+        <div className="bg-gradient-to-r from-gray-100 to-gray-200 border-l-4 border-gray-500 rounded-r px-2 py-1.5 shadow-sm h-full flex flex-col justify-center">
+          <div className="flex items-center gap-1.5 justify-center">
+            <div className="w-5 h-5 bg-gray-300 rounded-full flex items-center justify-center">
+              <span className="text-xs">🚫</span>
+            </div>
+            <span className="font-bold text-[10px] text-gray-700">{shift.motif || 'Absence'}</span>
           </div>
-          <span className="font-normal text-[9px] text-[#cf292c]/70 bg-white/50 px-1.5 py-0.5 rounded-full">Absence</span>
           {/* Afficher les écarts même pour les absences (important pour les anomalies) */}
           {showComparaison && ecarts.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
@@ -671,7 +472,7 @@ function CellDrop({
                     <div key={idx} className="w-full">
                       <div
                         className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${f.bg} ${f.color} border-2 border-red-300 cursor-pointer hover:border-red-400`}
-                        title={ecart.description || f.label}
+                        title="Cliquer pour traiter l'anomalie"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAnomalieClick(employeId, date, ecart);
@@ -717,46 +518,18 @@ function CellDrop({
                   const needsAdminAction = ['retard_critique', 'depart_premature_critique', 'hors_plage_out_critique', 'hors_plage_in', 'presence_non_prevue', 'absence_planifiee_avec_pointage'].includes(ecart.type);
                   
                   return (
-                    <div key={idx} className="flex flex-col gap-1">
-                      <div
-                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${f.bg} ${f.color} border-2 ${borderClass} ${needsAdminAction ? 'cursor-pointer hover:shadow-md' : ''}`}
-                        title={`${ecart.description || f.label}${needsAdminAction ? ' - Cliquer pour traiter' : ''}`}
-                        onClick={needsAdminAction ? (e) => {
-                          e.stopPropagation();
-                          handleAnomalieClick(employeId, date, ecart);
-                        } : undefined}
-                      >
-                        <span className="text-xs">{f.icon}</span>
-                        <span className="whitespace-nowrap">{displayText}</span>
-                        {needsAdminAction && <span className="text-xs">⚙️</span>}
-                      </div>
-                      
-                      {/* Actions rapides pour les écarts critiques - INTERFACE OPTIMISÉE */}
-                      {needsAdminAction && (
-                        <div className="flex gap-1 text-[8px]">
-                          <EcartActions 
-                            ecarts={[ecart]}
-                            employeId={employeId}
-                            date={date}
-                            onUpdate={() => {
-                              handleQuickAction?.(employeId, date, ecart, 'update');
-                            }}
-                            compact={true}
-                          />
-                          
-                          {/* Bouton pour ouvrir la modale détaillée */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAnomalieClick(employeId, date, ecart);
-                            }}
-                            className="bg-blue-50 text-blue-700 px-1.5 py-1 rounded hover:bg-blue-100 border border-blue-200 transition-colors"
-                            title="Traitement détaillé"
-                          >
-                            ⚙️
-                          </button>
-                        </div>
-                      )}
+                    <div
+                      key={idx}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${f.bg} ${f.color} border-2 ${borderClass} ${needsAdminAction ? 'cursor-pointer hover:shadow-md' : ''}`}
+                      title={needsAdminAction ? 'Cliquer pour traiter' : displayText}
+                      onClick={needsAdminAction ? (e) => {
+                        e.stopPropagation();
+                        handleAnomalieClick(employeId, date, ecart);
+                      } : undefined}
+                    >
+                      <span className="text-xs">{f.icon}</span>
+                      <span className="whitespace-nowrap">{displayText}</span>
+                      {needsAdminAction && <span className="text-xs">⚙️</span>}
                     </div>
                   );
                 }
@@ -765,16 +538,9 @@ function CellDrop({
           )}
         </div>
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center">
-          <button
-            type="button"
-            className="w-full flex-1 flex items-center justify-center rounded-md border border-dashed border-gray-300 text-gray-400 text-[10px] font-medium hover:border-[#cf292c] hover:text-[#cf292c] transition bg-white/40"
-          >
-            +
-          </button>
-          {/* Affichage des écarts - VERSION SOBRE */}
-          {showComparaison && ecarts.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1 w-full">
+        <div className="w-full h-full flex items-center justify-center">
+          {showComparaison && ecarts.length > 0 ? (
+            <div className="flex flex-wrap gap-1 w-full items-center p-2">
               {ecarts.map((ecart, idx) => {
                 const f = formatEcart(ecart);
                 const mins = Math.abs(ecart.dureeMinutes || 0);
@@ -799,67 +565,36 @@ function CellDrop({
                   default: text = f.label;
                 }
                 
-                // Vérifier si c'est un écart qui nécessite une action admin
                 const needsAdminAction = ['retard_critique', 'depart_premature_critique', 'hors_plage_out_critique', 'hors_plage_in', 'presence_non_prevue', 'absence_planifiee_avec_pointage'].includes(ecart.type);
                 
                 return (
-                  <div key={idx} className="flex flex-col gap-1">
-                    <div
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${f.bg} ${f.color} ${needsAdminAction ? 'cursor-pointer hover:shadow-md border-2 border-red-300' : ''}`}
-                      title={`${ecart.description || text}${needsAdminAction ? ' - Cliquer pour traiter' : ''}`}
-                      onClick={needsAdminAction ? (e) => {
-                        e.stopPropagation();
-                        handleAnomalieClick(employeId, date, ecart);
-                      } : undefined}
-                    >
-                      <span className="text-xs">{f.icon}</span>
-                      <span className="whitespace-nowrap">{text}</span>
-                      {needsAdminAction && <span className="text-xs">⚙️</span>}
-                    </div>
-                    
-                    {/* Actions rapides pour les écarts critiques */}
-                    {needsAdminAction && (
-                      <div className="flex gap-1 text-[8px]">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleQuickAction(employeId, date, ecart, 'validate');
-                          }}
-                          className="bg-green-100 text-green-700 px-1 py-0.5 rounded hover:bg-green-200"
-                          title="Valider rapidement"
-                        >
-                          ✅ OK
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleQuickAction(employeId, date, ecart, 'extra');
-                          }}
-                          className="bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded hover:bg-emerald-200"
-                          title="Convertir en heures extra"
-                        >
-                          💼 Extra
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleQuickAction(employeId, date, ecart, 'error');
-                          }}
-                          className="bg-red-100 text-red-700 px-1 py-0.5 rounded hover:bg-red-200"
-                          title="Marquer comme erreur"
-                        >
-                          ❌ Erreur
-                        </button>
-                      </div>
-                    )}
+                  <div
+                    key={idx}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${f.bg} ${f.color} ${needsAdminAction ? 'cursor-pointer hover:shadow-md border-2 border-red-300' : ''}`}
+                    title={needsAdminAction ? 'Cliquer pour traiter' : text}
+                    onClick={needsAdminAction ? (e) => {
+                      e.stopPropagation();
+                      handleAnomalieClick(employeId, date, ecart);
+                    } : undefined}
+                  >
+                    <span className="text-xs">{f.icon}</span>
+                    <span className="whitespace-nowrap">{text}</span>
+                    {needsAdminAction && <span className="text-xs">⚙️</span>}
                   </div>
                 );
               })}
             </div>
+          ) : (
+            <button
+              type="button"
+              className="flex items-center justify-center border border-dashed border-gray-300 text-gray-400 text-lg font-medium hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-all rounded w-8 h-8"
+            >
+              +
+            </button>
           )}
         </div>
       )}
-    </td>
+    </div>
   );
 }
 
@@ -1289,13 +1024,20 @@ function PlanningRHTable({
   // Les fonctions de formatage sont maintenant passées par les props du composant principal
   const globalDense = employes.length >= 18 && !forceReadable; // auto mode compact si pas forcé (seuil à 18)
 
-  // Taille cellules adaptée
+  // Taille cellules adaptée - Vue mois optimisée pour voir tous les jours
   const baseCellSizeClass = viewType === "mois" 
-    ? "h-9 min-w-[32px] sm:h-10 sm:min-w-[40px]" 
+    ? "h-8" 
     : viewType === "jour" 
       ? "h-20 min-w-[180px] sm:h-28 sm:min-w-[220px]" 
       : "h-14 min-w-[90px] sm:h-16 sm:min-w-[110px]";
   const cellSizeClassBase = globalDense && viewType === 'semaine' ? 'h-12 min-w-[80px] sm:h-12 sm:min-w-[95px]' : baseCellSizeClass;
+  
+  // Largeur de cellule pour la vue mois - calculée pour garantir que TOUS les jours soient visibles
+  // Utilise la largeur disponible de l'écran moins la colonne employés (208px) et une marge adaptée à la taille d'écran
+  const screenWidth = window.innerWidth;
+  const isMobile = screenWidth < 768;
+  const availableWidth = screenWidth - 208 - (isMobile ? 20 : 50);
+  const monthCellWidth = viewType === "mois" ? Math.max(isMobile ? 20 : 24, Math.floor(availableWidth / dates.length)) : 28;
   
   // Données par cellule
   const getCellData = (emp, dStr) => {
@@ -1400,35 +1142,36 @@ function PlanningRHTable({
       const referenceMonth = dates[Math.min(15, dates.length - 1)].getMonth();
       const isCurrentMonth = date.getMonth() === referenceMonth;
       const weekend = isWeekend(date);
+      const today = isToday(date);
+      
       return (
-        <th key={index} className="p-1 text-center">
-          <div className={`flex flex-col items-center ${weekend ? 'opacity-80' : ''}`}>
-            <span className={`uppercase text-[9px] tracking-wider ${isCurrentMonth ? "text-gray-500" : "text-gray-300"}`}>
-              {joursSemaine[date.getDay() === 0 ? 6 : date.getDay() - 1].slice(0,1)}
-            </span>
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition ${
-              isToday(date) ? "bg-[#cf292c] text-white shadow" : isCurrentMonth ? (weekend? 'text-red-500' : 'text-gray-700') : "text-gray-300"
-            }`}>
-              {date.getDate()}
-            </span>
+        <div key={index} className={`${viewType === "mois" ? 'flex-1 min-w-0' : 'flex-shrink-0'} text-center border-r flex flex-col items-center justify-center py-1.5 transition-colors ${
+          weekend ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200'
+        } ${today ? 'bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300 shadow-sm' : ''}`}>
+          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] transition-all ${
+            today 
+              ? "bg-gradient-to-br from-[#cf292c] to-[#a01f1f] text-white shadow-md" 
+              : isCurrentMonth 
+                ? (weekend ? 'text-gray-400' : 'text-gray-700') 
+                : "text-gray-300"
+          }`}>
+            {date.getDate()}
           </div>
-        </th>
+        </div>
       );
     }
     const weekend = isWeekend(date);
     return (
-      <th key={index} className="p-2 text-center">
-        <div className="flex flex-col items-center gap-1">
-            <span className={`uppercase text-[10px] tracking-wider ${weekend? 'text-red-500':'text-gray-500'}`}>
-              {viewType === "jour" ? date.toLocaleDateString("fr-FR", { weekday: "short" }) : joursSemaine[index]}
-            </span>
-            <span className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition ${
-              isToday(date) ? "bg-[#cf292c] text-white shadow-sm" : weekend? 'text-red-500' : "text-gray-700"
-            }`}>
-              {date.getDate()}
-            </span>
-          </div>
-      </th>
+      <div key={index} className="flex-1 min-w-[110px] px-3 py-2.5 text-center border-r border-gray-200 flex flex-col items-center justify-center">
+        <span className={`text-[11px] font-medium mb-1 ${weekend? 'text-gray-400':'text-gray-600'}`}>
+          {viewType === "jour" ? date.toLocaleDateString("fr-FR", { weekday: "short" }) : joursSemaine[index]}
+        </span>
+        <span className={`text-base font-bold ${
+          isToday(date) ? "text-blue-600" : weekend? 'text-gray-400' : "text-gray-800"
+        }`}>
+          {date.getDate()}
+        </span>
+      </div>
     );
   };
 
@@ -1708,41 +1451,50 @@ function PlanningRHTable({
 
   // Ancienne variable cellSizeClass remplacée par baseCellSizeClass + adaptation denseMode
 
+  // Refs pour synchroniser le scroll entre les deux colonnes
+  const employeesScrollRef = React.useRef(null);
+  const gridScrollRef = React.useRef(null);
+  const headerScrollRef = React.useRef(null);
+
+  // Synchronisation du scroll - la grille contrôle le scroll vertical des employés et horizontal de l'en-tête
+  const handleGridScroll = (e) => {
+    if (employeesScrollRef.current) {
+      employeesScrollRef.current.scrollTop = e.target.scrollTop;
+    }
+    if (headerScrollRef.current) {
+      headerScrollRef.current.scrollLeft = e.target.scrollLeft;
+    }
+  };
+
   return (
-    <div className="overflow-auto max-h-[70vh] rounded-md bg-white p-0.5 shadow-sm border border-gray-100">
-  <table className={`min-w-full ${globalDense ? 'text-[10px]' : ''} divide-y divide-gray-100 bg-white rounded-md overflow-hidden text-xs sm:text-sm border-0 ${viewType === "mois" ? "table-fixed" : ""}`}>
-        <thead className="sticky top-0 z-20 bg-white text-xs font-medium text-gray-500">
-          <tr>
-            <th className={`${viewType === "mois" ? "p-0.5 sm:p-1" : "p-1 sm:p-2"} text-left sticky left-0 bg-white z-30`}>
-              {viewType === "mois" ? "EMP." : (
-                <>
-                  <span className="hidden sm:inline">EMPLOYÉ</span>
-                  <span className="sm:hidden">EMP.</span>
-                </>
-              )}
-            </th>
-            {dates.map((d, i) => renderHeaderCell(d, i))}
-          </tr>
-        </thead>
-  <tbody className={`divide-y divide-gray-100 ${globalDense ? 'align-top' : ''}`}>
-          {/* Affichage groupé par catégories avec séparateurs visuels */}
+    <div className="flex h-[calc(100vh-140px)] bg-white overflow-hidden border border-gray-200 rounded-lg shadow-sm min-w-0">
+      {/* COLONNE GAUCHE FIXE: Liste des employés - Style Skello */}
+      <div className="w-52 sm:w-52 flex-shrink-0 border-r border-gray-200 flex flex-col bg-gradient-to-b from-gray-50 to-white">
+        {/* En-tête fixe de la colonne employés - Minimaliste Skello */}
+        <div className={`sticky top-0 z-30 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-300 px-3 flex items-center shadow-sm ${viewType === "mois" ? 'py-2 h-10' : 'py-4 h-14'}`}>
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span className={`font-bold text-gray-700 ${viewType === "mois" ? 'text-[11px]' : 'text-xs'}`}>Employés</span>
+          </div>
+        </div>
+        
+        {/* Liste scrollable des employés */}
+        <div 
+          ref={employeesScrollRef}
+          className="flex-1 overflow-y-hidden overflow-x-hidden"
+        >
           {employesGroupesParCategorie.map((groupe, groupeIndex) => (
             <React.Fragment key={groupe.categorie}>
-              {/* Séparateur de catégorie - Style Skello */}
-              <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-t-2 border-gray-200">
-                <td colSpan={dates.length + 1} className="p-3 sticky left-0 bg-gradient-to-r from-gray-50 to-gray-100 z-10">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${groupe.infosCategorie.color} font-medium text-sm shadow-sm`}>
-                      <span className="text-lg">{groupe.infosCategorie.icon}</span>
-                      <span>{groupe.categorie}</span>
-                      <span className="bg-white/30 text-xs px-2 py-0.5 rounded-full ml-1">
-                        {groupe.employes.length}
-                      </span>
-                    </div>
-                    <div className="flex-1 h-0.5 bg-gradient-to-r from-gray-200 to-transparent rounded-full"></div>
-                  </div>
-                </td>
-              </tr>
+              {/* Séparateur de catégorie - Style Skello minimaliste */}
+              <div className="bg-gradient-to-r from-gray-100 to-gray-50 border-t border-b border-gray-300 px-3 py-2 shadow-sm" style={{ minHeight: '36px' }}>
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-gradient-to-b from-[#cf292c] to-red-600 rounded-full" />
+                  <span className="text-[11px] font-bold text-gray-800">{groupe.categorie}</span>
+                  <span className="text-[10px] text-gray-500 font-medium">({groupe.employes.length})</span>
+                </div>
+              </div>
               
               {/* Employés de cette catégorie */}
               {groupe.employes.map((emp, empIndex) => {
@@ -1751,155 +1503,316 @@ function PlanningRHTable({
                 const isLastInGroup = empIndex === groupe.employes.length - 1;
                 const isLastGroup = groupeIndex === employesGroupesParCategorie.length - 1;
                 
+                // Hauteur FIXE pour alignement parfait (pas de minHeight)
+                const rowHeight = viewType === "mois" 
+                  ? "32px" 
+                  : viewType === "jour" 
+                    ? "112px" 
+                    : rowDense ? "56px" : "72px"; // Augmenté pour meilleur alignement
+                
                 return (
-                  <tr 
+                  <div 
                     key={emp.id} 
-                    className={`group ${rowDense ? 'hover:bg-blue-50/60' : 'hover:bg-blue-50'} transition ${
-                      isLastInGroup && !isLastGroup ? 'border-b-2 border-gray-100' : ''
-                    }`}
+                    className="relative border-b border-gray-100 hover:bg-gradient-to-r hover:from-blue-50/60 hover:to-transparent transition-all group"
+                    style={{ height: rowHeight }}
                   >
-              <td className={`p-0.5 sm:p-1 text-left align-middle whitespace-nowrap sticky left-0 bg-white z-10 border-r border-gray-100 ${rowDense ? 'min-w-[100px]' : ''}`}>
-                <div className={`flex items-center ${rowDense ? 'gap-1' : 'gap-1.5 sm:gap-2'}`}>
-                  <button type="button" onClick={()=> globalDense && onToggleExpand(emp.id)} className={`${rowDense? 'opacity-60 hover:opacity-90':'opacity-90 hover:opacity-100'} transition w-4 h-4 flex items-center justify-center text-gray-500`} title={rowDense? 'Agrandir la ligne':'Replier la ligne'}>
-                    {globalDense && (
-                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        {rowDense ? <path d="m6 9 6 6 6-6"/> : <path d="m18 15-6-6-6 6"/>}
-                      </svg>
-                    )}
-                  </button>
-                  <div className={`${rowDense ? 'w-5 h-5 text-[9px]' : 'w-6 h-6 sm:w-7 sm:h-7 text-xs'} rounded-full bg-[#cf292c] text-white font-medium flex items-center justify-center shadow-sm`}>
-                    {getEmployeeInitials(emp)}
-                  </div>
-                  <div className="flex flex-col flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-medium text-gray-800 leading-tight ${rowDense ? 'text-[10px]' : 'text-xs sm:text-sm'}`}>
-                        {formatEmployeeName(emp)}
-                      </span>
+                    {/* Barre latérale au hover - Style moderne avec gradient */}
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-[#cf292c] to-red-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm" />
+                    
+                    <div className="flex items-center h-full px-2 gap-1.5">
+                      {/* Avatar circulaire avec gradient - Style moderne - Plus compact pour vue mois */}
+                      <div className={`relative ${viewType === "mois" ? 'w-5 h-5 text-[8px]' : (rowDense ? 'w-6 h-6 text-[9px]' : 'w-7 h-7 text-[10px]')} rounded-full bg-gradient-to-br from-[#cf292c] to-red-600 text-white font-bold flex items-center justify-center flex-shrink-0 shadow-md ring-1 ring-white`}>
+                        {getEmployeeInitials(emp)}
+                      </div>
                       
-                      {/* Badge de catégorie employé */}
-                      {(() => {
-                        const categorie = getCategorieEmploye(emp);
-                        return (
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${categorie.color} ${rowDense ? 'hidden' : ''}`} title={`Catégorie: ${categorie.label}`}>
-                            <span>{categorie.icon}</span>
-                            <span className="hidden sm:inline">{categorie.label}</span>
-                          </span>
-                        );
-                      })()}
-                      
-                      {!rowDense && (
-                        <button
-                          onClick={() => onOpenRapport(emp.id)}
-                          className="opacity-0 group-hover:opacity-100 hover:opacity-100 text-blue-600 hover:text-blue-700 transition-all p-1 rounded hover:bg-blue-50"
-                          title="Voir le rapport d'heures"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                          </svg>
-                        </button>
-                      )}
+                      {/* Nom simple et épuré */}
+                      <div className="flex-1 min-w-0">
+                        <div className={`${viewType === "mois" ? 'text-[10px]' : 'text-[11px]'} font-medium text-gray-800 truncate leading-tight`}>
+                          {formatEmployeeName(emp)}
+                        </div>
+                        {!rowDense && viewType !== "mois" && (
+                          <div className="flex gap-1.5 mt-1">
+                            {(() => {
+                              const totalHeures = dates.reduce((acc, date) => {
+                                const dStr = formatDate(date);
+                                const { shift, conge } = getCellData(emp, dStr);
+                                if (!conge && shift && shift.type === 'présence' && shift.segments) {
+                                  const heuresJour = shift.segments.reduce((sum, seg) => {
+                                    if (!seg.start || !seg.end) return sum;
+                                    const [startH, startM] = seg.start.split(':').map(Number);
+                                    const [endH, endM] = seg.end.split(':').map(Number);
+                                    return sum + ((endH * 60 + endM) - (startH * 60 + startM));
+                                  }, 0) / 60;
+                                  return acc + heuresJour;
+                                }
+                                return acc;
+                              }, 0);
+                              const joursPresence = dates.filter(date => {
+                                const dStr = formatDate(date);
+                                const { shift, conge } = getCellData(emp, dStr);
+                                return !conge && shift && shift.type === 'présence';
+                              }).length;
+                              
+                              return (
+                                <>
+                                  {totalHeures > 0 && (
+                                    <span className="bg-gradient-to-r from-[#cf292c] to-red-600 text-white px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm">
+                                      {totalHeures.toFixed(1)}h
+                                    </span>
+                                  )}
+                                  {joursPresence > 0 && (
+                                    <span className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm">
+                                      {joursPresence}j
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    {!rowDense && (emp.prenom || emp.nom) && emp.email && 
-                      <span className="text-xs text-gray-500 truncate hidden sm:block">{emp.email}</span>
-                    }
-                    {!rowDense && (
-                      <div className="flex items-center gap-1 sm:gap-2 mt-1">
-                        {(() => {
-                          const totalHeures = dates.reduce((acc, date) => {
-                            const dStr = formatDate(date);
-                            const { shift, conge } = getCellData(emp, dStr);
-                            if (!conge && shift && shift.type === 'présence' && shift.segments) {
-                              const heuresJour = shift.segments.reduce((sum, seg) => {
-                                if (!seg.start || !seg.end) return sum;
-                                const [startH, startM] = seg.start.split(':').map(Number);
-                                const [endH, endM] = seg.end.split(':').map(Number);
-                                return sum + ((endH * 60 + endM) - (startH * 60 + startM));
-                              }, 0) / 60;
-                              return acc + heuresJour;
-                            }
-                            return acc;
-                          }, 0);
-                          const joursPresence = dates.filter(date => {
-                            const dStr = formatDate(date);
-                            const { shift, conge } = getCellData(emp, dStr);
-                            return !conge && shift && shift.type === 'présence';
-                          }).length;
-                          return (
-                            <div className="flex gap-2 text-[10px]">
-                              {totalHeures > 0 && (
-                                <span className="bg-[#cf292c]/10 text-[#cf292c] px-2 py-0.5 rounded font-medium">
-                                  {totalHeures.toFixed(1)}h
-                                </span>
-                              )}
-                              {joursPresence > 0 && (
-                                <span className="bg-[#cf292c]/10 text-[#cf292c] px-2 py-0.5 rounded font-medium">
-                                  {joursPresence}j
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
                   </div>
-                </div>
-              </td>
-              {dates.map((date, i) => {
-                const dStr = formatDate(date);
-                const { shift, conge } = getCellData(emp, dStr);
-                if (viewType === "mois") {
-                  const referenceMonth = dates[Math.min(15, dates.length - 1)].getMonth();
-                  const isCurrentMonth = date.getMonth() === referenceMonth;
-                  const weekend = isWeekend(date);
-                  const baseClasses = `relative p-1 ${cellSizeClass} text-center align-top cursor-pointer transition border border-gray-100`;
-                  const bg = !isCurrentMonth ? "bg-gray-50/70 text-gray-300" : weekend? 'bg-slate-50' : 'bg-white';
-                  const hasSegments = shift && shift.type==='présence' && shift.segments?.length;
-                  const hasPending = hasSegments && shift.segments.some(s=>s.aValider);
-                  const stateBg = conge ? 'bg-[#ffe1e1]' : (!conge && shift ? (shift.type==='absence'? 'bg-rose-50' : (hasPending? 'bg-amber-50' : 'bg-blue-50')) : '');
-                  const todayRing = isToday(date) ? 'ring-1 ring-[#cf292c] ring-offset-1 ring-offset-white' : '';
-                  return (
-                    <td
-                      key={i}
-                      title={resumeCell(conge, shift)}
-                      onClick={() => onCellClick(emp.id, dStr)}
-                      className={`${baseClasses} ${bg} ${stateBg} ${todayRing}`}
-                    >
-                      <div className="flex items-center justify-center gap-1">
-                        {conge && <span className="w-2 h-2 rounded-full bg-[#cf292c]" />}
-                        {!conge && shift && shift.type==='présence' && hasPending && <span className="w-2 h-2 rounded-full bg-amber-400" />}
-                        {!conge && shift && shift.type==='présence' && !hasPending && <span className="w-2 h-2 rounded-full bg-blue-600" />}
-                        {!conge && shift && shift.type==='absence' && <span className="w-2 h-2 rounded-full bg-rose-500" />}
-                        {!conge && !shift && <span className="w-2 h-2 rounded-full bg-gray-300" />}
-                      </div>
-                    </td>
-                  );
-                }
-                return (
-                  <CellDrop
-                    key={`cell-${emp.id}-${dStr}`}
-                    employeId={emp.id}
-                    date={dStr}
-                    shift={shift}
-                    conge={conge}
-                    moveSegment={moveSegment}
-                    onCellClick={onCellClick}
-                    cellSizeClass={cellSizeClass}
-                    showComparaison={showComparaison}
-                    getEcartsForEmployeeDate={getEcartsForEmployeeDate}
-                    formatEcart={formatEcart}
-                    denseMode={skelloMode || (rowDense === true ? true : false)}
-                    handleAnomalieClick={handleAnomalieClick}
-                    handleQuickAction={handleQuickAction}
-                  />
                 );
               })}
-            </tr>
-                  );
-                })}
             </React.Fragment>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+
+      {/* PARTIE DROITE: Grille des dates - Style Skello */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-white">
+        {/* En-tête des dates - Style Skello épuré */}
+        <div 
+          ref={headerScrollRef}
+          className={`sticky top-0 z-20 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-300 overflow-hidden shadow-sm ${viewType === "mois" ? 'h-10' : 'h-14'}`}
+        >
+          <div className={`flex h-full ${viewType === "mois" ? 'flex-nowrap w-full' : 'flex-nowrap'}`} style={{ width: viewType === "mois" ? '100%' : 'auto' }}>
+            {dates.map((d, i) => renderHeaderCell(d, i))}
+          </div>
+        </div>
+
+        {/* Grille des cellules - scroll synchronisé avec la liste employés */}
+        <div 
+          ref={gridScrollRef}
+          onScroll={handleGridScroll}
+          className={viewType === "mois" ? "flex-1 overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden" : "flex-1 overflow-y-auto overflow-x-auto [&::-webkit-scrollbar]:hidden"}
+          style={{ 
+            height: '100%',
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none' 
+          }}
+        >
+          {employesGroupesParCategorie.map((groupe, groupeIndex) => (
+            <React.Fragment key={groupe.categorie}>
+              {/* Séparateur de catégorie - aligné avec la colonne gauche */}
+              <div className={`bg-gradient-to-r from-gray-100 to-gray-50 border-t border-b border-gray-300 shadow-sm flex ${viewType === "mois" ? 'w-full' : 'flex-nowrap'}`} style={{ minHeight: '36px', width: viewType === "mois" ? '100%' : 'auto' }}>
+                {dates.map((_, idx) => (
+                  <div key={idx} className={`${viewType === "mois" ? 'flex-1 min-w-0' : 'flex-shrink-0'} h-full border-r border-gray-300`} style={{ width: viewType === "mois" ? 'auto' : '28px' }} />
+                ))}
+              </div>
+              
+              {/* Lignes de cellules pour chaque employé */}
+              {groupe.employes.map((emp, empIndex) => {
+                const rowDense = globalDense && !expandedEmployees.has(emp.id);
+                const cellSizeClass = rowDense ? cellSizeClassBase : baseCellSizeClass;
+                const isLastInGroup = empIndex === groupe.employes.length - 1;
+                const isLastGroup = groupeIndex === employesGroupesParCategorie.length - 1;
+                
+                // Hauteur FIXE identique à la colonne employés - CRITIQUE pour alignement
+                const rowHeight = viewType === "mois" 
+                  ? "32px" 
+                  : viewType === "jour" 
+                    ? "112px" 
+                    : rowDense ? "56px" : "72px";
+                
+                return (
+                  <div 
+                    key={emp.id}
+                    className={`flex border-b border-gray-100 hover:bg-blue-50/30 transition-colors group ${viewType === "mois" ? 'w-full' : 'flex-nowrap'}`}
+                    style={{ 
+                      height: rowHeight,
+                      width: viewType === "mois" ? '100%' : 'auto'
+                    }}
+                  >
+                    {dates.map((date, i) => {
+                      const dStr = formatDate(date);
+                      const { shift, conge } = getCellData(emp, dStr);
+                      
+                      if (viewType === "mois") {
+                        const referenceMonth = dates[Math.min(15, dates.length - 1)].getMonth();
+                        const isCurrentMonth = date.getMonth() === referenceMonth;
+                        const weekend = isWeekend(date);
+                        const today = isToday(date);
+                        const hasSegments = shift && shift.type === 'présence' && shift.segments?.length;
+                        const hasPending = hasSegments && shift.segments.some(s => s.aValider);
+                        const hasExtra = hasSegments && shift.segments.some(s => s.isExtra);
+                        
+                        // Générer le tooltip informatif
+                        const generateTooltip = () => {
+                          const dayName = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+                          const fullDate = date.toLocaleDateString('fr-FR');
+                          let tooltipLines = [`${dayName} ${fullDate}`];
+                          
+                          if (conge) {
+                            tooltipLines.push(`🏖️ Congé: ${conge.type || 'Non spécifié'}`);
+                            tooltipLines.push(`Statut: ${conge.statut || 'En attente'}`);
+                          } else if (shift) {
+                            if (shift.type === 'absence') {
+                              tooltipLines.push(`❌ Absence: ${shift.motif || 'Non spécifié'}`);
+                            } else if (hasSegments) {
+                              const totalHours = shift.segments.reduce((acc, seg) => {
+                                if (seg.start && seg.end) {
+                                  const start = new Date(`1970-01-01T${seg.start}:00`);
+                                  const end = new Date(`1970-01-01T${seg.end}:00`);
+                                  return acc + (end - start) / (1000 * 60 * 60);
+                                }
+                                return acc;
+                              }, 0);
+                              tooltipLines.push(`⏰ ${shift.segments.length} créneau${shift.segments.length > 1 ? 'x' : ''} - ${totalHours.toFixed(1)}h`);
+                              shift.segments.forEach((seg, idx) => {
+                                let segLine = `${seg.start}-${seg.end}`;
+                                if (seg.isExtra) segLine += ' ⭐ EXTRA';
+                                if (seg.aValider) segLine += ' ⚠️ À valider';
+                                if (seg.commentaire) segLine += ` (${seg.commentaire})`;
+                                tooltipLines.push(`  ${idx + 1}. ${segLine}`);
+                              });
+                            }
+                          } else {
+                            tooltipLines.push('📝 Aucune planification');
+                            tooltipLines.push('Cliquez pour ajouter un créneau');
+                          }
+                          
+                          return tooltipLines.join('\n');
+                        };
+                        
+                        // Déterminer la couleur de fond selon l'état
+                        let cellClasses = `flex-1 min-w-0 relative h-8 border-r border-b transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset`;
+                        let cellStyle = {};
+                        let contentClasses = 'absolute inset-0 flex items-center justify-center';
+                        let badgeClasses = '';
+                        let badgeText = '';
+                        let showIndicator = false;
+                        let indicatorColor = '';
+                        
+                        if (!isCurrentMonth) {
+                          cellClasses += ' bg-gray-50/50 border-gray-100';
+                        } else if (today) {
+                          cellClasses += ' bg-gradient-to-br from-blue-50 to-blue-100 border-blue-300 shadow-sm ring-1 ring-blue-200';
+                        } else if (weekend) {
+                          cellClasses += ' bg-gray-100 border-gray-300';
+                        } else {
+                          cellClasses += ' bg-white border-gray-200 hover:bg-blue-50/50';
+                        }
+                        
+                        if (conge) {
+                          cellClasses += ' !bg-gradient-to-br from-amber-50 to-orange-50';
+                          badgeClasses = 'w-3 h-3 rounded-full text-[6px] font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm flex items-center justify-center';
+                          badgeText = 'C';
+                          showIndicator = true;
+                          indicatorColor = 'bg-amber-500';
+                        } else if (shift) {
+                          if (shift.type === 'absence') {
+                            cellClasses += ' !bg-gray-50';
+                            badgeClasses = 'w-3 h-3 rounded text-[6px] font-semibold text-gray-700 bg-gray-300 flex items-center justify-center';
+                            badgeText = 'A';
+                            showIndicator = true;
+                            indicatorColor = 'bg-gray-400';
+                          } else if (shift.type === 'présence' && hasSegments) {
+                            if (hasPending) {
+                              cellClasses += ' !bg-gradient-to-br from-purple-50 to-purple-100/50';
+                              badgeClasses = 'w-3 h-3 rounded-full text-[6px] font-bold text-white bg-gradient-to-r from-purple-600 to-purple-700 shadow-sm flex items-center justify-center';
+                              showIndicator = true;
+                              indicatorColor = 'bg-purple-500';
+                            } else if (hasExtra) {
+                              cellClasses += ' !bg-gradient-to-br from-orange-50 to-red-50';
+                              badgeClasses = 'w-3 h-3 rounded-full text-[6px] font-bold text-white bg-gradient-to-r from-[#cf292c] to-red-700 shadow-sm flex items-center justify-center border border-red-300';
+                              showIndicator = true;
+                              indicatorColor = 'bg-[#cf292c]';
+                            } else {
+                              cellClasses += ' !bg-gradient-to-br from-blue-50 to-cyan-50/50';
+                              badgeClasses = 'w-3 h-3 rounded-full text-[6px] font-bold text-white bg-gradient-to-r from-blue-600 to-cyan-600 shadow-sm flex items-center justify-center';
+                              showIndicator = true;
+                              indicatorColor = 'bg-blue-500';
+                            }
+                            // Calculer les heures totales
+                            const totalMinutes = shift.segments.reduce((acc, seg) => {
+                              if (!seg.start || !seg.end) return acc;
+                              const [startH, startM] = seg.start.split(':').map(Number);
+                              const [endH, endM] = seg.end.split(':').map(Number);
+                              return acc + ((endH * 60 + endM) - (startH * 60 + startM));
+                            }, 0);
+                            const hours = Math.floor(totalMinutes / 60);
+                            badgeText = hours > 0 ? `${hours}` : '•';
+                          }
+                        }
+                        
+                        return (
+                          <div
+                            key={i}
+                            title={generateTooltip()}
+                            onClick={() => onCellClick(emp.id, dStr)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onCellClick(emp.id, dStr);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-label={generateTooltip()}
+                            className={cellClasses}
+                            style={cellStyle}
+                          >
+                            {/* Indicateur de couleur en haut */}
+                            {showIndicator && (
+                              <div className={`absolute top-0 left-0 right-0 h-0.5 ${indicatorColor}`} />
+                            )}
+                            
+                            {/* Contenu de la cellule */}
+                            <div className={contentClasses}>
+                              {badgeText && (
+                                <div className={badgeClasses}>
+                                  {badgeText}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Indicateur extra en coin */}
+                            {hasExtra && (
+                              <div className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-[#cf292c] shadow-sm" title="Heures extra" />
+                            )}
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div key={i} className="flex-1 min-w-[110px]">
+                          <CellDrop
+                            employeId={emp.id}
+                            date={dStr}
+                            shift={shift}
+                            conge={conge}
+                            moveSegment={moveSegment}
+                            onCellClick={onCellClick}
+                            cellSizeClass={cellSizeClass}
+                            showComparaison={showComparaison}
+                            getEcartsForEmployeeDate={getEcartsForEmployeeDate}
+                            formatEcart={formatEcart}
+                            denseMode={skelloMode || rowDense}
+                            handleAnomalieClick={handleAnomalieClick}
+                            handleQuickAction={handleQuickAction}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -3325,45 +3238,8 @@ export default function PlanningRH() {
   // Filtrage par catégorie d'employé
   const [categorieFilter, setCategorieFilter] = useState("tous");
   
-  // Fonction pour obtenir la catégorie d'un employé (couleur et libellé)
-  const getCategorieEmploye = (employe) => {
-    // Utiliser le champ 'categorie' de la base de données
-    const categorie = (employe.categorie || '').toLowerCase();
-    
-    // Catégories prédéfinies avec couleurs - basées sur le champ 'categorie'
-    if (categorie.includes('cuisine')) {
-      return { label: 'Cuisine', color: 'bg-orange-100 text-orange-800', icon: '👨‍🍳' };
-    }
-    if (categorie.includes('service')) {
-      return { label: 'Service', color: 'bg-blue-100 text-blue-800', icon: '🍽️' };
-    }
-    if (categorie.includes('management') || categorie.includes('admin') || categorie.includes('direction')) {
-      return { label: 'Administration', color: 'bg-purple-100 text-purple-800', icon: '💼' };
-    }
-    if (categorie.includes('technique') || categorie.includes('maintenance')) {
-      return { label: 'Technique', color: 'bg-green-100 text-green-800', icon: '🔧' };
-    }
-    if (categorie.includes('entretien') || categorie.includes('nettoyage')) {
-      return { label: 'Entretien', color: 'bg-yellow-100 text-yellow-800', icon: '🧹' };
-    }
-    if (categorie.includes('operations') || categorie.includes('logistique')) {
-      return { label: 'Opérations', color: 'bg-indigo-100 text-indigo-800', icon: '📦' };
-    }
-    if (categorie.includes('rh') || categorie.includes('ressources')) {
-      return { label: 'RH', color: 'bg-pink-100 text-pink-800', icon: '🤝' };
-    }
-    if (categorie.includes('finance') || categorie.includes('comptabilité')) {
-      return { label: 'Finance', color: 'bg-emerald-100 text-emerald-800', icon: '�' };
-    }
-    
-    // Catégorie par défaut - utilise le champ categorie s'il existe, sinon 'Général'
-    const labelDefaut = employe.categorie || 'Général';
-    return { 
-      label: labelDefaut, 
-      color: 'bg-gray-100 text-gray-800', 
-      icon: '👤' 
-    };
-  };
+  // Fonction pour obtenir la catégorie d'un employé (utilise la fonction centralisée)
+  const getCategorieEmploye = getCategorieEmployeUtil;
   
   // Filtrage des employés selon le terme de recherche ET la catégorie
   const filteredEmployes = useMemo(() => {
@@ -5158,180 +5034,193 @@ export default function PlanningRH() {
         )}
         
         {/* Conteneur principal optimisé pour l'espace */}
-        <div className="w-full max-w-[98%] mx-auto px-2 sm:px-3 lg:px-4">
-          {/* En-tête amélioré (non sticky) */}
-          <div className="rounded-b-md shadow-sm border border-gray-200/70 bg-white mb-3">
-            <div className="h-1 bg-gradient-to-r from-[#cf292c] via-rose-500 to-orange-400" />
-            <div className="px-2 sm:px-3 py-2 sm:py-3">
-              <div className="flex flex-col gap-2 lg:gap-3">
-                {/* Ligne principale - plus compacte */}
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      <div className="relative">
-                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-[#cf292c] to-red-700 flex items-center justify-center shadow-inner text-white">
-                          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                        </div>
-                      </div>
-                      <div className="leading-tight">
-                        <h1 className="text-sm sm:text-base font-semibold text-gray-900 tracking-tight">Planning RH</h1>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-gray-100 text-[9px] sm:text-xs text-gray-600 font-medium">
-                            {filteredEmployes.length} visible
-                          </span>
-                          {searchTerm && (
-                            <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-100 text-[9px] sm:text-xs text-amber-700 font-medium">
-                              filtre actif
-                            </span>
-                          )}
-                          {showComparaison && (
-                            <span className="hidden md:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-blue-100 text-[9px] sm:text-xs text-blue-700 font-medium">
-                              comparaison
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Navigation temporelle */}
-                    <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-3 border-l border-gray-200">
-                      <button
-                        aria-label="Période précédente"
-                        onClick={goPrev}
-                        className="group rounded-md p-1.5 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <button
-                        aria-label="Période suivante"
-                        onClick={goNext}
-                        className="group rounded-md p-1.5 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={goToday}
-                        className="text-[11px] sm:text-xs md:text-sm font-medium px-2.5 py-1.5 rounded-md bg-white shadow-sm border border-gray-200 hover:border-[#cf292c] hover:text-[#cf292c] transition"
-                      >
-                        Aujourd'hui
-                      </button>
-                    </div>
-
-                    {/* Période affichée */}
-                    <div className="hidden md:flex items-center text-xs md:text-sm font-medium text-gray-700 bg-gray-50 rounded-md px-3 py-1.5 border border-gray-200">
-                      {viewType === 'jour' && dateCourante.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                      {viewType === 'semaine' && `${dates[0]?.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} – ${dates[6]?.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
-                      {viewType === 'mois' && dateCourante.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-                    </div>
-                  </div>
-
-                  {/* Bouton menu mobile */}
-                  <div className="flex items-center gap-2">
-                    <div className="md:hidden text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-md border border-gray-200">
-                      {viewType === 'jour' && dateCourante.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                      {viewType === 'semaine' && `${dates[0]?.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} · ${dates[6]?.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
-                      {viewType === 'mois' && dateCourante.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' })}
-                    </div>
+        <div className="w-full">
+          {/* En-tête du planning - Distingué de la navbar */}
+          <div className="bg-gray-50/80 border-b border-gray-200 shadow-sm">
+            <div className="px-6 lg:px-8 py-3.5">
+              <div className="flex items-center gap-4">
+                {/* Gauche : Navigation temporelle + Période + Badge */}
+                <div className="flex items-center gap-3">
+                  {/* Navigation temporelle */}
+                  <div className="flex items-center gap-1">
                     <button
-                      aria-label="Ouvrir le menu"
-                      onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                      className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white shadow-sm hover:bg-gray-50 text-gray-600 hover:text-gray-900 transition"
+                      aria-label="Période précédente"
+                      onClick={goPrev}
+                      className="p-2 hover:bg-gray-50 text-gray-500 hover:text-gray-900 rounded-lg transition"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
-                      </svg>
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={goToday}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition"
+                    >
+                      Aujourd'hui
+                    </button>
+                    <button
+                      aria-label="Période suivante"
+                      onClick={goNext}
+                      className="p-2 hover:bg-gray-50 text-gray-500 hover:text-gray-900 rounded-lg transition"
+                    >
+                      <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
 
-                {/* Ligne secondaire (desktop) */}
-                <div className="hidden lg:flex items-center justify-between gap-4 pt-1">
-                  {/* Sélecteur de vue */}
-                  <div className="inline-flex rounded-lg bg-gray-100 p-1 border border-gray-200 shadow-inner">
-                    {['jour','semaine','mois'].map(v => (
-                      <button
-                        key={v}
-                        onClick={() => setViewType(v)}
-                        className={`relative px-3.5 py-1.5 text-xs font-medium capitalize rounded-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#cf292c]/40 ${
-                          viewType === v
-                            ? 'bg-white shadow-sm text-[#cf292c] ring-1 ring-[#cf292c]/30'
-                            : 'text-gray-600 hover:text-gray-900 hover:bg-white'
-                        }`}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                  </div>
+                  <div className="w-px h-6 bg-gray-200" />
 
-                  {/* Recherche + Filtre catégorie + actions */}
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-48 xl:w-64">
-                      <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        placeholder="Rechercher employé..."
-                        className="w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] placeholder:text-gray-400"
-                      />
-                      <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
-                      </svg>
-                    </div>
-
-                    {/* Filtre par catégorie */}
-                    <div className="relative">
-                      <select
-                        value={categorieFilter}
-                        onChange={e => setCategorieFilter(e.target.value)}
-                        className="rounded-md border border-gray-200 bg-white px-3 py-2 pr-8 text-xs md:text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] appearance-none"
-                      >
-                        <option value="tous">Toutes catégories</option>
-                        <option value="Cuisine">👨‍🍳 Cuisine</option>
-                        <option value="Service">🍽️ Service</option>
-                        <option value="Administration">💼 Administration</option>
-                        <option value="Technique">🔧 Technique</option>
-                        <option value="Entretien">🧹 Entretien</option>
-                        <option value="Sécurité">🛡️ Sécurité</option>
-                        <option value="Général">👤 Général</option>
-                      </select>
-                      <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                    <button
-                      onClick={() => { setShowComparaison(!showComparaison); if (!showComparaison) loadComparaisons(); }}
-                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs md:text-sm font-medium border transition ${showComparaison ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-800'}`}
-                      disabled={loadingComparaison}
-                    >
-                      {loadingComparaison ? '...' : 'Comparaison'}
-                    </button>
-                    {employes.length >= 15 && (
-                      <button
-                        onClick={() => { setForceReadable(v => !v); if (!forceReadable) setExpandedEmployees(new Set()); }}
-                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs md:text-sm font-medium border transition ${forceReadable ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-800'}`}
-                        title={forceReadable ? 'Revenir au mode compact' : 'Améliorer la lisibilité (désactiver le compact automatique)'}
-                      >
-                        {forceReadable ? 'Mode compact' : 'Mode lisible'}
-                      </button>
+                  {/* Période affichée - Style sobre et moderne */}
+                  <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-white/60 backdrop-blur-sm border border-gray-200/50">
+                    <Calendar className="w-4 h-4 text-gray-400" strokeWidth={1.5} />
+                    {viewType === 'jour' && (
+                      <span className="text-sm font-semibold text-gray-700">
+                        {dateCourante.toLocaleDateString('fr-FR', { day: 'numeric' })} {dateCourante.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')} {dateCourante.toLocaleDateString('fr-FR', { year: 'numeric' })}
+                      </span>
                     )}
-                    <button
-                      onClick={() => setCreationRapideModalOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs md:text-sm font-medium text-white bg-gradient-to-r from-[#cf292c] to-red-600 hover:from-[#d93437] hover:to-red-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#cf292c]/50"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                      Nouveau
-                    </button>
+                    {viewType === 'semaine' && (
+                      <span className="text-sm font-semibold text-gray-700">
+                        {dates[0]?.toLocaleDateString('fr-FR', { day: 'numeric' })} {dates[0]?.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')} – {dates[6]?.toLocaleDateString('fr-FR', { day: 'numeric' })} {dates[6]?.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '')} {dates[6]?.toLocaleDateString('fr-FR', { year: 'numeric' })}
+                      </span>
+                    )}
+                    {viewType === 'mois' && (
+                      <span className="text-sm font-semibold text-gray-700 capitalize">
+                        {dateCourante.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Menu mobile déroulant */}
-                <div className={`lg:hidden overflow-hidden transition-all duration-300 ${mobileMenuOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'} space-y-3`}>                  
+                {/* Centre : Sélecteur de vue */}
+                <div className="hidden lg:flex items-center gap-1">
+                  {['jour','semaine','mois'].map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setViewType(v)}
+                      className={`px-3 py-1.5 text-sm font-medium capitalize rounded-lg transition-all ${
+                        viewType === v
+                          ? 'text-[#cf292c] bg-red-50/80'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Droite : Recherche, Filtres et Actions */}
+                <div className="hidden lg:flex items-center gap-3 ml-auto">
+
+                  {/* Recherche */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      placeholder="Rechercher..."
+                      className="w-48 rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] placeholder:text-gray-400"
+                    />
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+
+                  {/* Filtre catégorie */}
+                  <select
+                    value={categorieFilter}
+                    onChange={e => setCategorieFilter(e.target.value)}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 pr-8 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] appearance-none cursor-pointer"
+                  >
+                    <option value="tous">Toutes catégories</option>
+                    <option value="Cuisine">👨‍🍳 Cuisine</option>
+                    <option value="Service">🍽️ Service</option>
+                    <option value="Administration">💼 Administration</option>
+                    <option value="Technique">🔧 Technique</option>
+                    <option value="Entretien">🧹 Entretien</option>
+                    <option value="Sécurité">🛡️ Sécurité</option>
+                    <option value="Général">👤 Général</option>
+                  </select>
+
+                  <div className="w-px h-6 bg-gray-200" />
+
+                  {/* Bouton Comparaison */}
+                  <button
+                    onClick={() => { setShowComparaison(!showComparaison); if (!showComparaison) loadComparaisons(); }}
+                    disabled={loadingComparaison}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${
+                      showComparaison 
+                        ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' 
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {loadingComparaison ? '...' : 'Comparaison'}
+                  </button>
+
+                  {/* Mode lisible (si beaucoup d'employés) */}
+                  {employes.length >= 15 && (
+                    <button
+                      onClick={() => { setForceReadable(v => !v); if (!forceReadable) setExpandedEmployees(new Set()); }}
+                      className={`p-2 rounded-lg transition-all ${
+                        forceReadable 
+                          ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' 
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      title={forceReadable ? 'Mode compact' : 'Mode lisible'}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={forceReadable ? 'M4 6h16M4 12h16M4 18h7' : 'M4 8h16M4 16h16'} />
+                      </svg>
+                    </button>
+                  )}
+
+                  {/* Panneau admin anomalies */}
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowAdminPanel(v => !v)}
+                      className={`p-2 rounded-lg transition-all ${
+                        showAdminPanel 
+                          ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' 
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                      title="Panneau admin anomalies"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                  )}
+
+                  <div className="w-px h-6 bg-gray-200" />
+
+                  {/* Bouton Nouveau - Style principal */}
+                  <button
+                    onClick={() => setCreationRapideModalOpen(true)}
+                    className="px-4 py-1.5 text-sm font-semibold text-white bg-[#cf292c] hover:bg-[#b52429] rounded-lg transition-all shadow-sm flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Nouveau
+                  </button>
+                </div>
+
+                {/* Menu mobile */}
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="lg:hidden p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d={mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Menu mobile déroulant */}
+              {mobileMenuOpen && (
+                <div className="lg:hidden pt-3 border-t border-gray-100 space-y-3">
                   <div className="flex gap-2">
                     {['jour','semaine','mois'].map(v => (
                       <button
                         key={v}
                         onClick={() => setViewType(v)}
-                        className={`flex-1 px-2.5 py-2 text-xs font-medium capitalize rounded-md border transition ${viewType === v ? 'bg-white border-[#cf292c] text-[#cf292c] shadow-sm' : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'}`}
+                        className={`flex-1 px-2.5 py-2 text-xs font-medium capitalize rounded-lg transition ${viewType === v ? 'bg-red-50 text-[#cf292c]' : 'text-gray-600 hover:bg-gray-50'}`}
                       >{v}</button>
                     ))}
                   </div>
@@ -5340,59 +5229,45 @@ export default function PlanningRH() {
                       type="text"
                       value={searchTerm}
                       onChange={e => setSearchTerm(e.target.value)}
-                      placeholder="Rechercher employé..."
-                      className="w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] placeholder:text-gray-400"
+                      placeholder="Rechercher..."
+                      className="w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c]"
                     />
-                    <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                   </div>
-                  
-                  {/* Filtre par catégorie mobile */}
-                  <div className="relative">
-                    <select
-                      value={categorieFilter}
-                      onChange={e => setCategorieFilter(e.target.value)}
-                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 pr-8 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] appearance-none"
-                    >
-                      <option value="tous">Toutes catégories</option>
-                      <option value="Cuisine">👨‍🍳 Cuisine</option>
-                      <option value="Service">🍽️ Service</option>
-                      <option value="Administration">💼 Administration</option>
-                      <option value="Technique">🔧 Technique</option>
-                      <option value="Entretien">🧹 Entretien</option>
-                      <option value="Sécurité">🛡️ Sécurité</option>
-                      <option value="Général">👤 Général</option>
-                    </select>
-                    <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+                  <select
+                    value={categorieFilter}
+                    onChange={e => setCategorieFilter(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700"
+                  >
+                    <option value="tous">Toutes catégories</option>
+                    <option value="Cuisine">👨‍🍳 Cuisine</option>
+                    <option value="Service">🍽️ Service</option>
+                    <option value="Administration">💼 Administration</option>
+                    <option value="Technique">🔧 Technique</option>
+                    <option value="Entretien">🧹 Entretien</option>
+                    <option value="Sécurité">🛡️ Sécurité</option>
+                    <option value="Général">👤 Général</option>
+                  </select>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setShowComparaison(!showComparaison); if (!showComparaison) loadComparaisons(); }}
-                      className={`flex-1 px-2.5 py-2 rounded-md text-xs font-medium border transition ${showComparaison ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                       disabled={loadingComparaison}
+                      className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition ${showComparaison ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}
                     >{loadingComparaison ? '...' : 'Comparaison'}</button>
-                    {employes.length >= 15 && (
-                      <button
-                        onClick={() => { setForceReadable(v => !v); if (!forceReadable) setExpandedEmployees(new Set()); }}
-                        className={`flex-1 px-2.5 py-2 rounded-md text-xs font-medium border transition ${forceReadable ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                      >{forceReadable ? 'Compact' : 'Lisible'}</button>
-                    )}
                     <button
                       onClick={() => setCreationRapideModalOpen(true)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-md text-xs font-medium text-white bg-[#cf292c] hover:bg-red-600 shadow-sm"
+                      className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-[#cf292c] hover:bg-[#b52429]"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                      Nouveau
+                      + Nouveau
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
             
             {/* Vue selon type - Planning principal optimisé */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-white">
               {filteredEmployes.length === 0 ? (
                 /* État vide - Aucun employé trouvé */
                 <div className="flex flex-col items-center justify-center py-12 px-4">
@@ -5477,7 +5352,7 @@ export default function PlanningRH() {
               </div>
               
               {/* Vue mobile (masquée sur desktop) */}
-              <div className="md:hidden p-2">
+              <div className="md:hidden">
                 <PlanningMobileView
                   employes={filteredEmployes}
                   dates={dates}

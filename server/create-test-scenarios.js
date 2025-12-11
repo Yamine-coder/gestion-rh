@@ -1,226 +1,110 @@
 const prisma = require('./prisma/client');
-const crypto = require('crypto');
 
 async function createTestScenarios() {
   try {
-    console.log('🎭 Création de scénarios de test pour le système de pointage...\n');
+    console.log('🎭 Création de scénarios de test pour Timeline...\n');
 
-    // Récupérer les employés existants
-    const employes = await prisma.user.findMany({
-      where: { role: { not: 'admin' } },
-      select: { id: true, email: true, nom: true, prenom: true }
+    // Trouver l'utilisateur Jordan
+    const user = await prisma.user.findFirst({
+      where: { email: 'yjordan496@gmail.com' }
     });
 
-    if (employes.length === 0) {
-      console.log('❌ Aucun employé trouvé');
+    if (!user) {
+      console.log('❌ Utilisateur yjordan496@gmail.com non trouvé');
       return;
     }
 
-    console.log(`✅ ${employes.length} employés trouvés\n`);
+    console.log(`✅ Utilisateur: ${user.prenom} ${user.nom} (ID: ${user.id})\n`);
 
-    // Dates de test
     const today = new Date();
-    const dates = {
-      aujourdhui: new Date(today),
-      demain: new Date(today.getTime() + 24 * 60 * 60 * 1000),
-      aprèsDemain: new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000),
-      dans3jours: new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000)
-    };
+    today.setHours(0, 0, 0, 0);
 
-    // Nettoyer les anciens shifts de test
-    console.log('🧹 Nettoyage des anciens shifts de test...');
-    await prisma.shift.deleteMany({
-      where: {
-        OR: [
-          { date: dates.aujourdhui },
-          { date: dates.demain },
-          { date: dates.aprèsDemain },
-          { date: dates.dans3jours }
-        ]
-      }
+    // Nettoyer les données du jour
+    console.log('🧹 Nettoyage des données du jour...');
+    await prisma.pointage.deleteMany({
+      where: { userId: user.id, horodatage: { gte: today } }
+    });
+    await prisma.anomalie.deleteMany({
+      where: { employeId: user.id, date: { gte: today } }
     });
 
-    const scenariosDeTest = [
-      // SCENARIO 1: Shift de présence normal avec segments
-      {
-        employeId: employes[0]?.id,
-        date: dates.demain,
-        type: 'présence',
-        segments: [
-          {
-            id: crypto.randomUUID(),
-            start: '09:00',
-            end: '12:00',
-            commentaire: 'Service matin',
-            aValider: false,
-            isExtra: false,
-            extraMontant: '',
-            paymentStatus: 'à_payer',
-            paymentMethod: '',
-            paymentDate: '',
-            paymentNote: ''
-          },
-          {
-            id: crypto.randomUUID(),
-            start: '14:00',
-            end: '18:00',
-            commentaire: 'Service après-midi',
-            aValider: false,
-            isExtra: false,
-            extraMontant: '',
-            paymentStatus: 'à_payer',
-            paymentMethod: '',
-            paymentDate: '',
-            paymentNote: ''
-          }
-        ],
-        titre: 'PRÉSENCE NORMALE (7h planifiées)'
-      },
-
-      // SCENARIO 2: Shift d'absence planifiée
-      {
-        employeId: employes[1]?.id || employes[0]?.id,
-        date: dates.demain,
-        type: 'absence',
-        motif: 'Congé maladie',
-        segments: [],
-        titre: 'ABSENCE PLANIFIÉE (congé maladie)'
-      },
-
-      // SCENARIO 3: Shift avec heures supplémentaires
-      {
-        employeId: employes[2]?.id || employes[0]?.id,
-        date: dates.aprèsDemain,
-        type: 'présence',
-        segments: [
-          {
-            id: crypto.randomUUID(),
-            start: '11:00',
-            end: '14:30',
-            commentaire: 'Service midi',
-            aValider: false,
-            isExtra: false,
-            extraMontant: '',
-            paymentStatus: 'à_payer',
-            paymentMethod: '',
-            paymentDate: '',
-            paymentNote: ''
-          },
-          {
-            id: crypto.randomUUID(),
-            start: '18:00',
-            end: '22:00',
-            commentaire: 'Service soir',
-            aValider: false,
-            isExtra: false,
-            extraMontant: '',
-            paymentStatus: 'à_payer',
-            paymentMethod: '',
-            paymentDate: '',
-            paymentNote: ''
-          },
-          {
-            id: crypto.randomUUID(),
-            start: '22:00',
-            end: '23:30',
-            commentaire: 'Heures supplémentaires - Rush imprévu',
-            aValider: false,
-            isExtra: true,
-            extraMontant: '25',
-            paymentStatus: 'à_payer',
-            paymentMethod: '',
-            paymentDate: '',
-            paymentNote: ''
-          }
-        ],
-        titre: 'PRÉSENCE AVEC EXTRA (9h dont 1h30 supplémentaires)'
-      },
-
-      // SCENARIO 4: Shift planifié vide (présence mais sans détail)
-      {
-        employeId: employes[3]?.id || employes[0]?.id,
-        date: dates.dans3jours,
-        type: 'présence',
-        segments: [],
-        titre: 'PRÉSENCE PLANIFIÉE SANS DÉTAIL (horaires non précisés)'
-      }
+    // SCÉNARIO: Journée avec 2 shifts + anomalies variées
+    console.log('\n📍 Création des pointages (2 shifts)...');
+    
+    const pointages = [
+      { type: 'arrivee', h: 8, m: 15 },   // Retard 15 min (prévu 8h)
+      { type: 'depart', h: 12, m: 0 },    // Pause déjeuner
+      { type: 'arrivee', h: 13, m: 30 },  // Retour pause
+      { type: 'depart', h: 18, m: 45 },   // Fin + heures sup (prévu 18h)
     ];
-
-    // Créer les shifts de test
-    console.log('🎬 Création des scénarios de test:\n');
-    let compteur = 1;
-
-    for (const scenario of scenariosDeTest) {
-      const employe = employes.find(e => e.id === scenario.employeId);
-      const dateStr = scenario.date.toISOString().split('T')[0];
-
-      try {
-        const nouveauShift = await prisma.shift.create({
-          data: {
-            employeId: scenario.employeId,
-            date: scenario.date,
-            type: scenario.type,
-            segments: scenario.segments || [],
-            motif: scenario.motif || null
-          }
-        });
-
-        console.log(`${compteur}. ✅ ${scenario.titre}`);
-        console.log(`   👤 Employé: ${employe?.prenom} ${employe?.nom} (${employe?.email})`);
-        console.log(`   📅 Date: ${dateStr}`);
-        console.log(`   🎭 Type: ${scenario.type}`);
-        
-        if (scenario.motif) {
-          console.log(`   🚫 Motif: ${scenario.motif}`);
+    
+    for (const p of pointages) {
+      const d = new Date(today);
+      d.setHours(p.h, p.m, 0, 0);
+      await prisma.pointage.create({
+        data: {
+          userId: user.id,
+          type: p.type,
+          horodatage: d
         }
-        
-        if (scenario.segments && scenario.segments.length > 0) {
-          let totalMinutes = 0;
-          console.log(`   ⏰ Segments:`);
-          scenario.segments.forEach((seg, idx) => {
-            const [startH, startM] = seg.start.split(':').map(Number);
-            const [endH, endM] = seg.end.split(':').map(Number);
-            const minutes = (endH * 60 + endM) - (startH * 60 + startM);
-            totalMinutes += minutes;
-            
-            console.log(`      ${idx + 1}. ${seg.start}-${seg.end} | ${seg.commentaire}${seg.isExtra ? ' (EXTRA)' : ''}`);
-          });
-          console.log(`   📊 Total: ${(totalMinutes / 60).toFixed(1)}h`);
-        }
-        
-        console.log(`   🆔 Shift ID: ${nouveauShift.id}\n`);
-        compteur++;
-
-      } catch (error) {
-        console.error(`❌ Erreur création shift pour ${employe?.email}:`, error.message);
-      }
+      });
+      console.log(`  ✓ ${p.type} à ${p.h}:${p.m.toString().padStart(2, '0')}`);
     }
 
-    // Résumé pour les tests
-    console.log('🎯 RÉSUMÉ POUR TESTER LES SCÉNARIOS:');
-    console.log('=====================================');
-    console.log('🔸 Connectez-vous avec différents comptes employés');
-    console.log('🔸 Regardez comment l\'interface s\'adapte selon le type de shift');
-    console.log('🔸 Testez les pointages sur chaque scénario\n');
+    // Anomalies avec différents statuts
+    console.log('\n⚠️ Création des anomalies...');
+    
+    const anomalies = [
+      {
+        type: 'retard',
+        statut: 'validee',
+        details: { heureReelle: '08:15', heurePrevue: '08:00', ecartMinutes: 15 }
+      },
+      {
+        type: 'heures_supplementaires',
+        statut: 'en_attente',
+        details: { heureReelle: '18:45', heurePrevue: '18:00', heuresSupp: 0.75, ecartMinutes: 45 }
+      },
+      {
+        type: 'depart_anticipe',
+        statut: 'refusee',
+        details: { heureReelle: '12:30', heurePrevue: '13:00', ecartMinutes: 30 }
+      }
+    ];
+    
+    for (const a of anomalies) {
+      await prisma.anomalie.create({
+        data: {
+          employeId: user.id,
+          type: a.type,
+          date: today,
+          statut: a.statut,
+          details: a.details,
+          description: `Test ${a.type}`,
+          gravite: 'moyenne'
+        }
+      });
+      console.log(`  ✓ ${a.type} [${a.statut}]`);
+    }
 
-    console.log('📋 SCÉNARIOS CRÉÉS:');
-    console.log('1️⃣ NORMAL : Présence avec planning détaillé (7h)');
-    console.log('2️⃣ ABSENCE : Congé maladie planifié');
-    console.log('3️⃣ EXTRA : Présence avec heures supplémentaires (9h)');
-    console.log('4️⃣ VIDE : Présence planifiée sans horaires détaillés\n');
-
-    console.log('🔄 SCÉNARIO MANQUANT pour test complet:');
-    console.log('5️⃣ REPOS/EXTRA : Employé sans planning qui fait quand même du pointage');
-    console.log('   ➡️ Ne créez pas de shift pour un employé et pointez quand même');
-
-    console.log('\n✅ Tous les scénarios de test créés avec succès !');
+    console.log('\n✅ Scénario de test créé avec succès!');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📊 Résumé:');
+    console.log('  • 4 pointages (2 shifts)');
+    console.log('  • Shift 1: 08:15 → 12:00 (3h45)');
+    console.log('  • Shift 2: 13:30 → 18:45 (5h15)');
+    console.log('  • Total: ~9h de travail');
+    console.log('  • 3 anomalies:');
+    console.log('    - Retard 15 min [VALIDÉE ✓]');
+    console.log('    - Heures sup +45 min [EN ATTENTE ⏳]');
+    console.log('    - Départ anticipé 30 min [REFUSÉE ✗]');
+    console.log('\n👉 Connectez-vous avec yjordan496@gmail.com / Test1234!');
 
   } catch (error) {
-    console.error('❌ Erreur lors de la création des scénarios:', error);
+    console.error('❌ Erreur:', error);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-// Exécution
 createTestScenarios();

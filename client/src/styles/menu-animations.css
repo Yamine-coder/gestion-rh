@@ -79,6 +79,20 @@
   box-shadow: 0 0 0 3px rgba(207, 41, 44, 0.1);
 }
 
+/* Animation de highlight pour les lignes de tableau */
+.animate-highlight-row {
+  animation: highlightPulse 1s ease-in-out 2;
+}
+
+@keyframes highlightPulse {
+  0%, 100% {
+    background-color: rgb(254 242 242); /* red-50 */
+  }
+  50% {
+    background-color: rgb(254 226 226); /* red-100 */
+  }
+}
+
 /* Hover effects subtils */
 .hover-lift:hover {
   transform: translateY(-1px);

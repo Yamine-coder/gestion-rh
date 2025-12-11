@@ -1,0 +1,11 @@
+nom,prenom,email,telephone,adresse,role,categorie,dateEmbauche
+Dupont,Jean,jean.dupont@restaurant.fr,0612345678,15 Rue de la Paix Paris,Employé,Cuisine,2024-01-15
+Martin,Sophie,sophie.martin@restaurant.fr,0623456789,23 Avenue des Champs Paris,Employé,Service,2024-02-20
+Bernard,Pierre,pierre.bernard@restaurant.fr,0634567890,42 Boulevard Saint-Michel Paris,Manager,Management,2023-11-10
+Durand,Marie,marie.durand@restaurant.fr,0645678901,8 Rue du Commerce Paris,Employé,Service,2024-03-05
+Petit,Luc,luc.petit@restaurant.fr,0656789012,33 Avenue de la République Paris,Employé,Cuisine,2024-01-20
+Leroy,Emma,emma.leroy@restaurant.fr,0667890123,56 Rue de Rivoli Paris,Employé,Service,2024-04-12
+Moreau,Thomas,thomas.moreau@restaurant.fr,0678901234,91 Boulevard Haussmann Paris,Employé,Entretien,2024-02-28
+Simon,Julie,julie.simon@restaurant.fr,0689012345,12 Rue Montmartre Paris,Manager,Management,2023-12-01
+Laurent,Nicolas,nicolas.laurent@restaurant.fr,0690123456,67 Avenue Victor Hugo Paris,Employé,Cuisine,2024-03-18
+Michel,Camille,camille.michel@restaurant.fr,0601234567,45 Rue de la Pompe Paris,Employé,Service,2024-05-07

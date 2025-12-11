@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Timezone - Paris</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #1a1a2e; color: #eee; }
+    .box { background: #16213e; padding: 20px; border-radius: 10px; margin: 15px 0; }
+    .success { border-left: 4px solid #4ade80; }
+    .error { border-left: 4px solid #f87171; }
+    .warning { border-left: 4px solid #fbbf24; }
+    h1 { color: #cf292c; }
+    h2 { color: #60a5fa; margin-top: 0; }
+    code { background: #0f0f23; padding: 2px 6px; border-radius: 4px; color: #fbbf24; }
+    .result { font-size: 18px; font-weight: bold; }
+    .old { color: #f87171; text-decoration: line-through; }
+    .new { color: #4ade80; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    td, th { padding: 8px; text-align: left; border-bottom: 1px solid #333; }
+    th { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <h1>🕐 Test Timezone - Vérification Paris</h1>
+  <p>Date/Heure système: <strong id="systemTime"></strong></p>
+  
+  <div class="box" id="currentTimeBox">
+    <h2>📅 Date/Heure Actuelle</h2>
+    <table>
+      <tr><th>Méthode</th><th>Résultat</th></tr>
+      <tr><td>new Date().toString()</td><td id="nowString"></td></tr>
+      <tr><td>new Date().toISOString()</td><td id="nowISO"></td></tr>
+      <tr><td class="new">toLocalDateString(now)</td><td id="nowLocal" class="result"></td></tr>
+      <tr><td class="new">toLocalTimeString(now)</td><td id="nowTimeLocal" class="result"></td></tr>
+    </table>
+  </div>
+
+  <div class="box" id="isoTestBox">
+    <h2>🔄 Test Date ISO (comme en base de données)</h2>
+    <p>Date brute en BDD: <code>2025-12-06T11:00:00.000Z</code></p>
+    <table>
+      <tr><th>Méthode</th><th>Résultat</th><th>Status</th></tr>
+      <tr>
+        <td class="old">❌ ANCIEN: .split('T')[0]</td>
+        <td id="isoOld"></td>
+        <td id="isoOldStatus"></td>
+      </tr>
+      <tr>
+        <td class="new">✅ NOUVEAU: toLocalDateString()</td>
+        <td id="isoNew" class="result"></td>
+        <td id="isoNewStatus"></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="box" id="shiftTestBox">
+    <h2>🔍 Test Comparaisons de Shifts</h2>
+    <table>
+      <tr><th>Shift</th><th>Date Brute</th><th>Date Locale</th><th>Est passé?</th><th>A commencé (09:00)?</th></tr>
+      <tr id="shiftHier"></tr>
+      <tr id="shiftAujourdhui"></tr>
+      <tr id="shiftDemain"></tr>
+    </table>
+  </div>
+
+  <div class="box" id="conclusionBox">
+    <h2>📋 Conclusion</h2>
+    <div id="conclusion"></div>
+  </div>
+
+  <script type="module">
+    // ══════════════════════════════════════════════════════════════════════
+    // FONCTIONS UTILITAIRES (copie de parisTimeUtils.js)
+    // ══════════════════════════════════════════════════════════════════════
+    
+    function parseLocalDate(dateValue) {
+      if (!dateValue) return null;
+      if (dateValue instanceof Date) {
+        return isNaN(dateValue.getTime()) ? null : dateValue;
+      }
+      if (typeof dateValue === 'string') {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          const [year, month, day] = dateValue.split('-').map(Number);
+          return new Date(year, month - 1, day, 0, 0, 0, 0);
+        }
+        const dateObj = new Date(dateValue);
+        if (!isNaN(dateObj.getTime())) {
+          return dateObj;
+        }
+      }
+      const parsed = new Date(dateValue);
+      return isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function toLocalDateString(dateValue) {
+      const date = parseLocalDate(dateValue);
+      if (!date) return null;
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function toLocalTimeString(dateValue) {
+      const date = parseLocalDate(dateValue);
+      if (!date) return null;
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+
+    function createLocalDateTime(dateValue, timeString) {
+      const date = parseLocalDate(dateValue);
+      if (!date) return null;
+      const [hours, minutes] = (timeString || '00:00').split(':').map(Number);
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate(), hours || 0, minutes || 0, 0, 0);
+    }
+
+    function isShiftInPast(shiftDate) {
+      const date = parseLocalDate(shiftDate);
+      if (!date) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const shiftDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+      return shiftDay < today;
+    }
+
+    function isShiftStarted(shiftDate, startTime) {
+      const shiftStart = createLocalDateTime(shiftDate, startTime || '00:00');
+      if (!shiftStart) return false;
+      return new Date() >= shiftStart;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // TESTS
+    // ══════════════════════════════════════════════════════════════════════
+    
+    const now = new Date();
+    
+    // Mise à jour heure système
+    document.getElementById('systemTime').textContent = now.toLocaleString('fr-FR', { 
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+      hour: '2-digit', minute: '2-digit', second: '2-digit' 
+    });
+    
+    // Test Date Actuelle
+    document.getElementById('nowString').textContent = now.toString();
+    document.getElementById('nowISO').textContent = now.toISOString();
+    document.getElementById('nowLocal').textContent = toLocalDateString(now);
+    document.getElementById('nowTimeLocal').textContent = toLocalTimeString(now);
+    
+    // Test Date ISO
+    const dateISO = '2025-12-06T11:00:00.000Z';
+    const oldMethod = dateISO.split('T')[0];
+    const newMethod = toLocalDateString(dateISO);
+    
+    document.getElementById('isoOld').textContent = oldMethod;
+    document.getElementById('isoNew').textContent = newMethod;
+    
+    // En France (UTC+1), 11:00 UTC = 12:00 Paris, donc c'est bien le 6 décembre
+    const expectedDate = '2025-12-06';
+    document.getElementById('isoOldStatus').innerHTML = oldMethod === expectedDate ? '✅' : '⚠️ Peut buguer selon timezone';
+    document.getElementById('isoNewStatus').innerHTML = newMethod === expectedDate ? '✅ Correct!' : '❌ Erreur';
+    
+    // Test Shifts
+    const shifts = [
+      { label: 'Hier (5 dec)', date: '2025-12-05T10:00:00.000Z' },
+      { label: "Aujourd'hui (6 dec)", date: '2025-12-06T11:00:00.000Z' },
+      { label: 'Demain (7 dec)', date: '2025-12-07T08:00:00.000Z' }
+    ];
+    
+    shifts.forEach((shift, idx) => {
+      const rowId = ['shiftHier', 'shiftAujourdhui', 'shiftDemain'][idx];
+      const row = document.getElementById(rowId);
+      const isPast = isShiftInPast(shift.date);
+      const isStarted = isShiftStarted(shift.date, '09:00');
+      
+      row.innerHTML = `
+        <td><strong>${shift.label}</strong></td>
+        <td><code>${shift.date}</code></td>
+        <td>${toLocalDateString(shift.date)}</td>
+        <td>${isPast ? '✅ Oui' : '❌ Non'}</td>
+        <td>${isStarted ? '✅ Oui' : '❌ Non'}</td>
+      `;
+    });
+    
+    // Conclusion
+    const todayStr = toLocalDateString(now);
+    const isCorrect = todayStr === '2025-12-06' && 
+                      !isShiftInPast('2025-12-07T08:00:00.000Z') &&
+                      isShiftInPast('2025-12-05T10:00:00.000Z');
+    
+    const conclusionBox = document.getElementById('conclusionBox');
+    const conclusion = document.getElementById('conclusion');
+    
+    if (isCorrect) {
+      conclusionBox.classList.add('success');
+      conclusion.innerHTML = `
+        <p style="font-size: 24px; color: #4ade80;">✅ TOUT FONCTIONNE CORRECTEMENT !</p>
+        <ul>
+          <li>Date locale détectée: <strong>${todayStr}</strong></li>
+          <li>Heure locale: <strong>${toLocalTimeString(now)}</strong></li>
+          <li>Le shift du 7 décembre n'est <strong>PAS</strong> considéré comme passé ✅</li>
+          <li>Le shift du 5 décembre <strong>EST</strong> considéré comme passé ✅</li>
+        </ul>
+        <p>Les protections de remplacement devraient maintenant fonctionner correctement !</p>
+      `;
+    } else {
+      conclusionBox.classList.add('error');
+      conclusion.innerHTML = `
+        <p style="font-size: 24px; color: #f87171;">❌ PROBLÈME DÉTECTÉ</p>
+        <p>Date locale détectée: ${todayStr}</p>
+        <p>Vérifiez la configuration timezone de votre système.</p>
+      `;
+    }
+    
+    // Rafraîchir l'heure toutes les secondes
+    setInterval(() => {
+      const n = new Date();
+      document.getElementById('systemTime').textContent = n.toLocaleString('fr-FR', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+        hour: '2-digit', minute: '2-digit', second: '2-digit' 
+      });
+      document.getElementById('nowTimeLocal').textContent = toLocalTimeString(n);
+    }, 1000);
+  </script>
+</body>
+</html>

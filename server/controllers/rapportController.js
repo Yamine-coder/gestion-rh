@@ -2,6 +2,7 @@
 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { toLocalDateString } = require('../utils/dateUtils');
 
 // Récupérer le rapport d'heures pour un employé
 const getRapportEmploye = async (req, res) => {
@@ -141,7 +142,7 @@ const getRapportEmploye = async (req, res) => {
     shifts.forEach((shift, index) => {      
       console.log(`Shift ${index + 1}/${shifts.length}:`, {
         id: shift.id,
-        date: shift.date.toISOString().split('T')[0],
+        date: toLocalDateString(shift.date),
         segmentsCount: shift.segments?.length || 0
       });
       
@@ -184,7 +185,7 @@ const getRapportEmploye = async (req, res) => {
     pointages.forEach(pointage => {
       // Utiliser horodatage au lieu de date selon le schéma Prisma
       if (pointage.horodatage) {
-        const dateKey = pointage.horodatage.toISOString().split('T')[0];
+        const dateKey = toLocalDateString(pointage.horodatage);
         if (!pointagesParDate[dateKey]) {
           pointagesParDate[dateKey] = [];
         }
@@ -194,7 +195,7 @@ const getRapportEmploye = async (req, res) => {
 
     // Analyser chaque jour
     Object.entries(pointagesParDate).forEach(([date, pointagesJour]) => {
-      const shiftJour = shifts.find(s => s.date.toISOString().split('T')[0] === date);
+      const shiftJour = shifts.find(s => toLocalDateString(s.date) === date);
       
       let heuresJour = 0;
       let retardJour = 0;

@@ -3,6 +3,7 @@ import { detectConflicts, generateRecommendations } from "../utils/congeConflict
 
 // Composant Modal d'analyse des conflits - VERSION MINIMALISTE ET SOBRE
 export default function ConflictAnalysisModal({ conge, employes, allConges, onClose, onApprove, onReject }) {
+
   // Analyser les conflits
   const conflicts = detectConflicts(allConges, employes, conge.dateDebut, conge.dateFin, conge.userId);
   const recommendations = generateRecommendations(conflicts, conge.dateDebut, conge.dateFin);
@@ -44,6 +45,8 @@ export default function ConflictAnalysisModal({ conge, employes, allConges, onCl
       default: return 'Aucun conflit';
     }
   };
+
+
 
   return (
         <div className="fixed inset-0 bg-gray-900/30 backdrop-blur-[2px] flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">

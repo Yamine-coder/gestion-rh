@@ -3,18 +3,44 @@ import axios from "axios";
 import { toast } from "react-toastify";
 import CarteEmploye from "./CarteEmploye";
 import "./animations.css";
+import { CATEGORIES_EMPLOYES, CATEGORIES_ADMIN } from '../utils/categoriesConfig';
+import { getCurrentDateString } from '../utils/parisTimeUtils';
+import { Mail, Send, CheckCircle, AlertTriangle, Printer, ArrowLeft, Clock, User, Lock, FileText, Shield } from 'lucide-react';
 
-// Configuration des catégories pour fast-food
-const CATEGORIES_EMPLOYES = ['Cuisine', 'Service', 'Management', 'Entretien'];
-const CATEGORIES_ADMIN = ['Direction', 'RH', 'Finance', 'Operations'];
+// Fonction de formatage automatique du téléphone
+const formatTelephone = (value) => {
+  // Supprimer tout sauf les chiffres
+  const cleaned = value.replace(/\D/g, '');
+  
+  // Limiter à 10 chiffres maximum
+  const truncated = cleaned.substring(0, 10);
+  
+  // Format automatique: 06 12 34 56 78
+  if (truncated.length <= 2) {
+    return truncated;
+  } else if (truncated.length <= 4) {
+    return `${truncated.substring(0, 2)} ${truncated.substring(2)}`;
+  } else if (truncated.length <= 6) {
+    return `${truncated.substring(0, 2)} ${truncated.substring(2, 4)} ${truncated.substring(4)}`;
+  } else if (truncated.length <= 8) {
+    return `${truncated.substring(0, 2)} ${truncated.substring(2, 4)} ${truncated.substring(4, 6)} ${truncated.substring(6)}`;
+  } else {
+    return `${truncated.substring(0, 2)} ${truncated.substring(2, 4)} ${truncated.substring(4, 6)} ${truncated.substring(6, 8)} ${truncated.substring(8)}`;
+  }
+};
 
-function FormulaireCreationEmploye({ onEmployeCreated }) {
+function FormulaireCreationEmploye({ onEmployeCreated, onClose, isEmbedded = false, isModal = false }) {
+  // Déterminer si on est en mode compact (embedded ou modal)
+  const isCompact = isEmbedded || isModal;
+  
   const [email, setEmail] = useState("");
   const [nom, setNom] = useState("");
   const [prenom, setPrenom] = useState("");
   const [telephone, setTelephone] = useState("");
-  const [categorie, setCategorie] = useState("");
-  const [dateEmbauche, setDateEmbauche] = useState("");
+  // ✅ Support catégories multiples
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  // ✅ Date d'embauche : Date du jour par défaut pour simplifier la création
+  const [dateEmbauche, setDateEmbauche] = useState(getCurrentDateString());
   const [roleType, setRoleType] = useState("employee"); // Nouveau: employé ou admin
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,6 +51,7 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
   const [emailSent, setEmailSent] = useState(false);
   const [emailProcessing, setEmailProcessing] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false); // eslint-disable-line no-unused-vars
+  const [showConfirmEmail, setShowConfirmEmail] = useState(false); // Modal de confirmation avant envoi
   
   // Effet pour animer l'apparition des actions après l'affichage de la carte
   useEffect(() => {
@@ -53,9 +80,9 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
         setEmailProcessing(false);
         setShowTerminate(true);
         
-        // Après 5 secondes supplémentaires, rediriger automatiquement
+        // Après 3 secondes supplémentaires, fermer automatiquement (plus rapide en modale)
         redirectTimer = setTimeout(() => {
-          // Réinitialiser le formulaire ou rediriger
+          // Réinitialiser le formulaire
           setNouvelEmploye(null);
           setInfosConnexion(null);
           setMessage("");
@@ -63,33 +90,14 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
           setEmailSent(false);
           setShowTerminate(false);
           
-          // Notification de confirmation finale pour informer l'utilisateur
-          toast.success("Employé créé avec succès !", {
-            position: "bottom-right",
-            autoClose: 3000,
-            hideProgressBar: false,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-          });
-          
-          // Redirection automatique vers la liste des employés
-          // Décommenter une seule des options suivantes selon votre configuration:
-          
-          // Option 1: pour React Router v6
-          // navigate('/admin/employes');
-          
-          // Option 2: pour React Router v5
-          // history.push('/admin/employes');
-          
-          // Option 3: redirection native
-          // window.location.href = '/admin/employes';
-          
-          // Option 4: Callback pour informer le composant parent
-          if (onEmployeCreated) {
+          // En mode modal, fermer la modale
+          if (isModal && onClose) {
+            onClose();
+          } else if (onEmployeCreated) {
+            // Sinon, callback classique
             onEmployeCreated();
           }
-        }, 5000);
+        }, 3000);
       }, 1500);
     } else {
       setEmailProcessing(false);
@@ -100,7 +108,7 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
       clearTimeout(processingTimer);
       clearTimeout(redirectTimer);
     };
-  }, [emailSent, onEmployeCreated]);
+  }, [emailSent, onEmployeCreated, onClose, isModal]);
   
   // Fonction pour envoyer les identifiants par email
   const handleSendEmail = async () => {
@@ -137,7 +145,8 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
       console.log("Réponse du serveur:", response.data);
       
       setEmailSent(true);
-      toast.success("Identifiants envoyés par email avec succès !");
+      setShowConfirmEmail(false);
+      // Pas de toast - confirmation visible dans l'interface
       // Ne pas réinitialiser emailSent automatiquement, cela sera fait par le bouton Terminé
     } catch (error) {
       console.error("Erreur lors de l'envoi de l'email:", error);
@@ -184,6 +193,44 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage("");
+
+    // ✅ VALIDATION FRONTEND DES CHAMPS OBLIGATOIRES
+    if (!email || !email.trim()) {
+      toast.error("L'email est obligatoire");
+      return;
+    }
+
+    if (!nom || !nom.trim()) {
+      toast.error("Le nom est obligatoire");
+      return;
+    }
+
+    if (!prenom || !prenom.trim()) {
+      toast.error("Le prénom est obligatoire");
+      return;
+    }
+
+    if (selectedCategories.length === 0) {
+      toast.error("Veuillez sélectionner au moins une catégorie");
+      return;
+    }
+
+    // Validation format email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error("Format d'email invalide");
+      return;
+    }
+
+    // Validation téléphone (si fourni)
+    if (telephone) {
+      const cleanedPhone = telephone.replace(/\D/g, '');
+      if (cleanedPhone.length > 0 && cleanedPhone.length !== 10) {
+        toast.error("Le numéro de téléphone doit contenir 10 chiffres");
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -192,7 +239,7 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
         nom,
         prenom,
         telephone,
-        categorie,
+        categories: selectedCategories, // ✅ Array de catégories multiples
         dateEmbauche,
         role: roleType // 'employee' ou 'admin'
       }, {
@@ -213,13 +260,11 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
       setNom("");
       setPrenom("");
       setTelephone("");
-      setCategorie("");
+      setSelectedCategories([]);
       setDateEmbauche("");
       
-      // Appeler la fonction de rappel avec le nouvel employé
-      if (onEmployeCreated && typeof onEmployeCreated === 'function') {
-        onEmployeCreated(response.data);
-      }
+      // ⚠️ NE PAS appeler onEmployeCreated ici - On laisse l'admin envoyer l'email ou cliquer sur Terminer
+      // La redirection se fera via le useEffect après l'envoi d'email OU via le bouton Terminer
     } catch (err) {
       setMessage("❌ Erreur : " + (err.response?.data?.error || "serveur"));
     } finally {
@@ -228,257 +273,428 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
   };
 
   return (
-    <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm">
-      {/* Header + toggle rôle - design modernisé et responsive */}
-      <div className="mb-6 overflow-hidden rounded-xl bg-gradient-to-br from-[#cf292c] to-[#e74c3c]">
-        <div className="px-4 sm:px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="p-2 sm:p-2.5 rounded-full bg-white/20 backdrop-blur-sm flex-shrink-0 shadow-inner">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 sm:h-6 w-5 sm:w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+    <div className={`${isCompact ? '' : 'bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden'}`}>
+      {/* Header - Masqué en mode compact car le parent gère le header */}
+      {!isCompact && (
+        <div className="bg-gradient-to-r from-gray-50 to-white border-b border-gray-200 px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 rounded-xl bg-white border border-gray-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {roleType === 'admin' ? 'Nouvel administrateur' : 'Nouvel employé'}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Remplissez les informations ci-dessous
+                </p>
+              </div>
+            </div>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
+              <button
+                type="button"
+                onClick={()=>{setRoleType('employee'); setSelectedCategories([]);}}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 ${roleType==='employee' 
+                  ? 'bg-[#cf292c] text-white' 
+                  : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <User className="w-4 h-4" />
+                Employé
+              </button>
+              <button
+                type="button"
+                onClick={()=>{setRoleType('admin'); setSelectedCategories([]);}}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 ${roleType==='admin' 
+                  ? 'bg-[#cf292c] text-white' 
+                  : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                <Shield className="w-4 h-4" />
+                Admin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Corps du formulaire - MASQUÉ quand un employé a été créé */}
+      {!nouvelEmploye && (
+      <div className={isCompact ? '' : 'p-6'}>
+        {/* Sélecteur de type en mode embedded - Plus compact */}
+        {isCompact && (
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+            <p className="text-sm text-gray-600">
+              {roleType === 'admin' 
+                ? 'Un mot de passe temporaire sera envoyé par email' 
+                : 'Les identifiants seront envoyés automatiquement par email'}
+            </p>
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+              <button
+                type="button"
+                onClick={()=>{setRoleType('employee'); setSelectedCategories([]);}}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all ${roleType==='employee' 
+                  ? 'bg-[#cf292c] text-white' 
+                  : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                <User className="w-3.5 h-3.5" />
+                Employé
+              </button>
+              <button
+                type="button"
+                onClick={()=>{setRoleType('admin'); setSelectedCategories([]);}}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all ${roleType==='admin' 
+                  ? 'bg-[#cf292c] text-white' 
+                  : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                Admin
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Info badge - Uniquement en mode normal */}
+        {!isCompact && (
+          <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-white px-4 py-3.5 mb-8">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 flex-shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-semibold text-white mb-1">
-                {roleType === 'admin' ? 'Ajouter un administrateur' : 'Ajouter un employé'}
-              </h2>
-              <p className="text-xs sm:text-sm text-white/80 max-w-lg">
-                Création d'un profil {roleType === 'admin' ? 'administrateur' : 'employé'} avec email d'activation automatique.
-              </p>
-            </div>
+            <p className="text-sm text-gray-600 font-medium">
+              {roleType === 'admin' 
+                ? 'Un mot de passe temporaire sera envoyé par email' 
+                : 'Les identifiants seront envoyés automatiquement par email'}
+            </p>
           </div>
-          <div className="inline-flex rounded-full border border-white/30 bg-white/10 backdrop-blur-sm overflow-hidden self-start sm:self-center shadow-sm">
-            {[{value:'employee',label:'Employé'},{value:'admin',label:'Admin'}].map(opt => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={()=>{setRoleType(opt.value); setCategorie('');}}
-                className={`px-3 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all duration-200 ease-in-out ${roleType===opt.value 
-                  ? 'bg-white text-[#cf292c] shadow-sm' 
-                  : 'text-white hover:bg-white/20 hover:scale-105'}`}
-              >{opt.label}</button>
-            ))}
-          </div>
-        </div>
-      </div>
+        )}
 
-      {/* Alerte courte améliorée */}
-      <div className="mb-6 flex flex-col sm:flex-row items-center sm:items-start gap-3 rounded-xl border border-gray-200/80 bg-gray-50/70 p-3 sm:p-4 text-sm shadow-sm hover:shadow-md transition-all duration-200">
-        <div className="flex h-8 sm:h-10 w-8 sm:w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#cf292c] to-[#e74c3c] text-white shadow-sm">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div className="text-center sm:text-left">
-          <h4 className="font-medium text-gray-800 mb-1">Information importante</h4>
-          <p className="leading-snug text-gray-700 text-xs sm:text-sm">
-            {roleType === 'admin' 
-              ? 'Compte administrateur : accès étendus, mot de passe temporaire envoyé.' 
-              : 'Profil employé : identifiants temporaires envoyés automatiquement.'}
-          </p>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
-        {/* Informations personnelles - section modernisée */}
-        <div className="bg-white border border-gray-200 p-3 sm:p-5 rounded-xl hover:border-gray-300 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <div className="p-1.5 sm:p-2 rounded-full bg-gradient-to-br from-[#cf292c] to-[#e74c3c] text-white shadow-sm">
-              <svg className="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0Z"/><path strokeLinecap="round" strokeLinejoin="round" d="M12 14a7 7 0 00-7 7h14a7 7 0 00-7-7Z"/></svg>
+      <form onSubmit={handleSubmit} className={isCompact ? "space-y-5" : "space-y-8"}>
+        {/* Section informations personnelles */}
+        <div className={isCompact ? "space-y-4" : "space-y-5"}>
+          {!isCompact && (
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Informations personnelles</span>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
             </div>
-            <h3 className="text-xs sm:text-sm font-medium text-gray-800">Informations personnelles</h3>
-          </div>
+          )}
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            <div>
-              <label htmlFor="nom" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Nom *</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <input
-                  id="nom"
-                  type="text"
-                  placeholder="Nom de famille"
-                  className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 shadow-sm hover:shadow-md text-sm"
-                  value={nom}
-                  onChange={(e) => setNom(e.target.value)}
-                  required
-                />
-              </div>
+          {/* En mode embedded : une seule ligne avec 4 colonnes */}
+          <div className={`grid gap-4 ${isCompact ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-2 gap-5'}`}>
+            <div className="space-y-1.5">
+              <label htmlFor="nom" className="block text-sm font-medium text-gray-700">
+                Nom <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="nom"
+                type="text"
+                placeholder="Nom de famille"
+                className={`w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all text-sm bg-gray-50/50 hover:bg-white ${isCompact ? 'py-2' : 'py-2.5 px-4 rounded-xl'}`}
+                value={nom}
+                onChange={(e) => setNom(e.target.value)}
+                required
+              />
             </div>
             
-            <div>
-              <label htmlFor="prenom" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Prénom *</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <input
-                  id="prenom"
-                  type="text"
-                  placeholder="Prénom"
-                  className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 shadow-sm hover:shadow-md text-sm"
-                  value={prenom}
-                  onChange={(e) => setPrenom(e.target.value)}
-                  required
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label htmlFor="prenom" className="block text-sm font-medium text-gray-700">
+                Prénom <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="prenom"
+                type="text"
+                placeholder="Prénom"
+                className={`w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all text-sm bg-gray-50/50 hover:bg-white ${isCompact ? 'py-2' : 'py-2.5 px-4 rounded-xl'}`}
+                value={prenom}
+                onChange={(e) => setPrenom(e.target.value)}
+                required
+              />
+            </div>
+          
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="email"
+                type="email"
+                placeholder="prenom.nom@email.com"
+                className={`w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all text-sm bg-gray-50/50 hover:bg-white ${isCompact ? 'py-2' : 'py-2.5 px-4 rounded-xl'}`}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            
+            <div className="space-y-1.5">
+              <label htmlFor="telephone" className="block text-sm font-medium text-gray-700">
+                Téléphone
+              </label>
+              <input
+                id="telephone"
+                type="tel"
+                placeholder="06 12 34 56 78"
+                className={`w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all text-sm bg-gray-50/50 hover:bg-white ${isCompact ? 'py-2' : 'py-2.5 px-4 rounded-xl'}`}
+                value={telephone}
+                onChange={(e) => setTelephone(formatTelephone(e.target.value))}
+                maxLength={14}
+              />
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mt-3 sm:mt-4">
-            <div>
-              <label htmlFor="email" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Email professionnel *</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <input
-                  id="email"
-                  type="email"
-                  placeholder="prenom.nom@entreprise.com"
-                  className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 shadow-sm hover:shadow-md text-sm"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <p className="mt-1 text-2xs sm:text-xs text-gray-500">
-                Servira d'identifiant de connexion
+          {/* Indices email et téléphone - uniquement mode normal */}
+          {!isCompact && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                L'email servira d'identifiant de connexion
               </p>
-            </div>
-            
-            <div>
-              <label htmlFor="telephone" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Téléphone</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              {telephone && telephone.replace(/\D/g, '').length < 10 && (
+                <p className="text-xs text-orange-600 flex items-center gap-1">
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                </div>
-                <input
-                  id="telephone"
-                  type="tel"
-                  placeholder="06 12 34 56 78"
-                  className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 shadow-sm hover:shadow-md text-sm"
-                  value={telephone}
-                  onChange={(e) => setTelephone(e.target.value)}
-                />
-              </div>
+                  Numéro incomplet ({telephone.replace(/\D/g, '').length}/10 chiffres)
+                </p>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
-  {/* Section rôle supprimée : toggle déjà dans le header */}
-
-        {/* Catégorie - section modernisée */}
-        <div className="bg-white border border-gray-200 p-3 sm:p-5 rounded-xl hover:border-gray-300 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <div className="p-1.5 sm:p-2 rounded-full bg-gradient-to-br from-[#cf292c] to-[#e74c3c] text-white shadow-sm">
-              <svg className="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/></svg>
+        {/* Section catégorie */}
+        <div className={isCompact ? "space-y-3" : "space-y-5"}>
+          {!isCompact && (
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">
+                {roleType === 'admin' ? 'Service administratif' : 'Catégorie(s) d\'emploi'}
+                <span className="text-red-500 ml-1">*</span>
+              </span>
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
             </div>
-            <h3 className="text-xs sm:text-sm font-medium text-gray-800">{roleType === 'admin' ? 'Service administratif' : 'Catégorie d\'emploi'}</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">
+          )}
+          
+          {isCompact && (
+            <label className="block text-sm font-medium text-gray-700">
+              {roleType === 'admin' ? 'Service' : 'Catégorie(s)'} <span className="text-red-500">*</span>
+              {roleType === 'employee' && <span className="text-xs text-gray-400 font-normal ml-2">(multi-sélection)</span>}
+            </label>
+          )}
+          
+          {/* Info multi-sélection - uniquement mode normal */}
+          {!isCompact && roleType === 'employee' && (
+            <p className="text-xs text-gray-500 flex items-center gap-1.5 bg-blue-50/50 px-3 py-2 rounded-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Sélection multiple possible - Cliquez pour ajouter/retirer des catégories
+            </p>
+          )}
+          
+          <div className={`grid gap-2 ${isCompact ? 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-6' : 'grid-cols-2 md:grid-cols-3 gap-3'}`}>
             {categoriesDisponibles.map(cat => {
-              const active = categorie === cat;
+              const isSelected = selectedCategories.includes(cat);
               return (
                 <button
                   key={cat}
                   type="button"
-                  onClick={()=>setCategorie(cat)}
-                  className={`flex items-center justify-between rounded-xl border px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm transition-all duration-200 transform hover:shadow-sm ${active 
+                  onClick={() => {
+                    if (roleType === 'admin') {
+                      setSelectedCategories([cat]);
+                    } else {
+                      if (isSelected) {
+                        setSelectedCategories(prev => prev.filter(c => c !== cat));
+                      } else {
+                        setSelectedCategories(prev => [...prev, cat]);
+                      }
+                    }
+                  }}
+                  className={`${isCompact ? 'px-3 py-2 text-xs' : 'px-4 py-3 text-sm'} font-medium rounded-lg border-2 transition-all duration-200 relative ${isSelected 
                     ? 'border-[#cf292c] bg-[#cf292c]/5 text-[#cf292c] shadow-sm' 
-                    : 'border-gray-200 bg-white hover:bg-gray-50/80 hover:border-gray-300 text-gray-700'}`}
+                    : 'border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 text-gray-700'}`}
                 >
-                  <span className="font-medium truncate">{cat}</span>
-                  {active ? (
-                    <span className="flex h-4 sm:h-5 w-4 sm:w-5 items-center justify-center rounded-full bg-[#cf292c]">
-                      <svg className="h-2.5 sm:h-3 w-2.5 sm:w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  {isSelected && (
+                    <span className={`absolute ${isCompact ? 'top-0.5 right-0.5' : 'top-1.5 right-1.5'} flex h-4 w-4 items-center justify-center rounded-full bg-[#cf292c] text-white`}>
+                      <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     </span>
-                  ) : (
-                    <span className="w-4 sm:w-5 h-4 sm:h-5 rounded-full border border-gray-200"></span>
                   )}
+                  {cat}
                 </button>
               );
             })}
           </div>
+          
+          {/* Afficher les catégories sélectionnées - uniquement mode normal */}
+          {selectedCategories.length > 0 && !isCompact && (
+            <div className="flex flex-wrap gap-2 pt-2">
+              <span className="text-xs text-gray-500">Sélection :</span>
+              {selectedCategories.map(cat => (
+                <span 
+                  key={cat}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#cf292c]/10 text-[#cf292c] rounded-full text-xs font-medium"
+                >
+                  {cat}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategories(prev => prev.filter(c => c !== cat))}
+                    className="hover:bg-[#cf292c]/20 rounded-full p-0.5 transition-colors"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Informations contractuelles - section modernisée */}
-        <div className="bg-white border border-gray-200 p-3 sm:p-5 rounded-xl hover:border-gray-300 transition-all duration-200 hover:shadow-md">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <div className="p-1.5 sm:p-2 rounded-full bg-gradient-to-br from-[#cf292c] to-[#e74c3c] text-white shadow-sm">
-              <svg className="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2Z"/></svg>
-            </div>
-            <h3 className="text-xs sm:text-sm font-medium text-gray-800">Informations contractuelles</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            <div>
-              <label htmlFor="dateEmbauche" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Date d'embauche</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <input
-                  id="dateEmbauche"
-                  type="date"
-                  className="w-full pl-10 pr-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#cf292c]/30 focus:border-[#cf292c] transition-all duration-200 shadow-sm hover:shadow-md text-sm"
-                  value={dateEmbauche}
-                  onChange={(e) => setDateEmbauche(e.target.value)}
-                />
+        {/* Section date d'embauche et boutons */}
+        <div className={isCompact ? "flex flex-wrap items-end gap-4 pt-4 border-t border-gray-100" : "space-y-5"}>
+          {!isCompact && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Informations contractuelles</span>
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-2">
+                  <label htmlFor="dateEmbauche" className="block text-sm font-medium text-gray-700">
+                    Date d'embauche
+                    <span className="ml-2 text-xs text-gray-500 font-normal">(recommandé pour statistiques)</span>
+                  </label>
+                  <input
+                    id="dateEmbauche"
+                    type="date"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all text-sm bg-gray-50/50 hover:bg-white"
+                    value={dateEmbauche}
+                    onChange={(e) => setDateEmbauche(e.target.value)}
+                    title="Date du jour par défaut. Importante pour calculer l'ancienneté et les statistiques RH."
+                  />
+                  {!dateEmbauche && (
+                    <p className="text-xs text-orange-600 flex items-center gap-1">
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                      </svg>
+                      Date recommandée pour statistiques RH et ancienneté
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+          
+          {/* Date d'embauche - Mode embedded inline */}
+          {isCompact && (
+            <div className="flex-1 min-w-[180px] space-y-1.5">
+              <label htmlFor="dateEmbauche" className="block text-sm font-medium text-gray-700">
+                Date d'embauche
+              </label>
+              <input
+                id="dateEmbauche"
+                type="date"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all text-sm bg-gray-50/50 hover:bg-white"
+                value={dateEmbauche}
+                onChange={(e) => setDateEmbauche(e.target.value)}
+              />
             </div>
-          </div>
+          )}
+          
+          {/* Boutons - inline en mode embedded */}
+          {isCompact && (
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={()=>{ 
+                  setEmail(''); 
+                  setNom(''); 
+                  setPrenom(''); 
+                  setTelephone(''); 
+                  setSelectedCategories([]); 
+                  setDateEmbauche(getCurrentDateString());
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Effacer
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !nom || !prenom || !email || selectedCategories.length === 0}
+                className="inline-flex items-center gap-2 px-5 py-2 bg-[#cf292c] hover:bg-[#b8252a] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg shadow-sm transition-all"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <span>Création…</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>Créer</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Boutons d'action modernisés et responsives */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 sm:pt-5 border-t border-gray-200">
-          <p className="text-2xs sm:text-xs text-gray-500 text-center sm:text-left">Champs obligatoires *</p>
-          <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={()=>{ setEmail(''); setNom(''); setPrenom(''); setTelephone(''); setCategorie(''); setDateEmbauche(''); }}
-              className="px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm rounded-xl border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-200"
-            >
-              <span className="flex items-center gap-1 sm:gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        {/* Boutons d'action - Mode normal uniquement */}
+        {!isCompact && (
+        <div className="flex items-center justify-end gap-3 pt-8 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={()=>{ 
+              setEmail(''); 
+              setNom(''); 
+              setPrenom(''); 
+              setTelephone(''); 
+              setSelectedCategories([]); 
+              setDateEmbauche(getCurrentDateString()); // Remettre date du jour
+            }}
+            className="px-5 py-2.5 text-sm font-medium rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all"
+          >
+            Réinitialiser
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !nom || !prenom || !email || selectedCategories.length === 0}
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#cf292c] hover:bg-[#b8252a] disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl shadow-sm hover:shadow transition-all"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <span>Réinitialiser</span>
-              </span>
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !nom || !prenom || !email || !categorie}
-              className="inline-flex items-center justify-center gap-1 sm:gap-2 px-4 sm:px-6 py-2 sm:py-2.5 bg-[#cf292c] hover:bg-[#b8252a] disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-medium rounded-xl shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/40 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-3.5 sm:h-4 w-3.5 sm:w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  <span>Création…</span>
-                </>
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6" /></svg>
-                  <span>{roleType === 'admin' ? 'Créer administrateur' : 'Créer employé'}</span>
-                </>
-              )}
-            </button>
-          </div>
+                <span>Création en cours…</span>
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+                </svg>
+                <span>{roleType === 'admin' ? 'Créer administrateur' : 'Créer employé'}</span>
+              </>
+            )}
+          </button>
         </div>
+        )}
       </form>
+      </div>
+      )}
       
       {/* Message d'erreur uniquement */}
       {message && !message.includes("✅") && (
@@ -497,135 +713,166 @@ function FormulaireCreationEmploye({ onEmployeCreated }) {
         </div>
       )}
       
-      {/* Carte d'employé après création réussie - design minimaliste */}
+      {/* Carte d'employé après création réussie - design adaptatif modale */}
       {nouvelEmploye && infosConnexion && (
-        <div className="mt-4 sm:mt-5 transition-all duration-300 animate-fadeIn max-w-lg sm:max-w-2xl mx-auto">
-          <div className="flex items-center gap-1.5 mb-2 border-b border-gray-100 pb-2 sm:pb-3">
-            <div className="w-4 sm:w-5 h-4 sm:h-5 rounded-full bg-green-400 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 sm:h-3 w-2.5 sm:w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className={`transition-all duration-300 animate-fadeIn ${isModal ? '' : 'mt-4 sm:mt-5 max-w-lg sm:max-w-2xl mx-auto'}`}>
+          {/* Badge succès compact */}
+          <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100">
+            <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <span className="text-2xs sm:text-xs text-gray-600 font-medium">Compte prêt</span>
-            
-            {/* Animation de sauvegarde réussie */}
-            <div className="ml-auto flex items-center gap-1.5 text-3xs sm:text-2xs text-gray-400 opacity-70">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 sm:h-3 w-2.5 sm:w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
-              </svg>
-              Enregistré dans le système
-            </div>
+            <span className="text-sm text-gray-700 font-medium">Compte créé avec succès</span>
+            <span className="ml-auto text-xs text-gray-400">Enregistré</span>
           </div>
           
-          <div className="bg-white border border-gray-100 rounded-lg shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
+          {/* Carte employé compacte */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
             <CarteEmploye 
               employe={nouvelEmploye}
               codeActivation={infosConnexion.codeActivation}
               motDePasseTemporaire={infosConnexion.motDePasseTemporaire}
-              className=""
+              compact={isModal}
             />
           </div>
           
-          {/* Interface ultra-optimisée avec animations fluides */}
-          <div className="flex flex-col mt-4 sm:mt-6">
-            {/* Actions après création d'employé avec transitions optimisées */}
-            <div className={`transition-all duration-500 ${actionsVisible ? 'opacity-100 transform-none' : 'opacity-0 -translate-y-4'}`}>
-              {/* Flux d'envoi d'email avec états progressifs */}
-              {emailSent ? (
-                <div className="animate-fadeIn bg-green-50 border border-green-100 rounded-xl p-3 sm:p-5 text-center relative overflow-hidden">
-                  {/* Indicateur de succès progressif */}
-                  <div className="absolute bottom-0 left-0 h-1 bg-gradient-to-r from-green-400 to-green-600 animate-progressBar" style={{width: '100%'}}></div>
-                  
-                  <div className="w-12 sm:w-16 h-12 sm:h-16 rounded-full bg-green-100 mx-auto mb-3 sm:mb-4 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 sm:h-8 w-6 sm:w-8 text-green-600 ${emailProcessing ? 'animate-bounce' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+          {/* Actions après création */}
+          <div className={`mt-4 transition-all duration-500 ${actionsVisible ? 'opacity-100' : 'opacity-0'}`}>
+            {emailSent ? (
+              /* État: Email envoyé - Confirmation finale */
+              <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center">
+                <div className="w-12 h-12 rounded-full bg-green-500 mx-auto mb-3 flex items-center justify-center">
+                  <CheckCircle className="h-6 w-6 text-white" />
+                </div>
+                
+                <h3 className="text-base font-semibold text-gray-900 mb-1">Identifiants envoyés !</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Email envoyé à <span className="font-medium">{nouvelEmploye.email}</span>
+                </p>
+                
+                {emailProcessing ? (
+                  <div className="flex items-center justify-center gap-2 text-gray-500">
+                    <div className="flex space-x-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0s' }}></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
                   </div>
-                  
-                  <h3 className="text-base sm:text-lg font-semibold text-green-800 mb-1 sm:mb-2 animate-pulseText">Envoi réussi</h3>
-                  <p className="text-xs sm:text-sm text-green-700 mb-3 sm:mb-5">
-                    Les identifiants ont été envoyés à <span className="font-medium">{nouvelEmploye.email}</span>
-                  </p>
-                  
-                  {emailProcessing ? (
-                    // Phase intermédiaire avec animation élégante
-                    <div className="flex items-center justify-center text-gray-600 gap-2 animate-fadeIn">
-                      <div className="flex space-x-1">
-                        <div className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-green-500 animate-bounce" style={{ animationDelay: '0s' }}></div>
-                        <div className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-green-500 animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-green-500 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                ) : (
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => {
+                        setNouvelEmploye(null);
+                        setInfosConnexion(null);
+                        setMessage("");
+                        setActionsVisible(false);
+                        setEmailSent(false);
+                        setShowTerminate(false);
+                        if (isModal && onClose) {
+                          onClose();
+                        } else if (onEmployeCreated) {
+                          onEmployeCreated();
+                        }
+                      }}
+                      className="w-full px-5 py-2.5 bg-[#cf292c] hover:bg-[#b8252a] text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Terminé
+                    </button>
+                    <p className="text-xs text-gray-400 flex items-center justify-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Fermeture automatique...
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* État: En attente d'envoi d'email */
+              <div className="space-y-3">
+                {/* Modal de confirmation d'envoi */}
+                {showConfirmEmail && (
+                  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[110] p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5 animate-fadeIn">
+                      <div className="text-center">
+                        <div className="w-10 h-10 rounded-full bg-red-50 mx-auto mb-3 flex items-center justify-center">
+                          <Mail className="h-5 w-5 text-[#cf292c]" />
+                        </div>
+                        
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">Confirmer l'envoi</h3>
+                        
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                          <p className="font-medium text-gray-900 text-sm">{nouvelEmploye?.email}</p>
+                          <p className="text-xs text-gray-500">{nouvelEmploye?.prenom} {nouvelEmploye?.nom}</p>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setShowConfirmEmail(false)}
+                            className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowConfirmEmail(false);
+                              handleSendEmail();
+                            }}
+                            disabled={emailSending}
+                            className="flex-1 px-4 py-2 bg-[#cf292c] text-white text-sm font-medium rounded-lg hover:bg-[#b8252a] disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            <Send className="h-4 w-4" />
+                            Envoyer
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  ) : (
-                    // Message de finalisation automatique
-                    <div className="animate-fadeIn">
-                      <button
-                        onClick={() => {
-                          setNouvelEmploye(null);
-                          setInfosConnexion(null);
-                          setMessage("");
-                          setActionsVisible(false);
-                          setEmailSent(false);
-                          setShowTerminate(false);
-                        }}
-                        className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 bg-[#cf292c] hover:bg-[#b8252a] text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm hover:shadow-md transition-all duration-200 transform hover:scale-105"
-                      >
-                        Terminer
-                      </button>
-                      <p className="text-3xs sm:text-xs text-gray-500 mt-2 sm:mt-3">
-                        <span className="countdown-text">Fermeture automatique dans quelques secondes...</span>
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Interface centrée sur l'action d'envoi d'email
-                <div className="animate-fadeIn flex flex-col items-center">
-                  {/* Bouton principal avec design optimisé */}
+                  </div>
+                )}
+                
+                {/* Boutons d'action principaux */}
+                <div className="flex flex-col sm:flex-row gap-2">
                   <button
-                    onClick={handleSendEmail}
+                    onClick={() => setShowConfirmEmail(true)}
                     disabled={emailSending}
-                    className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3.5 text-white text-xs sm:text-sm font-medium rounded-xl shadow transition-all duration-300 transform hover:shadow-lg flex items-center justify-center gap-2 sm:gap-2.5 ${emailSending 
-                      ? 'bg-gray-400 cursor-not-allowed opacity-80' 
-                      : 'bg-gradient-to-r from-[#cf292c] to-[#e74c3c] hover:translate-y-[-2px]'}`}
+                    className="flex-1 px-5 py-2.5 bg-[#cf292c] hover:bg-[#b8252a] disabled:bg-gray-300 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     {emailSending ? (
-                      // Animation d'envoi plus élaborée
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <svg className="animate-spin h-4 sm:h-5 w-4 sm:w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <>
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                         </svg>
-                        <span className="relative">
-                          <span className="animate-pulseText">Envoi en cours</span>
-                        </span>
-                      </div>
+                        Envoi...
+                      </>
                     ) : (
-                      // Bouton d'envoi normal
                       <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 sm:h-5 w-4 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        <span>Envoyer les identifiants par email</span>
+                        <Mail className="h-4 w-4" />
+                        Envoyer les identifiants
                       </>
                     )}
                   </button>
                   
-                  {/* Option d'impression intégrée plus discrètement */}
-                  <div className="mt-3 sm:mt-4 opacity-60 hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={handleImprimer}
-                      className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-gray-100 transition-all duration-200"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 sm:h-4 w-3.5 sm:w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                      </svg>
-                      <span>Imprimer</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleImprimer}
+                    className="px-4 py-2.5 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Imprimer
+                  </button>
                 </div>
-              )}
-            </div>
+                
+                {/* Option de fermer sans envoyer (mode modale) */}
+                {isModal && (
+                  <button
+                    onClick={onClose}
+                    className="w-full text-sm text-gray-500 hover:text-gray-700 py-2 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    Fermer sans envoyer
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

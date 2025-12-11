@@ -9,8 +9,18 @@ export function computeKPIs(stats, { now = new Date() } = {}) {
   const surveillance = stats?.surveillance || {};
   const absents = safe(surveillance.employesAbsents);
   const tauxPresence = employes > 0 ? Math.round(pointes / employes * 100) : 0;
-  // Non pointés = prévus - présents - absents (clamp >=0)
-  const nonPointes = Math.max(0, employes - pointes - absents);
+  
+  // Congés aujourd'hui (calculated early so we can use it)
+  const prochains = Array.isArray(stats?.prochainsConges) ? stats.prochainsConges : [];
+  const enCongeAujourdHui = prochains.filter(c => {
+    const deb = new Date(c.dateDebut);
+    const fin = new Date(c.dateFin);
+    return now >= deb && now <= fin;
+  }).length;
+  
+  // Non pointés = employés qui n'ont pas pointé aujourd'hui (en excluant ceux en congé)
+  // Note: absents vient de la surveillance hebdomadaire, on ne l'utilise pas pour le calcul journalier
+  const nonPointes = Math.max(0, employes - pointes - enCongeAujourdHui);
 
   // Retards moyenne (prefer moyenneRetardMinutes then avgRetardMinutes)
   const avgRetardMinutes = (typeof surveillance.moyenneRetardMinutes === 'number')
@@ -27,14 +37,6 @@ export function computeKPIs(stats, { now = new Date() } = {}) {
   const deltaHeures = (heuresPrevues != null && heuresRealisees != null)
     ? +(heuresRealisees - heuresPrevues).toFixed(1)
     : null;
-
-  // Congés aujourd'hui
-  const prochains = Array.isArray(stats?.prochainsConges) ? stats.prochainsConges : [];
-  const enCongeAujourdHui = prochains.filter(c => {
-    const deb = new Date(c.dateDebut);
-    const fin = new Date(c.dateFin);
-    return now >= deb && now <= fin;
-  }).length;
 
   // Absence breakdown
   const absBreak = stats?.absencesDetail || stats?.absencesBreakdown || {};

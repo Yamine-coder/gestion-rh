@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration Email Gmail - Guide Visuel</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+    
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    
+    .content {
+      padding: 40px;
+    }
+    
+    .alert {
+      background: #fff3cd;
+      border-left: 4px solid #ff9800;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+    
+    .alert-title {
+      font-weight: 600;
+      color: #856404;
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+    
+    .alert-content {
+      color: #856404;
+      line-height: 1.6;
+    }
+    
+    .step {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 20px;
+      border: 2px solid #e9ecef;
+    }
+    
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    
+    .step-number {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 18px;
+    }
+    
+    .step-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    .step-content {
+      margin-left: 55px;
+      line-height: 1.8;
+      color: #555;
+    }
+    
+    .code-block {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-family: 'Courier New', monospace;
+      overflow-x: auto;
+      line-height: 1.6;
+    }
+    
+    .code-comment {
+      color: #6a9955;
+    }
+    
+    .code-string {
+      color: #ce9178;
+    }
+    
+    .link {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      margin: 10px 5px;
+      transition: all 0.3s;
+    }
+    
+    .link:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    }
+    
+    .checklist {
+      list-style: none;
+      margin: 20px 0;
+    }
+    
+    .checklist li {
+      padding: 12px;
+      margin: 8px 0;
+      background: white;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    
+    .checklist li:before {
+      content: "☐ ";
+      font-size: 20px;
+      margin-right: 10px;
+      color: #667eea;
+    }
+    
+    .success-box {
+      background: #d4edda;
+      border-left: 4px solid #28a745;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    
+    .warning-box {
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    
+    .screenshot {
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      padding: 10px;
+      background: white;
+      margin: 15px 0;
+      text-align: center;
+      color: #999;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📧 Configuration Email Gmail</h1>
+      <p>Guide pas à pas pour activer l'envoi d'emails dans votre application</p>
+    </div>
+    
+    <div class="content">
+      <div class="alert">
+        <div class="alert-title">⚠️ Problème Détecté</div>
+        <div class="alert-content">
+          Votre fichier <code>server/.env</code> contient des valeurs par défaut.<br>
+          Les emails <strong>ne peuvent pas être envoyés</strong> tant que vous ne configurez pas votre email Gmail.
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <div class="step-title">Activer la Validation en Deux Étapes</div>
+        </div>
+        <div class="step-content">
+          <p>Gmail nécessite la validation en deux étapes pour générer des mots de passe d'application.</p>
+          
+          <a href="https://myaccount.google.com/security" target="_blank" class="link">
+            🔗 Ouvrir les Paramètres de Sécurité Gmail
+          </a>
+          
+          <ul style="margin-top: 15px; margin-left: 20px;">
+            <li>Connectez-vous à votre compte Gmail</li>
+            <li>Cherchez "Validation en deux étapes"</li>
+            <li>Cliquez sur "Activer"</li>
+            <li>Suivez les instructions (SMS ou application)</li>
+          </ul>
+          
+          <div class="screenshot">
+            [Capture d'écran : Section "Validation en deux étapes" dans les paramètres]
+          </div>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">2</div>
+          <div class="step-title">Créer un Mot de Passe d'Application</div>
+        </div>
+        <div class="step-content">
+          <p>Une fois la validation en deux étapes activée, créez un mot de passe d'application.</p>
+          
+          <a href="https://myaccount.google.com/apppasswords" target="_blank" class="link">
+            🔗 Créer un Mot de Passe d'Application
+          </a>
+          
+          <ul style="margin-top: 15px; margin-left: 20px;">
+            <li>Dans "Sécurité", cherchez "Mots de passe d'application"</li>
+            <li>Cliquez dessus (nécessite la validation en deux étapes)</li>
+            <li>Sélectionnez "Autre (nom personnalisé)"</li>
+            <li>Tapez : <strong>Gestion RH App</strong></li>
+            <li>Cliquez sur "Générer"</li>
+            <li><strong>IMPORTANT</strong> : Copiez le mot de passe généré (16 caractères)</li>
+          </ul>
+          
+          <div class="success-box">
+            ✅ Format du mot de passe : <code>xxxx xxxx xxxx xxxx</code> (16 caractères avec espaces)<br>
+            Exemple : <code>abcd efgh ijkl mnop</code>
+          </div>
+          
+          <div class="screenshot">
+            [Capture d'écran : Génération du mot de passe d'application]
+          </div>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">3</div>
+          <div class="step-title">Modifier le Fichier .env</div>
+        </div>
+        <div class="step-content">
+          <p>Ouvrez le fichier <code>server/.env</code> dans votre éditeur de code.</p>
+          
+          <p><strong>Avant :</strong></p>
+          <div class="code-block">
+<span class="code-comment"># Configuration Email (Gmail)</span>
+<span class="code-string">EMAIL_USER="votre-email@gmail.com"</span>
+<span class="code-string">EMAIL_PASS="votre-mot-de-passe-application"</span>
+          </div>
+          
+          <p><strong>Après :</strong></p>
+          <div class="code-block">
+<span class="code-comment"># Configuration Email (Gmail)</span>
+<span class="code-string">EMAIL_USER="votre.email.reel@gmail.com"</span>      <span class="code-comment"># ← Votre email Gmail</span>
+<span class="code-string">EMAIL_PASS="abcd efgh ijkl mnop"</span>            <span class="code-comment"># ← Mot de passe d'application</span>
+          </div>
+          
+          <div class="warning-box">
+            ⚠️ <strong>Attention</strong> : N'utilisez PAS votre mot de passe Gmail normal !<br>
+            Utilisez uniquement le mot de passe d'application de 16 caractères.
+          </div>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">4</div>
+          <div class="step-title">Tester la Configuration</div>
+        </div>
+        <div class="step-content">
+          <p>Vérifiez que tout fonctionne correctement.</p>
+          
+          <p><strong>Commandes à exécuter :</strong></p>
+          <div class="code-block">
+<span class="code-comment"># 1. Vérifier la configuration</span>
+cd server
+node test-email-rapide.js
+
+<span class="code-comment"># 2. Tester l'envoi réel</span>
+node test-email.js
+          </div>
+          
+          <div class="success-box">
+            ✅ <strong>Succès attendu</strong> :<br>
+            • Vérification : "✅ CONFIGURATION OK"<br>
+            • Test : "✅ Email envoyé avec succès!"<br>
+            • Vérifiez votre boîte Gmail pour confirmer la réception
+          </div>
+        </div>
+      </div>
+      
+      <div class="step">
+        <div class="step-header">
+          <div class="step-number">5</div>
+          <div class="step-title">Redémarrer le Serveur</div>
+        </div>
+        <div class="step-content">
+          <p>Pour que les changements prennent effet, redémarrez votre serveur backend.</p>
+          
+          <div class="code-block">
+<span class="code-comment"># Arrêtez le serveur (Ctrl+C)</span>
+<span class="code-comment"># Puis relancez</span>
+cd server
+npm start
+          </div>
+          
+          <div class="success-box">
+            ✅ Les emails seront maintenant envoyés automatiquement lors de :<br>
+            • Création d'un nouvel employé<br>
+            • Envoi manuel depuis la carte employé<br>
+            • Réinitialisation de mot de passe
+          </div>
+        </div>
+      </div>
+      
+      <h2 style="margin-top: 40px; margin-bottom: 20px; color: #333;">📋 Checklist de Configuration</h2>
+      
+      <ul class="checklist">
+        <li>Compte Gmail existant</li>
+        <li>Validation en deux étapes activée</li>
+        <li>Mot de passe d'application créé (16 caractères)</li>
+        <li>Fichier <code>server/.env</code> modifié avec EMAIL_USER</li>
+        <li>Fichier <code>server/.env</code> modifié avec EMAIL_PASS</li>
+        <li>Test de vérification réussi (<code>node test-email-rapide.js</code>)</li>
+        <li>Test d'envoi réussi (<code>node test-email.js</code>)</li>
+        <li>Email de test reçu dans Gmail</li>
+        <li>Serveur backend redémarré</li>
+      </ul>
+      
+      <div class="warning-box" style="margin-top: 40px;">
+        <strong>🔐 SÉCURITÉ</strong><br><br>
+        <strong>NE JAMAIS :</strong><br>
+        • Partager votre mot de passe d'application<br>
+        • Commiter le fichier .env sur Git (déjà dans .gitignore)<br>
+        • Utiliser votre mot de passe Gmail normal<br><br>
+        
+        <strong>SI COMPROMIS :</strong><br>
+        • Révoquez le mot de passe d'application sur myaccount.google.com<br>
+        • Générez-en un nouveau<br>
+        • Mettez à jour le fichier .env
+      </div>
+      
+      <div style="text-align: center; margin-top: 40px; padding: 30px; background: #f8f9fa; border-radius: 12px;">
+        <h3 style="color: #333; margin-bottom: 15px;">Besoin d'aide ?</h3>
+        <p style="color: #666; margin-bottom: 20px;">Consultez le guide complet en ligne de commande</p>
+        <div class="code-block" style="display: inline-block; text-align: left;">
+cat CONFIGURATION-EMAIL-GUIDE.md
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

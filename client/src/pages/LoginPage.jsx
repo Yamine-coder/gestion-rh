@@ -3,6 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock } from "lucide-react"; // Icônes pour les champs
 import logo from "../assets/logo.jpg"; // Assurez-vous que le chemin est correct
+import { setToken } from "../utils/tokenManager";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -33,13 +34,13 @@ function LoginPage() {
       console.log('- role reçu du serveur:', role);
       console.log('- firstLogin:', firstLogin);
 
-      localStorage.setItem("token", token);
+      setToken(token); // Utiliser setToken avec timestamp au lieu de localStorage.setItem direct
       localStorage.setItem("role", role);
       
       // Vérification immédiate après stockage
       const storedRole = localStorage.getItem("role");
       console.log('- role stocké dans localStorage:', storedRole);
-      console.log('- token stocké:', localStorage.getItem("token") ? 'OK' : 'ERREUR');
+      console.log('- token stocké avec expiration:', localStorage.getItem("token") ? 'OK' : 'ERREUR');
 
       // Si c'est la première connexion, rediriger vers la page d'onboarding
       if (firstLogin) {
@@ -50,7 +51,6 @@ function LoginPage() {
         const destination = role === "admin" ? "/admin" : "/home";
         console.log('- Redirection vers:', destination);
         navigate(destination);
-        window.location.reload();
       }
     } catch (err) {
       setErreur(

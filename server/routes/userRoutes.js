@@ -5,6 +5,7 @@ const { authMiddleware: authenticateToken } = require('../middlewares/authMiddle
 const prisma = require('../prisma/client');
 const bcrypt = require('bcrypt');
 const { validerMotDePasse } = require('../utils/passwordUtils');
+const { parseCategories, enrichUserWithCategories } = require('../utils/categoriesHelper');
 
 // ✅ Route : GET /user/profile
 router.get('/profile', authenticateToken, async (req, res) => {
@@ -24,8 +25,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
         nom: true, 
         prenom: true, 
         telephone: true, 
-        categorie: true, 
+        adresse: true,
+        iban: true,
+        categorie: true,
+        categories: true,
         dateEmbauche: true,
+        photoProfil: true,
+        justificatifDomicile: true,
+        justificatifRIB: true,
+        justificatifNavigo: true,
         createdAt: true 
       },
     });
@@ -34,7 +42,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
-    res.status(200).json(user); // Réponse OK avec données
+    // Enrichir avec categoriesArray
+    const enrichedUser = enrichUserWithCategories(user);
+    res.status(200).json(enrichedUser);
   } catch (error) {
     console.error('Erreur serveur /user/profile :', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -57,8 +67,15 @@ router.get('/profil', authenticateToken, async (req, res) => {
         nom: true, 
         prenom: true, 
         telephone: true, 
-        categorie: true, 
+        adresse: true,
+        iban: true,
+        categorie: true,
+        categories: true,
         dateEmbauche: true,
+        photoProfil: true,
+        justificatifDomicile: true,
+        justificatifRIB: true,
+        justificatifNavigo: true,
         createdAt: true 
       },
     });
@@ -67,7 +84,9 @@ router.get('/profil', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
-    res.status(200).json(user);
+    // Enrichir avec categoriesArray
+    const enrichedUser = enrichUserWithCategories(user);
+    res.status(200).json(enrichedUser);
   } catch (error) {
     console.error('Erreur serveur /user/profil :', error);
     res.status(500).json({ error: 'Erreur serveur' });

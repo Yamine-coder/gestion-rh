@@ -8,29 +8,54 @@ datasource db {
 }
 
 model User {
-  id        Int        @id @default(autoincrement())
-  email     String     @unique
-  password  String
-  role      String     @default("employee")
-  createdAt DateTime   @default(now())
-  nom       String?
-  prenom    String?
-  telephone String?
-  categorie String?
-  dateEmbauche DateTime?
-  codeActivation String?
-  firstLoginDone Boolean @default(false)
-  lastLoginAt DateTime?
-  statut    String     @default("actif")
-  conges    Conge[]
-  plannings Planning[]
-  pointages Pointage[]
-  shifts                    Shift[]
-  extraPaymentLogsAsEmploye ExtraPaymentLog[] @relation("EmployeExtraLogs")
-  changedExtraPaymentLogs   ExtraPaymentLog[] @relation("UserExtraLogs")
-  passwordResets            PasswordReset[]
-  anomaliesAsEmploye        Anomalie[]        @relation("EmployeAnomalies")
-  anomaliesAsAdmin          Anomalie[]        @relation("AdminAnomalies")
+  id                                                           Int                        @id @default(autoincrement())
+  email                                                        String                     @unique
+  password                                                     String
+  role                                                         String                     @default("employee")
+  createdAt                                                    DateTime                   @default(now())
+  nom                                                          String?
+  prenom                                                       String?
+  telephone                                                    String?
+  photoProfil                                                  String?   // Chemin vers la photo de profil
+  adresse                                                      String?   // Adresse complète de l'employé
+  iban                                                         String?   // RIB/IBAN pour les virements
+  categorie                                                    String?   // DEPRECATED: Utiliser categories à la place
+  categories                                                   String?   // JSON array: ["Pizzaiolo", "Service"] - Catégories multiples
+  dateEmbauche                                                 DateTime?
+  codeActivation                                               String?
+  firstLoginDone                                               Boolean                    @default(false)
+  lastLoginAt                                                  DateTime?
+  statut                                                       String                     @default("actif")
+  commentaireDepart                                            String?
+  dateSortie                                                   DateTime?
+  motifDepart                                                  String?
+  eligibleNavigo                                               Boolean                    @default(false)
+  justificatifNavigo                                           String?
+  justificatifDomicile                                         String?   // Justificatif de domicile (facture, bail...)
+  justificatifRIB                                              String?   // RIB/IBAN bancaire (scan)
+  anomaliesAsEmploye                                           Anomalie[]                 @relation("EmployeAnomalies")
+  anomaliesAsAdmin                                             Anomalie[]                 @relation("AdminAnomalies")
+  conges                                                       Conge[]
+  changedExtraPaymentLogs                                      ExtraPaymentLog[]          @relation("UserExtraLogs")
+  extraPaymentLogsAsEmploye                                    ExtraPaymentLog[]          @relation("EmployeExtraLogs")
+  paiementsExtraAsEmploye                                      PaiementExtra[]            @relation("EmployePaiementsExtra")
+  paiementsExtraAsCree                                         PaiementExtra[]            @relation("CreateurPaiementsExtra")
+  paiementsExtraAsPaye                                         PaiementExtra[]            @relation("PayeurPaiementsExtra")
+  passwordResets                                               PasswordReset[]
+  plannings                                                    Planning[]
+  pointages                                                    Pointage[]
+  shifts                                                       Shift[]
+  demandes_modification_demandes_modification_employe_idToUser demandes_modification[]    @relation("demandes_modification_employe_idToUser")
+  demandes_modification_demandes_modification_valide_parToUser demandes_modification[]    @relation("demandes_modification_valide_parToUser")
+  historique_modifications                                     historique_modifications[]
+  notifications                                                notifications[]
+  // Relations pour le système de remplacement
+  remplacementsCommeAbsent                                     DemandeRemplacement[]      @relation("EmployeAbsent")
+  remplacementsCommeRemplacant                                 DemandeRemplacement[]      @relation("EmployeRemplacant")
+  remplacementsValides                                         DemandeRemplacement[]      @relation("ValideurRemplacement")
+  candidaturesRemplacement                                     CandidatureRemplacement[]  @relation("CandidatRemplacement")
+  justificatifsNavigo                                          JustificatifNavigo[]       @relation("UserJustificatifsNavigo")
+  justificatifsNavigoValides                                   JustificatifNavigo[]       @relation("ValidateurJustificatifsNavigo")
 }
 
 model PasswordReset {
@@ -53,14 +78,23 @@ model Pointage {
 }
 
 model Conge {
-  id        Int      @id @default(autoincrement())
-  type      String
-  statut    String   @default("en attente")
-  dateDebut DateTime
-  dateFin   DateTime
-  userId    Int
-  vu        Boolean  @default(false)
-  user      User     @relation(fields: [userId], references: [id])
+  id           Int       @id @default(autoincrement())
+  type         String
+  statut       String    @default("en attente")
+  dateDebut    DateTime
+  dateFin      DateTime
+  userId       Int
+  vu           Boolean   @default(false)
+  motifEmploye String?   // Commentaire/justification de l'employé
+  motifRefus   String?   // Motif de refus par le manager
+  justificatif String?   // Chemin vers le fichier justificatif (certificat médical, etc.)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime? @default(now()) @updatedAt
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([statut])
+  @@index([createdAt])
 }
 
 model Planning {
@@ -73,15 +107,17 @@ model Planning {
 }
 
 model Shift {
-  id        Int      @id @default(autoincrement())
-  employeId Int
-  date      DateTime
-  type      String
-  motif     String?
-  segments  Json
-  version   Int      @default(0)
-  employe   User     @relation(fields: [employeId], references: [id])
+  id               Int               @id @default(autoincrement())
+  employeId        Int
+  date             DateTime
+  type             String
+  motif            String?
+  segments         Json
+  version          Int               @default(0)
   extraPaymentLogs ExtraPaymentLog[] @relation("ShiftExtraLogs")
+  employe          User              @relation(fields: [employeId], references: [id])
+  corrections      ShiftCorrection[]
+  remplacements    DemandeRemplacement[]
 }
 
 model ExtraPaymentLog {
@@ -93,37 +129,375 @@ model ExtraPaymentLog {
   oldValues       Json?
   newValues       Json?
   createdAt       DateTime @default(now())
-  shift     Shift @relation("ShiftExtraLogs", fields: [shiftId], references: [id])
-  employe   User  @relation("EmployeExtraLogs", fields: [employeId], references: [id])
-  changedBy User  @relation("UserExtraLogs", fields: [changedByUserId], references: [id])
+  changedBy       User     @relation("UserExtraLogs", fields: [changedByUserId], references: [id])
+  employe         User     @relation("EmployeExtraLogs", fields: [employeId], references: [id])
+  shift           Shift    @relation("ShiftExtraLogs", fields: [shiftId], references: [id])
+
   @@index([shiftId])
   @@index([employeId])
   @@index([createdAt])
 }
 
 model Anomalie {
-  id              Int      @id @default(autoincrement())
-  employeId       Int
-  date            DateTime
-  type            String   // retard, hors_plage, absence_totale, presence_non_prevue, depart_anticipe, heures_sup, etc.
-  gravite         String   // critique, attention, info
-  description     String
-  details         Json?    // données détaillées (écart en minutes, heures concernées, etc.)
-  statut          String   @default("en_attente") // en_attente, validee, refusee, corrigee
-  commentaire     String?
-  traitePar       Int?     // ID de l'admin qui a traité
-  traiteAt        DateTime?
-  montantExtra    Decimal? // montant pour les heures sup si validées
-  heuresExtra     Decimal? // nombre d'heures supplémentaires
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  employe         User     @relation("EmployeAnomalies", fields: [employeId], references: [id])
-  traiteur        User?    @relation("AdminAnomalies", fields: [traitePar], references: [id])
-  
-  @@unique([employeId, date, type, description]) // Éviter les doublons
+  id                    Int               @id @default(autoincrement())
+  employeId             Int
+  date                  DateTime
+  type                  String
+  gravite               String
+  description           String
+  details               Json?
+  statut                String            @default("en_attente")
+  commentaire           String?
+  traitePar             Int?
+  traiteAt              DateTime?
+  montantExtra          Decimal?
+  heuresExtra           Decimal?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  commentaireManager    String?
+  fichierJustificatif   String?
+  justificationEmploye  String?
+  heuresARecuperer      Decimal?
+  payerHeuresManquantes Boolean           @default(false)
+  employe               User              @relation("EmployeAnomalies", fields: [employeId], references: [id])
+  traiteur              User?             @relation("AdminAnomalies", fields: [traitePar], references: [id])
+  audits                AnomalieAudit[]
+  shiftCorrections      ShiftCorrection[]
+  paiementsExtra        PaiementExtra[]
+
+  @@unique([employeId, date, type, description])
   @@index([employeId])
   @@index([date])
   @@index([statut])
   @@index([type])
+}
+
+model ShiftCorrection {
+  id              Int       @id @default(autoincrement())
+  shiftId         Int
+  anomalieId      Int?
+  ancienneVersion Json
+  nouvelleVersion Json
+  raison          String
+  typeCorrection  String
+  preuves         Json?
+  auteurId        Int
+  approuvePar     Int?
+  dateCorrection  DateTime  @default(now())
+  ipAddress       String?
+  anomalie        Anomalie? @relation(fields: [anomalieId], references: [id])
+  shift           Shift     @relation(fields: [shiftId], references: [id])
+
+  @@index([shiftId])
+  @@index([anomalieId])
+  @@index([dateCorrection])
+}
+
+model AnomalieAudit {
+  id          Int      @id @default(autoincrement())
+  anomalieId  Int
+  action      String
+  etatAvant   Json?
+  etatApres   Json?
+  userId      Int
+  userRole    String
+  commentaire String?
+  metadata    Json?
+  timestamp   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+  anomalie    Anomalie @relation(fields: [anomalieId], references: [id])
+
+  @@index([anomalieId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+// =============================================================================
+// PAIEMENTS EXTRAS (espèces hors fiche de paie)
+// Traçabilité complète des heures payées en cash
+// =============================================================================
+model PaiementExtra {
+  id              Int       @id @default(autoincrement())
+  employeId       Int
+  date            DateTime  // Date du travail effectué
+  heures          Decimal   // Nombre d'heures payées (peut être négatif pour régularisation)
+  montant         Decimal   // Montant payé en euros (peut être négatif pour régularisation)
+  tauxHoraire     Decimal   // Taux horaire utilisé
+  
+  // Heures prévues vs réelles (pour comparaison après pointage)
+  heuresPrevues   Decimal?  // Heures prévues dans le segment extra
+  heuresReelles   Decimal?  // Heures réellement travaillées (calculées depuis pointages)
+  ecartHeures     Decimal?  // Différence heuresReelles - heuresPrevues
+  pointageValide  Boolean   @default(false) // true si les pointages sont complets (arrivée + départ)
+  arriveeReelle   String?   // Heure d'arrivée réelle "HH:MM" depuis le pointage
+  departReelle    String?   // Heure de départ réelle "HH:MM" depuis le pointage
+  
+  // Historique des modifications (pour affichage visuel ancien→nouveau)
+  heuresInitiales Decimal?  // Heures lors de la création (null si jamais modifié)
+  montantInitial  Decimal?  // Montant lors de la création (null si jamais modifié)
+  segmentInitial  String?   // Horaire initial du segment "HH:MM-HH:MM" (null si jamais modifié)
+  derniereModif   DateTime? // Date de la dernière modification
+  
+  // Source du paiement
+  source          String    // "shift_extra" | "anomalie_heures_sup" | "manuel" | "ajustement"
+  anomalieId      Int?      // Lien vers l'anomalie si source = anomalie
+  shiftId         Int?      // Lien vers le shift si source = shift_extra
+  segmentIndex    Int?      // Index du segment extra dans le shift
+  
+  // Ajustements (pour corrections sur paiements déjà effectués)
+  ajustementDeId  Int?      // Lien vers le PaiementExtra original si c'est un ajustement
+  motifAjustement String?   // "modification_horaires" | "annulation_shift" | "correction"
+  
+  // Statut du paiement
+  statut          String    @default("a_payer") // "a_payer" | "paye" | "annule"
+  payeLe          DateTime? // Date effective du paiement
+  
+  // Traçabilité
+  creePar         Int       // Admin qui a créé l'entrée
+  payePar         Int?      // Admin qui a marqué comme payé
+  commentaire     String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  employe         User      @relation("EmployePaiementsExtra", fields: [employeId], references: [id])
+  createur        User      @relation("CreateurPaiementsExtra", fields: [creePar], references: [id])
+  payeur          User?     @relation("PayeurPaiementsExtra", fields: [payePar], references: [id])
+  anomalie        Anomalie? @relation(fields: [anomalieId], references: [id])
+  
+  @@index([employeId])
+  @@index([date])
+  @@index([statut])
+  @@index([source])
+  @@index([anomalieId])
+  @@index([ajustementDeId])
+}
+
+model EmployeScore {
+  id                      Int      @id @default(autoincrement())
+  employeId               Int      @unique
+  score                   Int      @default(100)
+  historiqueModifications Json[]
+  derniereMaj             DateTime @updatedAt
+  createdAt               DateTime @default(now())
+
+  @@index([employeId])
+  @@index([score])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model champs_modifiables_config {
+  nom_champ         String   @id @db.VarChar(100)
+  type_modification String   @db.VarChar(20)
+  description       String?
+  actif             Boolean? @default(true)
+
+  @@index([type_modification], map: "idx_config_type")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model demandes_modification {
+  id                                          Int       @id @default(autoincrement())
+  employe_id                                  Int
+  champ_modifie                               String    @db.VarChar(100)
+  ancienne_valeur                             String?
+  nouvelle_valeur                             String
+  motif                                       String?
+  statut                                      String?   @default("en_attente") @db.VarChar(20)
+  date_demande                                DateTime? @default(now()) @db.Timestamp(6)
+  date_traitement                             DateTime? @db.Timestamp(6)
+  valide_par                                  Int?
+  commentaire_validation                      String?
+  adresse_ip                                  String?   @db.VarChar(45)
+  User_demandes_modification_employe_idToUser User      @relation("demandes_modification_employe_idToUser", fields: [employe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  User_demandes_modification_valide_parToUser User?     @relation("demandes_modification_valide_parToUser", fields: [valide_par], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([date_demande(sort: Desc)], map: "idx_demandes_date")
+  @@index([employe_id], map: "idx_demandes_employe")
+  @@index([statut], map: "idx_demandes_statut")
+  @@index([valide_par], map: "idx_demandes_validateur")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model historique_modifications {
+  id                Int       @id @default(autoincrement())
+  employe_id        Int
+  champ_modifie     String    @db.VarChar(100)
+  ancienne_valeur   String?
+  nouvelle_valeur   String?
+  date_modification DateTime? @default(now()) @db.Timestamp(6)
+  adresse_ip        String?   @db.VarChar(45)
+  user_agent        String?
+  User              User      @relation(fields: [employe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([champ_modifie], map: "idx_historique_champ")
+  @@index([date_modification(sort: Desc)], map: "idx_historique_date")
+  @@index([employe_id], map: "idx_historique_employe")
+}
+
+model notifications {
+  id            Int       @id @default(autoincrement())
+  employe_id    Int
+  type          String    @db.VarChar(50)
+  titre         String    @db.VarChar(255)
+  message       String?   @db.Text
+  lue           Boolean   @default(false)
+  date_creation DateTime  @default(now()) @db.Timestamp(6)
+  date_lecture  DateTime? @db.Timestamp(6)
+  User          User      @relation(fields: [employe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([employe_id], map: "idx_notifications_employe")
+  @@index([lue], map: "idx_notifications_lue")
+  @@index([date_creation(sort: Desc)], map: "idx_notifications_date")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔄 SYSTÈME DE REMPLACEMENT
+// Permet aux employés de demander/proposer des remplacements
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model DemandeRemplacement {
+  id                  Int       @id @default(autoincrement())
+  
+  // Shift concerné
+  shiftId             Int
+  shift               Shift     @relation(fields: [shiftId], references: [id])
+  
+  // Employé absent (celui qui a besoin d'être remplacé)
+  employeAbsentId     Int
+  employeAbsent       User      @relation("EmployeAbsent", fields: [employeAbsentId], references: [id])
+  
+  // Employé remplaçant (celui qui prend le shift)
+  employeRemplacantId Int?
+  employeRemplacant   User?     @relation("EmployeRemplacant", fields: [employeRemplacantId], references: [id])
+  
+  // Type de demande
+  type                String    // 'besoin' (cherche remplaçant) ou 'proposition' (propose de remplacer)
+  
+  // Statut
+  statut              String    @default("en_attente") // en_attente, acceptee, refusee, annulee, expiree
+  
+  // Motif de l'absence ou de la demande
+  motif               String?
+  
+  // Commentaires
+  commentaireEmploye  String?   // Commentaire de l'employé
+  commentaireManager  String?   // Réponse du manager
+  
+  // Validation
+  validePar           Int?
+  valideur            User?     @relation("ValideurRemplacement", fields: [validePar], references: [id])
+  dateValidation      DateTime?
+  
+  // Priorité/Urgence
+  priorite            String    @default("normale") // basse, normale, haute, urgente
+  
+  // Dates
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  dateExpiration      DateTime? // Date limite pour trouver un remplaçant
+  
+  // Candidatures reçues
+  candidatures        CandidatureRemplacement[]
+
+  @@index([shiftId])
+  @@index([employeAbsentId])
+  @@index([employeRemplacantId])
+  @@index([statut])
+  @@index([createdAt])
+}
+
+// Candidatures pour un remplacement (plusieurs employés peuvent se proposer)
+model CandidatureRemplacement {
+  id                    Int                 @id @default(autoincrement())
+  demandeRemplacementId Int
+  demandeRemplacement   DemandeRemplacement @relation(fields: [demandeRemplacementId], references: [id], onDelete: Cascade)
+  
+  employeId             Int
+  employe               User                @relation("CandidatRemplacement", fields: [employeId], references: [id])
+  
+  statut                String              @default("proposee") // proposee, acceptee, refusee, retiree
+  commentaire           String?
+  
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@unique([demandeRemplacementId, employeId])
+  @@index([demandeRemplacementId])
+  @@index([employeId])
+  @@index([statut])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JUSTIFICATIFS NAVIGO MENSUELS
+// ═══════════════════════════════════════════════════════════════════════════
+model JustificatifNavigo {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  mois          Int       // 1-12
+  annee         Int       // ex: 2025
+  fichier       String    // chemin du fichier uploadé
+  statut        String    @default("en_attente") // en_attente, valide, refuse
+  motifRefus    String?   // motif si refusé
+  dateUpload    DateTime  @default(now())
+  dateValidation DateTime?
+  validePar     Int?      // ID de l'admin qui a validé
+  
+  user          User      @relation("UserJustificatifsNavigo", fields: [userId], references: [id], onDelete: Cascade)
+  validateur    User?     @relation("ValidateurJustificatifsNavigo", fields: [validePar], references: [id])
+  
+  @@unique([userId, mois, annee]) // Un seul justificatif par mois/année/employé
+  @@index([userId])
+  @@index([mois, annee])
+  @@index([statut])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSIGNES DU JOUR (Admin → Employés)
+// ═══════════════════════════════════════════════════════════════════════════
+model Consigne {
+  id              Int       @id @default(autoincrement())
+  titre           String
+  contenu         String
+  type            String    @default("info") // info, important, urgent
+  dateDebut       DateTime  @default(now())
+  dateFin         DateTime?
+  active          Boolean   @default(true)
+  createdBy       Int
+  cibleCategorie  String?   // null = tout le monde, sinon catégorie ciblée (ex: "cuisine", "salle", "bar")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([active])
+  @@index([dateDebut])
+  @@index([dateFin])
+  @@index([cibleCategorie])
+}
+
+// FICHES DE POSTE (Éditeur intégré avec génération PDF)
+// ═══════════════════════════════════════════════════════════════════════════
+model FichePoste {
+  id              Int       @id @default(autoincrement())
+  categorie       String    @unique // Catégorie ciblée (ex: "Service", "Cuisine", "Bar")
+  titre           String    // Titre du poste (ex: "Serveur(se)")
+  departement     String    // Département (ex: "Service en Salle")
+  rattachement    String    // Hiérarchie (ex: "Responsable de salle")
+  horaires        String    // Description des horaires
+  formation       String    // Formation requise
+  missions        Json      // Array des missions principales
+  competences     Json      // Array des compétences requises
+  conditionsTravail String? // Conditions de travail particulières
+  avantages       String?   // Avantages du poste
+  active          Boolean   @default(true)
+  createdBy       Int       // ID de l'admin qui a créé
+  updatedBy       Int?      // ID du dernier modificateur
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([categorie])
+  @@index([active])
 }

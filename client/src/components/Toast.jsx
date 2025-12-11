@@ -14,6 +14,8 @@ const Toast = ({ message, type = 'success', duration = 4000, onClose }) => {
     switch (type) {
       case 'success':
         return <Check className="w-5 h-5 text-green-600" />;
+      case 'error':
+        return <X className="w-5 h-5 text-red-600" />;
       case 'info':
         return <Clock className="w-5 h-5 text-blue-600" />;
       case 'warning':
@@ -27,6 +29,8 @@ const Toast = ({ message, type = 'success', duration = 4000, onClose }) => {
     switch (type) {
       case 'success':
         return 'bg-green-50 border-green-200';
+      case 'error':
+        return 'bg-red-50 border-red-200';
       case 'info':
         return 'bg-blue-50 border-blue-200';
       case 'warning':

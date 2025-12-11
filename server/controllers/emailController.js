@@ -1,6 +1,7 @@
 // controllers/emailController.js
 const { PrismaClient } = require('@prisma/client');
 const { envoyerIdentifiants } = require('../utils/emailService');
+const { parseCategories } = require('../utils/categoriesHelper');
 
 const prisma = new PrismaClient();
 
@@ -46,14 +47,30 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
     
     try {
       employe = await prisma.User.findUnique({
-        where: { id: parseInt(employeId) }
+        where: { id: parseInt(employeId) },
+        select: {
+          id: true,
+          email: true,
+          nom: true,
+          prenom: true,
+          categorie: true,
+          categories: true
+        }
       });
     } catch (dbError) {
       console.error("Erreur lors de la recherche de l'employé:", dbError);
       
       // Essayons de trouver l'employé par email comme alternative
       employe = await prisma.User.findUnique({
-        where: { email: email }
+        where: { email: email },
+        select: {
+          id: true,
+          email: true,
+          nom: true,
+          prenom: true,
+          categorie: true,
+          categories: true
+        }
       });
     }
 
@@ -65,7 +82,9 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
       employe = {
         email: email,
         nom: "Utilisateur",
-        prenom: "Nouveau"
+        prenom: "Nouveau",
+        categorie: null,
+        categories: null
       };
     }
 
@@ -81,13 +100,23 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
       });
     }
 
+    // Récupérer les catégories (multiples ou simple)
+    let categoriesArray = [];
+    if (employe.categories) {
+      categoriesArray = parseCategories(employe.categories);
+    } else if (employe.categorie) {
+      categoriesArray = [employe.categorie];
+    }
+    console.log("Catégories de l'employé:", categoriesArray);
+
     // Envoyer l'email avec les identifiants
     console.log("Envoi de l'email avec les identifiants...");
     const resultatEnvoi = await envoyerIdentifiants(
       email, 
       employe.nom || "Utilisateur", 
       employe.prenom || "Nouveau", 
-      motDePasseTemporaire
+      motDePasseTemporaire,
+      categoriesArray
     );
 
     console.log("Résultat de l'envoi:", resultatEnvoi);

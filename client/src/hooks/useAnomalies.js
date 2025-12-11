@@ -204,9 +204,9 @@ export function useTraiterAnomalie() {
   const [error, setError] = useState(null);
 
   const traiterAnomalie = useCallback(async (anomalieId, action, options = {}) => {
-    const { commentaire, montantExtra, heuresExtra } = options;
+    const { commentaire, montantExtra, heuresExtra, shiftCorrection, tauxHoraire, methodePaiement } = options;
 
-    if (!['valider', 'refuser', 'corriger'].includes(action)) {
+    if (!['valider', 'refuser', 'corriger', 'payer_extra'].includes(action)) {
       throw new Error('Action invalide');
     }
 
@@ -219,18 +219,27 @@ export function useTraiterAnomalie() {
         throw new Error('Token d\'authentification requis');
       }
 
+      const body = {
+        action,
+        commentaire,
+        montantExtra,
+        heuresExtra,
+        tauxHoraire,
+        methodePaiement
+      };
+
+      // Ajouter shiftCorrection uniquement pour l'action "corriger"
+      if (action === 'corriger' && shiftCorrection) {
+        body.shiftCorrection = shiftCorrection;
+      }
+
       const response = await fetch(`${API_BASE}/api/anomalies/${anomalieId}/traiter`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          action,
-          commentaire,
-          montantExtra,
-          heuresExtra
-        })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
@@ -239,8 +248,23 @@ export function useTraiterAnomalie() {
 
       const data = await response.json();
       
+      console.log('📡 Réponse serveur traitement anomalie:', {
+        success: data.success,
+        statut: data.anomalie?.statut,
+        impactScore: data.impactScore,
+        shiftModifie: data.shiftModifie,
+        message: data.message
+      });
+      
       if (!data.success) {
         throw new Error(data.error || 'Erreur inconnue');
+      }
+
+      // Enrichir l'anomalie avec les infos du traitement
+      if (data.anomalie) {
+        data.anomalie._impactScore = data.impactScore;
+        data.anomalie._shiftModifie = data.shiftModifie;
+        data.anomalie._message = data.message;
       }
 
       return data.anomalie;
@@ -327,6 +351,82 @@ export function useSyncAnomalies() {
 }
 
 /**
+ * 🆕 Hook pour récupérer les alertes d'anomalies non traitées (admin)
+ */
+export function useAlertesAnomalies({ jours = 7, autoRefresh = true, refreshInterval = 300000 } = {}) {
+  const [alertes, setAlertes] = useState({ total: 0, anomalies: [], stats: {} });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchAlertes = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Token d\'authentification requis');
+      }
+
+      const response = await fetch(`${API_BASE}/api/anomalies/alertes-non-traitees?jours=${jours}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          // Pas admin, pas d'alertes
+          setAlertes({ total: 0, anomalies: [], stats: {} });
+          return;
+        }
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setAlertes({
+          total: data.total,
+          anomalies: data.anomalies || [],
+          stats: data.stats || {},
+          alerte: data.alerte,
+          message: data.message
+        });
+      }
+
+    } catch (err) {
+      console.error('Erreur récupération alertes anomalies:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [jours]);
+
+  useEffect(() => {
+    fetchAlertes();
+  }, [fetchAlertes]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      fetchAlertes();
+    }, refreshInterval);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, fetchAlertes]);
+
+  return {
+    alertes,
+    loading,
+    error,
+    refresh: fetchAlertes
+  };
+}
+
+/**
  * Utilitaires pour les anomalies
  */
 export const anomaliesUtils = {
@@ -384,6 +484,8 @@ export const anomaliesUtils = {
         return { color: 'text-red-600', bg: 'bg-red-50', label: 'Refusée' };
       case 'corrigee':
         return { color: 'text-purple-600', bg: 'bg-purple-50', label: 'Corrigée' };
+      case 'obsolete':
+        return { color: 'text-gray-500', bg: 'bg-gray-100', label: 'Obsolète', icon: '🔄' };
       default:
         return { color: 'text-gray-600', bg: 'bg-gray-50', label: statut };
     }

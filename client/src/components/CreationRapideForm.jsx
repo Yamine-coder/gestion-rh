@@ -77,7 +77,8 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
   const validerCreneaux = () => {
     for (let i = 0; i < creneaux.length; i++) {
       const c1 = creneaux[i];
-      if (c1.heureDebut >= c1.heureFin) return `Le créneau ${i + 1} a une fin <= début`;
+      // 🌙 RESTAURANT : Autoriser shifts de nuit, rejeter seulement durée nulle
+      if (c1.heureDebut === c1.heureFin) return `Le créneau ${i + 1} a une durée nulle`;
       for (let j = i + 1; j < creneaux.length; j++) {
         const c2 = creneaux[j];
         if (!(c1.heureFin <= c2.heureDebut || c2.heureFin <= c1.heureDebut)) return `Chevauchement créneaux ${i + 1} et ${j + 1}`;
@@ -169,10 +170,10 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
         const shiftsToCreate = creationPreview.map(p => ({
           employeeId: p.employeId,
           date: p.date,
-          type: 'présence',
+          type: 'travail',
           segments: p.creneaux.map(c => ({
             start: c.heureDebut, end: c.heureFin,
-            commentaire: '', aValider: false, isExtra: false, extraMontant: '', paymentStatus: 'à_payer', paymentMethod: '', paymentDate: '', paymentNote: ''
+            commentaire: '', aValider: false, isExtra: false
           }))
         }));
         const res = await axios.post('http://localhost:5000/shifts/batch', { shifts: shiftsToCreate }, { headers: { Authorization: `Bearer ${token}` } });
@@ -199,7 +200,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) { setDeleteError('Session expirée'); setDeleteLoading(false); return; }
-      const body = { employeIds: lastCreationRange.employeIds, startDate: lastCreationRange.startDate, endDate: lastCreationRange.endDate, type: 'présence' };
+      const body = { employeIds: lastCreationRange.employeIds, startDate: lastCreationRange.startDate, endDate: lastCreationRange.endDate, type: 'travail' };
       const res = await axios.post('http://localhost:5000/shifts/delete-range', body, { headers: { Authorization: `Bearer ${token}` } });
       const deleted = res.data.deleted || res.data.count || 0;
       setDeleteSuccess(`Plannings supprimés: ${deleted}`);
@@ -231,7 +232,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
       setWipeLoading(true);
       const token = localStorage.getItem('token');
       if(!token){ setWipeMsg('Session expirée'); setWipeLoading(false); return; }
-      const body = { startDate: '1970-01-01', endDate: '2100-12-31', type: 'présence' };
+      const body = { startDate: '1970-01-01', endDate: '2100-12-31', type: 'travail' };
       if(wipeSelectedEmployees.length) body.employeIds = wipeSelectedEmployees;
       const res = await axios.post('http://localhost:5000/shifts/delete-range', body, { headers:{ Authorization:`Bearer ${token}` }});
       const deleted = res.data.deleted || res.data.count || 0;
@@ -453,7 +454,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                       setDelLoading(true);
                       const token = localStorage.getItem('token');
                       if(!token){ setDelError('Session expirée'); setDelLoading(false); return; }
-                      const body = { employeIds: delSelectedEmployees, startDate: delStartDate, endDate: delEndDate, type:'présence' };
+                      const body = { employeIds: delSelectedEmployees, startDate: delStartDate, endDate: delEndDate, type:'travail' };
                       const res = await axios.post('http://localhost:5000/shifts/delete-range', body, { headers: { Authorization: `Bearer ${token}` } });
                       const deleted = res.data.deleted || res.data.count || 0;
                       setDelSuccess(`${deleted} planning(s) supprimé(s)`);

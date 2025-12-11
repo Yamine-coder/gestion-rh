@@ -1,160 +1,102 @@
+// Créer des congés de test approuvés pour alimenter les graphiques d'absences
+
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function createTestConges() {
-  try {
-    console.log('🗑️  Suppression des anciens congés...');
-    await prisma.conge.deleteMany({});
+  console.log('🔧 Création de congés de test approuvés...\n');
+
+  // Récupérer quelques employés
+  const employes = await prisma.user.findMany({
+    where: { role: 'employee', statut: 'actif' },
+    take: 15
+  });
+
+  const typesConges = [
+    'congés payés',
+    'congés payés', 
+    'congés payés',
+    'RTT',
+    'RTT',
+    'maladie',
+    'maladie',
+    'maladie',
+    'événement familial',
+    'sans solde',
+    'congés payés',
+    'formation'
+  ];
+
+  const today = new Date();
+  const congesACreer = [];
+
+  // Créer des congés variés sur les 60 derniers jours
+  for (let i = 0; i < Math.min(12, employes.length); i++) {
+    const emp = employes[i];
+    const type = typesConges[i % typesConges.length];
     
-    console.log('👥 Récupération des utilisateurs...');
-    const users = await prisma.user.findMany({
-      select: { id: true, email: true, nom: true, prenom: true }
+    // Dates aléatoires dans les 60 derniers jours
+    const joursAvant = Math.floor(Math.random() * 55) + 5;
+    const duree = type === 'maladie' 
+      ? Math.floor(Math.random() * 5) + 1  // 1-5 jours pour maladie
+      : type === 'RTT' 
+        ? 1  // 1 jour pour RTT
+        : Math.floor(Math.random() * 10) + 1;  // 1-10 jours pour autres
+    
+    const dateDebut = new Date(today);
+    dateDebut.setDate(dateDebut.getDate() - joursAvant);
+    
+    const dateFin = new Date(dateDebut);
+    dateFin.setDate(dateFin.getDate() + duree - 1);
+
+    congesACreer.push({
+      userId: emp.id,
+      type: type,
+      dateDebut: dateDebut,
+      dateFin: dateFin,
+      statut: 'approuvé',
+      motifEmploye: `Demande de ${type} - Test`,
+      createdAt: new Date(dateDebut.getTime() - 7 * 24 * 60 * 60 * 1000) // Créé 7 jours avant
     });
-    
-    if (users.length === 0) {
-      console.log('❌ Aucun utilisateur trouvé');
-      return;
-    }
-    
-    console.log(`✅ ${users.length} utilisateurs trouvés`);
-    
-    const maintenant = new Date();
-    
-    // Congés de test avec différentes conditions d'urgence
-    const testConges = [
-      // ⚡ EXPRESS - Demain (TRÈS URGENT)
-      {
-        userId: users[0]?.id,
-        type: "Congé exceptionnel",
-        dateDebut: new Date(maintenant.getTime() + 1 * 24 * 60 * 60 * 1000), // Demain !
-        dateFin: new Date(maintenant.getTime() + 2 * 24 * 60 * 60 * 1000),   // Après-demain
-        statut: "en attente"
-      },
-      
-      // ⚡ EXPRESS - Dans 2 jours
-      {
-        userId: users[1]?.id || users[0]?.id,
-        type: "Congés payés",
-        dateDebut: new Date(maintenant.getTime() + 2 * 24 * 60 * 60 * 1000), // Dans 2 jours
-        dateFin: new Date(maintenant.getTime() + 4 * 24 * 60 * 60 * 1000),   // Dans 4 jours
-        statut: "en attente"
-      },
-      
-      // ⚡ EXPRESS - Dans 3 jours
-      {
-        userId: users[2]?.id || users[0]?.id,
-        type: "RTT",
-        dateDebut: new Date(maintenant.getTime() + 3 * 24 * 60 * 60 * 1000), // Dans 3 jours
-        dateFin: new Date(maintenant.getTime() + 5 * 24 * 60 * 60 * 1000),   // Dans 5 jours
-        statut: "en attente"
-      },
-      
-      // ⚡ EXPRESS - Dans 6 jours
-      {
-        userId: users[3]?.id || users[0]?.id,
-        type: "Congés payés",
-        dateDebut: new Date(maintenant.getTime() + 6 * 24 * 60 * 60 * 1000), // Dans 6 jours
-        dateFin: new Date(maintenant.getTime() + 10 * 24 * 60 * 60 * 1000),  // Dans 10 jours
-        statut: "en attente"
-      },
-      
-      // ⚪ En attente normale - Dans 15 jours
-      {
-        userId: users[4]?.id || users[0]?.id,
-        type: "RTT",
-        dateDebut: new Date(maintenant.getTime() + 15 * 24 * 60 * 60 * 1000), // Dans 15 jours
-        dateFin: new Date(maintenant.getTime() + 16 * 24 * 60 * 60 * 1000),   // Dans 16 jours
-        statut: "en attente"
-      },
-      
-      // ⚪ En attente normale - Dans 30 jours
-      {
-        userId: users[5]?.id || users[0]?.id,
-        type: "Congés payés",
-        dateDebut: new Date(maintenant.getTime() + 30 * 24 * 60 * 60 * 1000), // Dans 30 jours
-        dateFin: new Date(maintenant.getTime() + 35 * 24 * 60 * 60 * 1000),   // Dans 35 jours
-        statut: "en attente"
-      },
-      
-      // ✅ Approuvé récent
-      {
-        userId: users[6]?.id || users[0]?.id,
-        type: "RTT",
-        dateDebut: new Date(maintenant.getTime() + 45 * 24 * 60 * 60 * 1000), // Dans 45 jours
-        dateFin: new Date(maintenant.getTime() + 47 * 24 * 60 * 60 * 1000),   // Dans 47 jours
-        statut: "approuvé"
-      },
-      
-      // ✅ Approuvé historique
-      {
-        userId: users[7]?.id || users[0]?.id,
-        type: "Congés payés",
-        dateDebut: new Date(maintenant.getTime() + 60 * 24 * 60 * 60 * 1000), // Dans 60 jours
-        dateFin: new Date(maintenant.getTime() + 65 * 24 * 60 * 60 * 1000),   // Dans 65 jours
-        statut: "approuvé"
-      },
-      
-      // ❌ Refusé
-      {
-        userId: users[8]?.id || users[0]?.id,
-        type: "Congé maladie",
-        dateDebut: new Date(maintenant.getTime() + 20 * 24 * 60 * 60 * 1000), // Dans 20 jours
-        dateFin: new Date(maintenant.getTime() + 22 * 24 * 60 * 60 * 1000),   // Dans 22 jours
-        statut: "refusé"
-      },
-      
-      // ❌ Refusé
-      {
-        userId: users[9]?.id || users[0]?.id,
-        type: "RTT",
-        dateDebut: new Date(maintenant.getTime() + 25 * 24 * 60 * 60 * 1000), // Dans 25 jours
-        dateFin: new Date(maintenant.getTime() + 26 * 24 * 60 * 60 * 1000),   // Dans 26 jours
-        statut: "refusé"
-      }
-    ];
-    
-    console.log('📝 Création des congés de test...');
-    
-    for (let i = 0; i < testConges.length; i++) {
-      const conge = testConges[i];
-      if (conge.userId) {
-        await prisma.conge.create({ data: conge });
-        const joursAvant = Math.ceil((conge.dateDebut - maintenant) / (1000 * 60 * 60 * 24));
-        console.log(`✅ Congé ${i + 1}/10 créé - ${conge.statut} - ${conge.type} (dans ${joursAvant} jours)`);
-      }
-    }
-    
-    console.log('\n🎯 RÉCAPITULATIF DES CONGÉS CRÉÉS :');
-    console.log('=====================================');
-    console.log('🔴 PRIORITÉ 1 - EN ATTENTE EXPRESS :');
-    console.log('  ⚡ Demain (J+1) : 1 congé');
-    console.log('  ⚡ J+2 : 1 congé');  
-    console.log('  ⚡ J+3 : 1 congé');
-    console.log('  ⚡ J+6 : 1 congé');
-    console.log('\n🟡 PRIORITÉ 2 - EN ATTENTE NORMAL :');
-    console.log('  ⚪ J+15 : 1 congé');
-    console.log('  ⚪ J+30 : 1 congé');
-    console.log('\n� PRIORITÉ 3 - TRAITÉS :');
-    console.log('  ✅ Approuvé J+45 : 1 congé');
-    console.log('  ✅ Approuvé J+60 : 1 congé');
-    console.log('  ❌ Refusé J+20 : 1 congé');
-    console.log('  ❌ Refusé J+25 : 1 congé');
-    console.log('\n🚀 TOTAL : 10 congés de test créés !');
-    console.log('\n💡 ORDRE ATTENDU DANS L\'INTERFACE :');
-    console.log('   1️⃣ Demain (BADGE EXPRESS) ⚡');
-    console.log('   2️⃣ J+2 (BADGE EXPRESS) ⚡');
-    console.log('   3️⃣ J+3 (BADGE EXPRESS) ⚡');
-    console.log('   4️⃣ J+6 (BADGE EXPRESS) ⚡');
-    console.log('   5️⃣ J+15 (pas de badge)');
-    console.log('   6️⃣ J+30 (pas de badge)');
-    console.log('   7️⃣ Approuvés/Refusés en bas');
-    console.log('\n🎯 Maintenant va sur l\'interface pour voir le tri intelligent !');
-    
-  } catch (error) {
-    console.error('❌ Erreur:', error);
-  } finally {
-    await prisma.$disconnect();
   }
+
+  console.log(`📊 Congés à créer: ${congesACreer.length}`);
+  console.log('\nDétail des congés:');
+  
+  for (const conge of congesACreer) {
+    const emp = employes.find(e => e.id === conge.userId);
+    const duree = Math.ceil((conge.dateFin - conge.dateDebut) / (1000 * 60 * 60 * 24)) + 1;
+    console.log(`   - ${emp.prenom} ${emp.nom}: ${conge.type} (${duree}j) du ${conge.dateDebut.toLocaleDateString('fr-FR')} au ${conge.dateFin.toLocaleDateString('fr-FR')}`);
+  }
+
+  // Créer les congés
+  await prisma.conge.createMany({
+    data: congesACreer,
+    skipDuplicates: true
+  });
+
+  // Vérification
+  const congesApprouves = await prisma.conge.count({
+    where: { statut: 'approuvé' }
+  });
+
+  // Résumé par type
+  const congesParType = await prisma.conge.groupBy({
+    by: ['type'],
+    where: { statut: 'approuvé' },
+    _count: { id: true }
+  });
+
+  console.log(`\n✅ Total congés approuvés: ${congesApprouves}`);
+  console.log('\nRépartition par type:');
+  congesParType.forEach(c => {
+    console.log(`   - ${c.type}: ${c._count.id}`);
+  });
+
+  await prisma.$disconnect();
 }
 
-createTestConges();
+createTestConges().catch(e => {
+  console.error('Erreur:', e);
+  prisma.$disconnect();
+});

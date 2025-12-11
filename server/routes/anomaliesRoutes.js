@@ -6,7 +6,8 @@ const {
   getAnomalies, 
   traiterAnomalie, 
   getStatsAnomalies, 
-  marquerAnomaliesVues 
+  marquerAnomaliesVues,
+  getBilanJournalier 
 } = require('../controllers/anomaliesController');
 
 // Import du middleware d'authentification centralisé
@@ -15,6 +16,7 @@ const { authMiddleware, adminMiddleware } = require('../middlewares/authMiddlewa
 // Routes publiques (avec auth)
 router.get('/', authMiddleware, getAnomalies);
 router.get('/stats', authMiddleware, getStatsAnomalies);
+router.get('/bilan-journalier/:employeId/:date', authMiddleware, getBilanJournalier);
 router.put('/marquer-vues', authMiddleware, marquerAnomaliesVues);
 
 // Routes admin

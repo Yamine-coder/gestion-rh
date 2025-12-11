@@ -1,5 +1,6 @@
 const prisma = require("../prisma/client");
 const { getParisDateString, getParisTimeString, calculateTimeGapMinutes, getParisBusinessDayKey } = require("../utils/parisTimeUtils");
+const { toLocalDateString, getCurrentDateString } = require("../utils/dateUtils");
 
 // Centralisation des seuils d'alerte
 const THRESHOLDS = {
@@ -42,7 +43,7 @@ const getPlanningVsRealite = async (req, res) => {
       let d = new Date(startStr + 'T00:00:00Z');
       const end = new Date(endStr + 'T00:00:00Z');
       while (d <= end) {
-        out.push(d.toISOString().split('T')[0]);
+        out.push(toLocalDateString(d));
         d.setUTCDate(d.getUTCDate() + 1);
       }
       return out;
@@ -55,7 +56,7 @@ const getPlanningVsRealite = async (req, res) => {
       requestedDays = listDates(dateDebut, dateFin);
     } else {
       const todayParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-      requestedDays = [todayParis.toISOString().split('T')[0]];
+      requestedDays = [getCurrentDateString()];
     }
 
     const minDay = requestedDays[0];
@@ -100,6 +101,59 @@ const getPlanningVsRealite = async (req, res) => {
     // 3. Organiser les données par jour et calculer les écarts
     const comparaisons = [];
 
+    // 🌙 DÉTECTION DES SHIFTS DE NUIT RESTAURANT (7h → 00:30/01:00)
+    const shiftNightMapping = new Map();
+    
+    console.log('\n🌙 === DÉTECTION SHIFTS DE NUIT RESTAURANT ===');
+    
+    shiftsPrevus.forEach(shift => {
+      const shiftDateParis = new Date(shift.date).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+      
+      if (shift.type === 'travail' && Array.isArray(shift.segments)) {
+        shift.segments.forEach((segment, idx) => {
+          if (segment.start && segment.end) {
+            const [startHH, startMM] = segment.start.split(':').map(Number);
+            const [endHH, endMM] = segment.end.split(':').map(Number);
+            
+            const startMinutes = startHH * 60 + startMM;
+            const endMinutes = endHH * 60 + endMM;
+            
+            // Shift de nuit : fin < début (ex: 19:00 → 00:30)
+            const spansMultipleDays = endMinutes < startMinutes;
+            
+            if (spansMultipleDays) {
+              const shiftKey = `${shift.id}_seg${idx}`;
+              
+              const nextDay = new Date(shift.date);
+              nextDay.setDate(nextDay.getDate() + 1);
+              const nextDayParis = nextDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+              
+              const durationHours = ((24 * 60) - startMinutes + endMinutes) / 60;
+              
+              console.log(`🌙 SHIFT NUIT détecté:`);
+              console.log(`   → Shift ${shift.id} segment ${idx}`);
+              console.log(`   → Horaire: ${segment.start} → ${segment.end} (${durationHours.toFixed(1)}h)`);
+              console.log(`   → Date shift: ${shiftDateParis}`);
+              console.log(`   → Date OUT attendue: ${nextDayParis}`);
+              console.log(`   → ${segment.commentaire || 'Service restaurant'}`);
+              
+              shiftNightMapping.set(shiftKey, {
+                shiftId: shift.id,
+                shiftDate: shiftDateParis,
+                nextDate: nextDayParis,
+                segment,
+                segmentIndex: idx,
+                durationHours
+              });
+            }
+          }
+        });
+      }
+    });
+    
+    console.log(`🌙 Total shifts de nuit: ${shiftNightMapping.size}`);
+    console.log('========================================\n');
+
     // Grouper par jour business (Europe/Paris + cutoff)
     const shiftsByDate = {};
     shiftsPrevus.forEach(shift => {
@@ -116,17 +170,75 @@ const getPlanningVsRealite = async (req, res) => {
     });
 
     const pointagesByDate = {};
+    const pointagesNightShiftsUsed = new Set();
+    
     pointagesReels.forEach(p => {
-      // Pour les pointages, utiliser le jour calendaire Paris (même logique que les shifts)
       const pointageDateParis = new Date(p.horodatage).toLocaleDateString('en-CA', { 
         timeZone: 'Europe/Paris' 
-      }); // Format YYYY-MM-DD
+      });
+      const pointageTime = new Date(p.horodatage).toLocaleTimeString('fr-FR', { 
+        timeZone: 'Europe/Paris',
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
       
-      console.log(`⏰ Pointage ${p.id}: horodatage=${p.horodatage} → jour Paris=${pointageDateParis}`);
-      
+      // Groupage standard
       if (!pointagesByDate[pointageDateParis]) pointagesByDate[pointageDateParis] = [];
       pointagesByDate[pointageDateParis].push(p);
+      
+      console.log(`⏰ Pointage ${p.id}: ${p.type} à ${pointageDateParis} ${pointageTime}`);
+      
+      // 🌙 LOGIQUE RESTAURANT : Rattacher les départs après minuit au shift de J-1
+      const isDepartType = p.type === 'depart' || p.type === 'départ' || p.type === 'SORTIE';
+      
+      if (isDepartType) {
+        // Calculer J-1
+        const prevDay = new Date(p.horodatage);
+        prevDay.setDate(prevDay.getDate() - 1);
+        const prevDayParis = prevDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+        
+        // Chercher si un shift de nuit de J-1 attend ce départ
+        let nightShiftFound = false;
+        
+        for (const [shiftKey, nightShift] of shiftNightMapping.entries()) {
+          if (nightShift.shiftDate === prevDayParis && nightShift.nextDate === pointageDateParis) {
+            console.log(`   🌙 → Rattaché au shift nuit ${nightShift.shiftId} du ${prevDayParis}`);
+            console.log(`      Shift prévu: ${nightShift.segment.start} → ${nightShift.segment.end}`);
+            console.log(`      ${nightShift.segment.commentaire || 'Service restaurant'}`);
+            
+            // Ajouter ce pointage AUSSI au jour précédent
+            if (!pointagesByDate[prevDayParis]) pointagesByDate[prevDayParis] = [];
+            
+            if (!pointagesNightShiftsUsed.has(p.id)) {
+              pointagesByDate[prevDayParis].push({
+                ...p,
+                _nightShiftCandidate: true,
+                _originalDate: pointageDateParis,
+                _nightShiftKey: shiftKey
+              });
+              pointagesNightShiftsUsed.add(p.id);
+              nightShiftFound = true;
+            }
+            
+            break;
+          }
+        }
+        
+        if (!nightShiftFound && pointageDateParis !== prevDayParis) {
+          const [hh] = pointageTime.split(':').map(Number);
+          if (hh < 6) {
+            console.log(`   ⚠️ Départ après minuit (${pointageTime}) sans shift de nuit correspondant`);
+          }
+        }
+      }
     });
+    
+    console.log(`\n📊 Résumé groupage:`);
+    console.log(`   - ${shiftNightMapping.size} shifts de nuit détectés`);
+    console.log(`   - ${pointagesNightShiftsUsed.size} pointages OUT rattachés à J-1`);
+    console.log(`   - Jours avec pointages: ${Object.keys(pointagesByDate).join(', ')}`);
+    console.log('');
 
     console.log(`📊 Détails pointages trouvés:`, pointagesReels.map(p => ({
       type: p.type,
@@ -182,7 +294,7 @@ const getPlanningVsRealite = async (req, res) => {
             comparaisonJour.planifie.push({
               debut: segment.start,
               fin: segment.end,
-              type: 'présence',
+              type: 'travail',
               shiftId: shift.id
             });
             console.log(`    ✅ Segment ajouté aux planifiés: ${segment.start}-${segment.end}`);
@@ -214,15 +326,15 @@ const getPlanningVsRealite = async (req, res) => {
       let i=0;
       while (i < cleaned.length) {
         const current = cleaned[i];
-        const isArrivee = current.type === 'arrivee' || current.type === 'arrivée';
-        const isDepart = current.type === 'depart' || current.type === 'départ';
+        const isArrivee = current.type === 'arrivee' || current.type === 'arrivée' || current.type === 'ENTRÉE';
+        const isDepart = current.type === 'depart' || current.type === 'départ' || current.type === 'SORTIE';
 
         if (isArrivee) {
           // Chercher l'index de la prochaine arrivée (délimitera le bloc de départs candidats)
           let nextArrivalIndex = -1;
           for (let k = i+1; k < cleaned.length; k++) {
             const t = cleaned[k].type;
-            if (t === 'arrivee' || t === 'arrivée') { nextArrivalIndex = k; break; }
+            if (t === 'arrivee' || t === 'arrivée' || t === 'ENTRÉE') { nextArrivalIndex = k; break; }
           }
           const searchEnd = nextArrivalIndex === -1 ? cleaned.length : nextArrivalIndex;
 
@@ -230,7 +342,7 @@ const getPlanningVsRealite = async (req, res) => {
           let lastDepart = null;
             for (let k = i+1; k < searchEnd; k++) {
               const cand = cleaned[k];
-              if (cand.type === 'depart' || cand.type === 'départ') {
+              if (cand.type === 'depart' || cand.type === 'départ' || cand.type === 'SORTIE') {
                 lastDepart = cand; // écrase jusqu'au dernier
               }
             }
@@ -259,8 +371,18 @@ const getPlanningVsRealite = async (req, res) => {
         });
       });
 
-      // Calculer les écarts
-      comparaisonJour.ecarts = calculerEcarts(comparaisonJour.planifie, comparaisonJour.reel);
+      // Calculer les écarts uniquement pour les dates passées ou aujourd'hui
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const jourDate = new Date(dateKey + 'T00:00:00');
+      const isFutureDate = jourDate > today;
+      
+      if (isFutureDate) {
+        // Pour les dates futures, pas d'écarts (pas encore de pointages attendus)
+        comparaisonJour.ecarts = [];
+      } else {
+        comparaisonJour.ecarts = calculerEcarts(comparaisonJour.planifie, comparaisonJour.reel);
+      }
 
       comparaisons.push(comparaisonJour);
     }
@@ -505,13 +627,15 @@ function calculerEcarts(planifie, reel) {
           typeArrivee = 'retard_modere';
           graviteArrivee = 'attention';
           descriptionArrivee = `🟡 Retard modéré: arrivée à ${pointage.arrivee}, ${minsArrivee} min de retard (prévu ${segment.debut})`;
+          console.log(`🟡 RETARD MODÉRÉ DÉTECTÉ: segment ${segIdx + 1}, écart=${ecartArrivee}min, seuil=${THRESHOLDS.ARRIVEE.RETARD_MODERE}`);
         } else {
           typeArrivee = 'retard_critique';
           graviteArrivee = 'critique';
           descriptionArrivee = `🔴 Retard critique: arrivée à ${pointage.arrivee}, ${minsArrivee} min de retard (prévu ${segment.debut})`;
+          console.log(`🔴 RETARD CRITIQUE DÉTECTÉ: segment ${segIdx + 1}, écart=${ecartArrivee}min, seuil=${THRESHOLDS.ARRIVEE.RETARD_MODERE}`);
         }
         
-        ecarts.push({
+        const ecartArriveeObj = {
           type: typeArrivee,
           gravite: graviteArrivee,
           dureeMinutes: minsArrivee,
@@ -520,7 +644,9 @@ function calculerEcarts(planifie, reel) {
           reel: pointage.arrivee,
           ecartMinutes: ecartArrivee,
           segment: segIdx + 1
-        });
+        };
+        console.log(`📤 ÉCART ARRIVÉE AJOUTÉ:`, JSON.stringify(ecartArriveeObj, null, 2));
+        ecarts.push(ecartArriveeObj);
         
         // Analyser le départ avec les 3 zones de tolérance
         const ecartDepart = calculateTimeGapMinutes(segment.fin, pointage.depart);

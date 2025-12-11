@@ -15,6 +15,8 @@ import Badgeuse      from "./pages/Badgeuse";
 import HomeEmploye   from "./pages/HomeEmploye";
 import ProfilEmploye from "./pages/ProfilEmploye";
 import MesConges     from "./components/MesConges";
+import MesAnomalies  from "./pages/MesAnomalies";
+import Planning      from "./pages/Planning";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function AppRoutes() {
@@ -44,6 +46,15 @@ function AppRoutes() {
       />
 
       <Route
+        path="/mes-anomalies"
+        element={
+          <ProtectedRoute roleRequired="employee">
+            <MesAnomalies />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/home"
         element={
           <ProtectedRoute roleRequired="employee">
@@ -66,6 +77,15 @@ function AppRoutes() {
         element={
           <ProtectedRoute roleRequired="employee">
             <ProfilEmploye />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/planning"
+        element={
+          <ProtectedRoute roleRequired="employee">
+            <Planning />
           </ProtectedRoute>
         }
       />

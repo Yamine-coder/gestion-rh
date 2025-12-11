@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toLocalDateString } from '../utils/parisTimeUtils';
 
 const ModalImportPlanning = ({ isOpen, onClose, onImport, employees }) => {
   const [file, setFile] = useState(null);
@@ -62,7 +63,7 @@ const ModalImportPlanning = ({ isOpen, onClose, onImport, employees }) => {
             // Créer l'objet shift
             shiftsFromDocument.push({
               employeeId: employee.id,
-              date: currentDate.toISOString().split('T')[0],
+              date: toLocalDateString(currentDate),
               startTime: `${startHour}:00`,
               endTime: `${endHour}:00`,
               title: `Shift - ${employeeName}`,
@@ -96,18 +97,13 @@ const ModalImportPlanning = ({ isOpen, onClose, onImport, employees }) => {
       const shiftsToCreate = parsedData.map(shift => ({
         employeId: shift.employeeId,
         date: shift.date,
-        type: 'présence',
+        type: 'travail',
         segments: [{
           start: shift.startTime,
           end: shift.endTime,
           commentaire: '',
           aValider: false,
-          isExtra: false,
-          extraMontant: '',
-          paymentStatus: 'à_payer',
-          paymentMethod: '',
-          paymentDate: '',
-          paymentNote: ''
+          isExtra: false
         }]
       }));
       

@@ -1,0 +1,63 @@
+{
+  "date": "2025-10-20T15:32:49.035Z",
+  "titre": "Test Complet des Catégories Dashboard",
+  "statistiques": {
+    "total": 10,
+    "reussis": 0,
+    "echoues": 10,
+    "tauxReussite": 0
+  },
+  "details": [
+    {
+      "cas": "CAS 1: Présent parfait",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 2: Retard mineur (5 min)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 3: Retard majeur (30 min)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 4: Départ anticipé (15 min)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 5: Absent total (aucun pointage)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 6: Absent partiel (segment non pointé)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 7: Pointage hors plage (nuit)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 8: Double retard (arrivée + départ)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 9: Segments multiples avec micro-retards",
+      "statut": "ERROR",
+      "erreur": "Error"
+    },
+    {
+      "cas": "CAS 10: Employé sans planning (ne doit PAS compter)",
+      "statut": "ERROR",
+      "erreur": "Error"
+    }
+  ],
+  "conclusion": "⚠️ 10 cas problématiques détectés"
+}

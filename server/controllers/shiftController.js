@@ -1,8 +1,216 @@
 const prisma = require("../prisma/client");
+const { notifierNouveauShift, notifierPlanningModifie } = require('../services/notificationService');
+const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
+const { creerPaiementDepuisShiftExtra, TAUX_HORAIRE_DEFAUT } = require('../services/paiementExtrasService');
+
 // Sanitisation basique pour éviter injection HTML (notes/commentaires)
 function sanitize(str) {
   if (!str) return '';
   return String(str).replace(/[<>]/g, c => ({'<':'&lt;','>':'&gt;'}[c]));
+}
+
+/**
+ * 💰 Synchronise automatiquement les PaiementExtra avec les segments isExtra d'un shift
+ * 
+ * RÈGLES DE GESTION :
+ * - Si PaiementExtra "à_payer" → mise à jour libre (heures, montant)
+ * - Si PaiementExtra "payé" et modification horaires → créer ajustement (+/- heures)
+ * - Si décochage isExtra sur paiement "payé" → BLOQUER (retourner erreur)
+ * - Si suppression shift avec paiement "payé" → marquer "annulé"
+ */
+async function syncShiftExtrasWithPaiements(shift, segments, adminId, options = {}) {
+  if (!shift?.id || !Array.isArray(segments)) return { success: true };
+  
+  const { isDelete = false } = options;
+  const errors = [];
+  
+  try {
+    // Récupérer tous les PaiementExtra existants pour ce shift (y compris ajustements)
+    const existingPaiements = await prisma.paiementExtra.findMany({
+      where: { 
+        shiftId: shift.id,
+        source: { in: ['shift_extra', 'ajustement'] },
+        statut: { not: 'annule' } // Ignorer les annulés
+      }
+    });
+    
+    // Séparer paiements principaux et ajustements
+    const mainPaiements = existingPaiements.filter(p => p.source === 'shift_extra');
+    const existingBySegment = {};
+    mainPaiements.forEach(p => {
+      if (p.segmentIndex !== null && p.segmentIndex !== undefined) {
+        existingBySegment[p.segmentIndex] = p;
+      }
+    });
+    
+    // Cas de suppression du shift
+    if (isDelete) {
+      for (const paiement of mainPaiements) {
+        if (paiement.statut === 'paye') {
+          // Marquer comme annulé avec commentaire
+          await prisma.paiementExtra.update({
+            where: { id: paiement.id },
+            data: {
+              statut: 'annule',
+              commentaire: `${paiement.commentaire || ''} [Shift supprimé le ${new Date().toLocaleDateString('fr-FR')}]`.trim()
+            }
+          });
+          console.log(`⚠️ PaiementExtra ${paiement.id} marqué annulé (shift supprimé, déjà payé)`);
+        } else {
+          await prisma.paiementExtra.delete({ where: { id: paiement.id } });
+          console.log(`🗑️ PaiementExtra ${paiement.id} supprimé (shift supprimé)`);
+        }
+      }
+      return { success: true };
+    }
+    
+    // Parcourir les segments pour créer/mettre à jour
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const existingPaiement = existingBySegment[i];
+      
+      // Calculer les heures du segment
+      const calculerHeures = (seg) => {
+        if (!seg.start || !seg.end) return 0;
+        const [startH, startM] = seg.start.split(':').map(Number);
+        const [endH, endM] = seg.end.split(':').map(Number);
+        let h = (endH + endM/60) - (startH + startM/60);
+        if (h < 0) h += 24; // Shift de nuit
+        return Math.round(h * 100) / 100;
+      };
+      
+      const heures = calculerHeures(segment);
+      
+      if (segment.isExtra) {
+        if (existingPaiement) {
+          const anciennesHeures = parseFloat(existingPaiement.heures);
+          const ancienMontant = parseFloat(existingPaiement.montant);
+          const diffHeures = heures - anciennesHeures;
+          const aEteModifie = Math.abs(diffHeures) > 0.01;
+          
+          if (existingPaiement.statut === 'a_payer') {
+            // ✅ Paiement non effectué → mise à jour directe
+            if (aEteModifie) {
+              const tauxHoraire = parseFloat(existingPaiement.tauxHoraire);
+              const nouveauMontant = heures * tauxHoraire;
+              
+              // Garder trace des valeurs initiales si c'est la première modification
+              const heuresInitiales = existingPaiement.heuresInitiales ?? anciennesHeures;
+              const montantInitial = existingPaiement.montantInitial ?? ancienMontant;
+              
+              // Récupérer l'ancien segment horaire depuis le commentaire existant ou le stocker
+              let ancienSegment = existingPaiement.segmentInitial;
+              if (!ancienSegment) {
+                // Extraire l'ancien segment du commentaire s'il existe
+                const match = existingPaiement.commentaire?.match(/Segment extra (\d{1,2}:\d{2}-\d{1,2}:\d{2})/);
+                ancienSegment = match ? match[1] : null;
+              }
+              const segmentInitial = ancienSegment;
+              
+              // Nouveau segment horaire
+              const nouveauSegment = `${segment.start}-${segment.end}`;
+              
+              // Générer note automatique de modification avec ancien/nouveau segment
+              // Format: ~~ancienSegment~~ nouveauSegment pour affichage barré côté frontend
+              const dateModif = new Date().toLocaleDateString('fr-FR');
+              let commentaire = segmentInitial 
+                ? `Segment extra ~~${segmentInitial}~~ ${nouveauSegment} [Modifié le ${dateModif}: ${anciennesHeures}h→${heures}h]`
+                : `Segment extra ${nouveauSegment} [Modifié le ${dateModif}: ${anciennesHeures}h→${heures}h]`;
+              
+              await prisma.paiementExtra.update({
+                where: { id: existingPaiement.id },
+                data: {
+                  heures: heures,
+                  montant: nouveauMontant,
+                  heuresInitiales,
+                  montantInitial,
+                  segmentInitial,
+                  derniereModif: new Date(),
+                  commentaire
+                }
+              });
+              console.log(`💰 PaiementExtra ${existingPaiement.id} mis à jour: ${anciennesHeures}h → ${heures}h`);
+            }
+          } else if (existingPaiement.statut === 'paye' && aEteModifie) {
+            // ⚠️ Paiement déjà effectué + horaires changés → créer ajustement
+            const tauxHoraire = parseFloat(existingPaiement.tauxHoraire);
+            const montantAjustement = diffHeures * tauxHoraire;
+            
+            await prisma.paiementExtra.create({
+              data: {
+                employeId: shift.employeId,
+                date: new Date(shift.date),
+                heures: diffHeures,
+                montant: montantAjustement,
+                tauxHoraire: tauxHoraire,
+                source: 'ajustement',
+                shiftId: shift.id,
+                segmentIndex: i,
+                ajustementDeId: existingPaiement.id,
+                motifAjustement: 'modification_horaires',
+                statut: 'a_payer',
+                creePar: adminId,
+                commentaire: `Ajustement suite modification horaires (${anciennesHeures}h → ${heures}h)`
+              }
+            });
+            console.log(`📝 Ajustement créé: ${diffHeures > 0 ? '+' : ''}${diffHeures}h = ${montantAjustement}€`);
+          }
+          delete existingBySegment[i];
+        } else {
+          // Créer un nouveau PaiementExtra
+          const paiement = await creerPaiementDepuisShiftExtra(shift, i, adminId);
+          if (paiement) {
+            console.log(`💰 Nouveau PaiementExtra créé pour shift ${shift.id} segment ${i}`);
+          }
+        }
+      } else {
+        // Segment n'est plus extra
+        if (existingPaiement) {
+          if (existingPaiement.statut === 'paye') {
+            // ❌ BLOQUER : impossible de décocher un extra déjà payé
+            errors.push({
+              type: 'extra_deja_paye',
+              segmentIndex: i,
+              message: `Le segment ${i + 1} a déjà été payé en extra (${existingPaiement.montant}€). Impossible de le décocher.`
+            });
+          } else {
+            await prisma.paiementExtra.delete({ where: { id: existingPaiement.id } });
+            console.log(`🗑️ PaiementExtra ${existingPaiement.id} supprimé (segment plus extra)`);
+          }
+          delete existingBySegment[i];
+        }
+      }
+    }
+    
+    // Supprimer les paiements orphelins (segments qui n'existent plus)
+    for (const segmentIndex in existingBySegment) {
+      const orphanPaiement = existingBySegment[segmentIndex];
+      if (orphanPaiement.statut === 'paye') {
+        // Marquer comme annulé
+        await prisma.paiementExtra.update({
+          where: { id: orphanPaiement.id },
+          data: {
+            statut: 'annule',
+            commentaire: `${orphanPaiement.commentaire || ''} [Segment supprimé le ${new Date().toLocaleDateString('fr-FR')}]`.trim()
+          }
+        });
+        console.log(`⚠️ PaiementExtra ${orphanPaiement.id} marqué annulé (segment supprimé, déjà payé)`);
+      } else {
+        await prisma.paiementExtra.delete({ where: { id: orphanPaiement.id } });
+        console.log(`🗑️ PaiementExtra ${orphanPaiement.id} supprimé (segment supprimé)`);
+      }
+    }
+    
+    if (errors.length > 0) {
+      return { success: false, errors };
+    }
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error('⚠️ Erreur sync PaiementExtra:', error.message);
+    return { success: false, errors: [{ type: 'sync_error', message: error.message }] };
+  }
 }
 
 // GET tous les shifts (optionnel : filtrage employé, dates)
@@ -73,9 +281,38 @@ const createOrUpdateShift = async (req, res) => {
     const dateObj = new Date(date);
     if (isNaN(dateObj.getTime())) return res.status(400).json({ error: 'Date invalide' });
 
-    // Validation segments si présence
+    // 🔒 VÉRIFICATION CONGÉ APPROUVÉ - Bloquer si un congé existe pour cette date
+    if (type === 'travail') {
+      const startOfDay = new Date(dateObj);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(dateObj);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const congeApprouve = await prisma.conge.findFirst({
+        where: {
+          userId: Number(employeId),
+          statut: 'approuvé',
+          dateDebut: { lte: endOfDay },
+          dateFin: { gte: startOfDay }
+        }
+      });
+      
+      if (congeApprouve) {
+        const typeConge = congeApprouve.type || 'congé';
+        const dateDebutStr = new Date(congeApprouve.dateDebut).toLocaleDateString('fr-FR');
+        const dateFinStr = new Date(congeApprouve.dateFin).toLocaleDateString('fr-FR');
+        console.log(`🚫 Blocage création shift: Congé approuvé existe (${typeConge}) du ${dateDebutStr} au ${dateFinStr}`);
+        return res.status(409).json({ 
+          error: `Impossible de planifier un shift : l'employé a un congé approuvé (${typeConge}) du ${dateDebutStr} au ${dateFinStr}`,
+          congeId: congeApprouve.id,
+          type: typeConge
+        });
+      }
+    }
+
+    // Validation segments si travail
     let safeSegments = [];
-    if (type === 'présence') {
+    if (type === 'travail') {
       if (!Array.isArray(segments) || segments.length === 0) {
         return res.status(400).json({ error: 'Segments requis pour une présence' });
       }
@@ -86,8 +323,22 @@ const createOrUpdateShift = async (req, res) => {
         if (!timeRegex.test(start) || !timeRegex.test(end)) {
           throw new Error(`Format heure invalide segment ${idx+1}`);
         }
-        if (start >= end) {
-          throw new Error(`Heure début >= fin segment ${idx+1}`);
+        
+        // 🌙 RESTAURANT : Autoriser les shifts de nuit (ex: 19:00 → 00:30)
+        const [startH, startM] = start.split(':').map(Number);
+        const [endH, endM] = end.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        const spansMultipleDays = endMinutes < startMinutes;
+        
+        if (spansMultipleDays) {
+          const duration = ((24 * 60) - startMinutes + endMinutes) / 60;
+          console.log(`🌙 Segment ${idx+1} franchit minuit: ${start} → ${end} (${duration.toFixed(1)}h) - OK pour restaurant`);
+        }
+        
+        // Interdire seulement les durées impossibles
+        if (start === end) {
+          throw new Error(`Heure début = fin segment ${idx+1} (durée nulle)`);
         }
         return {
       id: seg.id || require('crypto').randomUUID(),
@@ -102,10 +353,44 @@ const createOrUpdateShift = async (req, res) => {
           paymentDate: seg.paymentDate || '',
       paymentNote: sanitize(seg.paymentNote)
         };
-      }).sort((a,b)=> a.start.localeCompare(b.start));
-      // Détection overlaps
+      });
+      
+      // 🌙 RESTAURANT : Tri intelligent tenant compte des shifts de nuit
+      // Ne pas trier par heure de début car ça casse les shifts de nuit (19:00 → 00:30)
+      // Les segments sont déjà dans l'ordre souhaité par l'utilisateur
+      
+      // Détection overlaps avec gestion shifts de nuit
       for (let i=1;i<normalized.length;i++) {
-        if (normalized[i-1].end > normalized[i].start) {
+        const prev = normalized[i-1];
+        const curr = normalized[i];
+        
+        // Convertir en minutes
+        const prevStartMin = parseInt(prev.start.split(':')[0]) * 60 + parseInt(prev.start.split(':')[1]);
+        const prevEndMin = parseInt(prev.end.split(':')[0]) * 60 + parseInt(prev.end.split(':')[1]);
+        const currStartMin = parseInt(curr.start.split(':')[0]) * 60 + parseInt(curr.start.split(':')[1]);
+        const currEndMin = parseInt(curr.end.split(':')[0]) * 60 + parseInt(curr.end.split(':')[1]);
+        
+        const prevSpansNight = prevEndMin < prevStartMin;
+        const currSpansNight = currEndMin < currStartMin;
+        
+        let overlap = false;
+        
+        if (!prevSpansNight && !currSpansNight) {
+          // Cas normal : chevauchement simple
+          overlap = (prevEndMin > currStartMin);
+        } else if (prevSpansNight && !currSpansNight) {
+          // Prev franchit minuit, curr normal
+          // Prev occupe [prevStart → 24:00[ + [00:00 → prevEnd[
+          overlap = (prevStartMin < currEndMin && currStartMin < 24*60) || (currStartMin < prevEndMin);
+        } else if (!prevSpansNight && currSpansNight) {
+          // Curr franchit minuit, prev normal
+          overlap = (currStartMin < prevEndMin && prevStartMin < 24*60) || (prevStartMin < currEndMin);
+        } else {
+          // Les deux franchissent minuit : toujours un chevauchement
+          overlap = true;
+        }
+        
+        if (overlap) {
           return res.status(400).json({ error: `Chevauchement entre segments ${i} et ${i+1}` });
         }
       }
@@ -126,14 +411,45 @@ const createOrUpdateShift = async (req, res) => {
           date: dateObj,
           type,
           motif: type === "absence" ? motif : null,
-          segments: type === "présence" ? safeSegments : []
+          segments: type === "travail" ? safeSegments : []
           // Suppression de l'incrémentation de version
         },
       });
+      
+      // 🔄 INVALIDATION AUTOMATIQUE DES ANOMALIES
+      // Marquer les anomalies existantes comme obsolètes car le shift a été modifié
+      try {
+        const dateStr = toLocalDateString(dateObj);
+        const startOfDay = new Date(dateObj);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(dateObj);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        const anomaliesInvalidees = await prisma.anomalie.updateMany({
+          where: {
+            employeId: Number(employeId),
+            date: {
+              gte: startOfDay,
+              lte: endOfDay
+            },
+            statut: 'en_attente'
+          },
+          data: {
+            statut: 'obsolete'
+          }
+        });
+        
+        if (anomaliesInvalidees.count > 0) {
+          console.log(`🔄 ${anomaliesInvalidees.count} anomalie(s) invalidée(s) suite à modification shift ${id} pour employé ${employeId} le ${dateStr}`);
+        }
+      } catch (invalidationError) {
+        console.error('⚠️ Erreur invalidation anomalies (non bloquant):', invalidationError.message);
+        // On continue même si l'invalidation échoue
+      }
     } else {
-      // Création (fusion si un shift présence existe déjà pour même jour/employé)
-      if (type === 'présence') {
-        const existing = await prisma.shift.findFirst({ where: { employeId: Number(employeId), date: dateObj, type: 'présence' } });
+      // Création (fusion si un shift travail existe déjà pour même jour/employé)
+      if (type === 'travail') {
+        const existing = await prisma.shift.findFirst({ where: { employeId: Number(employeId), date: dateObj, type: 'travail' } });
         if (existing) {
           // Fusion segments (concat + tri + revalidation overlap)
           const merged = [...existing.segments, ...safeSegments].sort((a,b)=> a.start.localeCompare(b.start));
@@ -167,7 +483,43 @@ const createOrUpdateShift = async (req, res) => {
           },
         });
       }
+      
+      // 🔔 Notification nouveau shift (seulement pour les créations de travail)
+      if (type === 'travail' && safeSegments.length > 0) {
+        try {
+          const heureDebut = safeSegments[0]?.start;
+          const heureFin = safeSegments[safeSegments.length - 1]?.end;
+          await notifierNouveauShift(employeId, {
+            id: shift.id,
+            date: dateObj.toISOString(),
+            heureDebut,
+            heureFin
+          });
+        } catch (notifError) {
+          console.error('⚠️ Erreur notification nouveau shift:', notifError.message);
+        }
+      }
     }
+    
+    // 💰 SYNCHRONISATION AUTOMATIQUE PAIEMENTS EXTRAS
+    // Créer automatiquement un PaiementExtra pour chaque segment isExtra
+    if (type === 'travail' && safeSegments.length > 0) {
+      const adminId = req.userId || req.user?.userId || req.user?.id;
+      const syncResult = await syncShiftExtrasWithPaiements(shift, safeSegments, adminId);
+      
+      // Si erreur (ex: tentative de décocher un extra déjà payé)
+      if (!syncResult.success && syncResult.errors?.length > 0) {
+        const extraDejaPayeError = syncResult.errors.find(e => e.type === 'extra_deja_paye');
+        if (extraDejaPayeError) {
+          return res.status(400).json({ 
+            error: extraDejaPayeError.message,
+            code: 'EXTRA_DEJA_PAYE',
+            segmentIndex: extraDejaPayeError.segmentIndex
+          });
+        }
+      }
+    }
+    
     res.json(shift);
   } catch (error) {
     if (error.message?.startsWith('Format heure invalide') || error.message?.startsWith('Heure début') ) {
@@ -182,13 +534,30 @@ const deleteShift = async (req, res) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'id invalide' });
   try {
-    // Vérifier existence
-    const existing = await prisma.shift.findUnique({ where: { id }, select: { id: true } });
+    // Vérifier existence et récupérer les données
+    const existing = await prisma.shift.findUnique({ 
+      where: { id }, 
+      select: { id: true, employeId: true, date: true, segments: true } 
+    });
     if (!existing) return res.status(404).json({ error: 'Shift introuvable' });
 
-    // Transaction: supprimer d'abord les logs dépendants (pas de cascade défini dans le schema)
+    const adminId = req.userId || req.user?.userId || req.user?.id;
+    
+    // 💰 Gérer les PaiementExtra avant suppression
+    const syncResult = await syncShiftExtrasWithPaiements(existing, [], adminId, { isDelete: true });
+    
+    // Transaction: supprimer les dépendances et le shift
     await prisma.$transaction(async (tx) => {
+      // Supprimer les demandes de remplacement liées
+      await tx.demandeRemplacement.deleteMany({ where: { shiftId: id } });
       await tx.extraPaymentLog.deleteMany({ where: { shiftId: id } });
+      // Supprimer les PaiementExtra restants (ceux à payer, les payés sont déjà marqués annulés)
+      await tx.paiementExtra.deleteMany({ 
+        where: { 
+          shiftId: id,
+          statut: 'a_payer'
+        } 
+      });
       await tx.shift.delete({ where: { id } });
     });
 
@@ -313,7 +682,7 @@ const updateExtraPayment = async (req, res) => {
     };
     // Auto-date si passage à payé
     if (oldSegment.paymentStatus !== 'payé' && newSegmentDraft.paymentStatus === 'payé' && !newSegmentDraft.paymentDate) {
-      newSegmentDraft.paymentDate = new Date().toISOString().split('T')[0];
+      newSegmentDraft.paymentDate = getCurrentDateString();
     }
     const hasChange = ['paymentStatus','paymentMethod','paymentDate','paymentNote']
       .some(k => (oldSegment[k] || '') !== (newSegmentDraft[k] || ''));
@@ -382,7 +751,7 @@ const createBatchShifts = async (req, res) => {
     
     for (const shiftData of shifts) {
       // Support du nouveau format avec segments multiples ET de l'ancien format
-      let { employeeId, date, segments, type = 'présence', startTime, endTime } = shiftData;
+      let { employeeId, date, segments, type = 'travail', startTime, endTime } = shiftData;
       
       // Conversion employeeId vers employeId pour compatibilité
       const employeId = Number(employeeId);
@@ -454,6 +823,22 @@ const createBatchShifts = async (req, res) => {
         
         if (!segmentsValides) {
           continue;
+        }
+        
+        // 🛡️ VÉRIFICATION CONGÉ APPROUVÉ - Empêcher création de travail sur jour de congé
+        if (type === 'travail') {
+          const congeApprouve = await prisma.conge.findFirst({
+            where: {
+              userId: employeId,
+              statut: 'approuvé',
+              dateDebut: { lte: dateObj },
+              dateFin: { gte: dateObj }
+            }
+          });
+          if (congeApprouve) {
+            errors.push(`Employé ${employeId} - Date ${date}: Congé approuvé (${congeApprouve.type}) du ${new Date(congeApprouve.dateDebut).toLocaleDateString('fr-FR')} au ${new Date(congeApprouve.dateFin).toLocaleDateString('fr-FR')}`);
+            continue;
+          }
         }
         
         // Ajouter des IDs aux segments s'ils n'en ont pas
@@ -568,7 +953,7 @@ const createRecurringShifts = async (req, res) => {
       where: {
         employeId: { in: employeIds.map(Number) },
         date: { gte: start, lte: finalEnd },
-        type: 'présence'
+        type: 'travail'
       },
       select: { id:true, employeId:true, date:true }
     });
@@ -593,10 +978,40 @@ const createRecurringShifts = async (req, res) => {
       paymentNote: seg.paymentNote ? sanitize(seg.paymentNote) : ''
     }));
 
+    // 🛡️ RÉCUPÉRER TOUS LES CONGÉS APPROUVÉS POUR FILTRER LES DATES
+    const congesApprouves = await prisma.conge.findMany({
+      where: {
+        userId: { in: employeIds.map(Number) },
+        statut: 'approuvé',
+        OR: [
+          { dateDebut: { lte: finalEnd }, dateFin: { gte: start } }
+        ]
+      },
+      select: { userId: true, dateDebut: true, dateFin: true, type: true }
+    });
+    
+    // Fonction helper pour vérifier si une date est en congé pour un employé
+    const estEnConge = (empId, dateStr) => {
+      const dateCheck = new Date(dateStr + 'T00:00:00.000Z');
+      return congesApprouves.some(c => 
+        c.userId === Number(empId) && 
+        dateCheck >= c.dateDebut && 
+        dateCheck <= c.dateFin
+      );
+    };
+    
+    const skippedConges = []; // Dates sautées à cause de congés
+
     // Process by chunks to avoid very large transactions
     const createOps = [];
     for (const empId of employeIds) {
       for (const dateStr of jobs) {
+        // 🛡️ VÉRIFICATION CONGÉ - Ne pas créer de shift sur jour de congé approuvé
+        if (estEnConge(empId, dateStr)) {
+          skippedConges.push(`${empId}|${dateStr}`);
+          continue;
+        }
+        
         const key = `${empId}|${dateStr}`;
         const existsId = existingMap.get(key);
         if (existsId) {
@@ -624,7 +1039,7 @@ const createRecurringShifts = async (req, res) => {
             data: {
               employeId: Number(op.employeId),
               date: new Date(op.dateStr + 'T00:00:00.000Z'),
-              type: 'présence',
+              type: 'travail',
               motif: null,
               segments: baseSegments
             }
@@ -638,6 +1053,7 @@ const createRecurringShifts = async (req, res) => {
       success: true,
       created,
       skipped: skipped.length,
+      skippedConges: skippedConges.length, // 🛡️ Dates sautées car congés approuvés
       replaced: replaced.length,
       totalDates: jobs.length,
       employees: employeIds.length,

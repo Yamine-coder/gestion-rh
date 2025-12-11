@@ -11,8 +11,11 @@ const signup = async (req, res) => {
   const { email, password, role, prenom, nom } = req.body;
 
   try {
+    // Normaliser l'email en minuscules (standard de sécurité)
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Vérifie si un compte existe déjà
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       return res.status(400).json({ error: 'Email déjà utilisé' });
     }
@@ -23,7 +26,7 @@ const signup = async (req, res) => {
     // Création du nouvel utilisateur
     const newUser = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         password: hashedPassword,
         role: role || 'employee',
         prenom,
@@ -55,9 +58,12 @@ const login = async (req, res) => {
   const ip = req.ip || req.connection.remoteAddress;
 
   try {
+    // Normaliser l'email en minuscules (standard de sécurité)
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Récupérer l'utilisateur avec les champs nécessaires
     const user = await prisma.user.findUnique({ 
-      where: { email },
+      where: { email: normalizedEmail },
       select: {
         id: true,
         email: true,
@@ -187,9 +193,12 @@ const demandeRecuperation = async (req, res) => {
   console.log('- email:', email);
 
   try {
+    // Normaliser l'email en minuscules (standard de sécurité)
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Vérifier si l'utilisateur existe
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
       select: { id: true, email: true, prenom: true, nom: true }
     });
 

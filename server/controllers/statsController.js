@@ -9,9 +9,27 @@ const getStatsRH = async (req, res) => {
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
     const premierDuMois = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    console.log('📊 [STATS API] Calcul stats pour:', todayStart.toISOString(), '→', todayEnd.toISOString());
+
     // Parallel base queries
-    const [users, pointagesToday, congesAll, statutsGrouped] = await Promise.all([
-      prisma.user.findMany({ where: { role: 'employee' }, select: { id:true, email:true, nom:true, prenom:true } }),
+    const [users, allUsers, pointagesToday, congesAll, statutsGrouped] = await Promise.all([
+      // Uniquement les employés actifs (en service)
+      prisma.user.findMany({ 
+        where: { 
+          role: 'employee',
+          statut: 'actif',
+          OR: [
+            { dateSortie: null },
+            { dateSortie: { gt: now } }
+          ]
+        }, 
+        select: { id:true, email:true, nom:true, prenom:true, statut:true, dateSortie:true } 
+      }),
+      // Tous les employés (incluant inactifs) pour stats comparatives
+      prisma.user.findMany({ 
+        where: { role: 'employee' }, 
+        select: { id:true, statut:true, dateSortie:true } 
+      }),
       prisma.pointage.findMany({
         where: { horodatage: { gte: todayStart, lte: todayEnd } },
         select: { id:true, userId:true, horodatage:true, type:true }
@@ -23,11 +41,17 @@ const getStatsRH = async (req, res) => {
       prisma.conge.groupBy({ by: ['statut'], _count: true })
     ]);
 
-    const employes = users.length;
+    const employes = users.length; // Employés EN SERVICE (actifs)
+    const totalEmployes = allUsers.length; // Total incluant inactifs
+    const employesInactifs = allUsers.filter(u => u.statut !== 'actif' || (u.dateSortie && u.dateSortie <= now)).length;
+    
+    console.log('👥 [STATS API] Employés EN SERVICE:', employes, '| Total:', totalEmployes, '| Inactifs:', employesInactifs);
+    console.log('⏱️ [STATS API] Pointages trouvés:', pointagesToday.length);
 
     // Present = distinct userIds with at least one pointage today (could filter ENTREE if type field used)
     const presentSet = new Set(pointagesToday.map(p => p.userId));
     const pointes = presentSet.size;
+    console.log('✅ [STATS API] Employés distincts ayant pointé:', pointes);
 
     // Active approved leaves today
     const congesApprouves = congesAll.filter(c => c.statut === 'approuvé');
@@ -37,9 +61,23 @@ const getStatsRH = async (req, res) => {
     // Absents = employés - présents - en congé approuvé (approximation, à raffiner si planning)
     const absents = Math.max(0, employes - pointes - employesEnCongeAujourdHuiSet.size);
 
+    // Congés actifs AUJOURD'HUI (à envoyer au front pour calcul correct)
+    const congesActifsAujourdHuiFormatted = congesActifsAujourdHui.map(c => {
+      const u = users.find(u => u.id === c.userId) || {};
+      return {
+        id: c.id,
+        dateDebut: c.dateDebut,
+        dateFin: c.dateFin,
+        type: c.type,
+        idEmploye: c.userId,
+        employe: u.email,
+        nom: u.prenom && u.nom ? `${u.prenom} ${u.nom}` : (u.nom || u.prenom || u.email)
+      };
+    });
+
     // Prochains congés (approuvés) futurs (dateDebut > aujourd'hui) limite 60 jours
     const horizon = new Date(now.getTime() + 60*24*60*60*1000);
-    const prochainsConges = congesApprouves
+    const prochainsCongesFuturs = congesApprouves
       .filter(c => c.dateDebut > todayEnd && c.dateDebut <= horizon)
       .sort((a,b) => a.dateDebut - b.dateDebut)
       .slice(0, 100)
@@ -55,6 +93,9 @@ const getStatsRH = async (req, res) => {
           nom: u.prenom && u.nom ? `${u.prenom} ${u.nom}` : (u.nom || u.prenom || u.email)
         };
       });
+    
+    // Combiner congés actifs aujourd'hui + futurs pour le frontend
+    const prochainsConges = [...congesActifsAujourdHuiFormatted, ...prochainsCongesFuturs];
 
     // Heures réalisées approximatives: pour chaque user, diff min/max horodatage (en heures)
     const pointagesParUser = {};
@@ -99,9 +140,12 @@ const getStatsRH = async (req, res) => {
     const repartitionConges = Object.entries(congesParType).map(([type, jours]) => ({ type, jours }));
     const statutsDemandes = statutsGrouped.map(s => ({ statut: s.statut, value: s._count }));
 
-    res.json({
+    const responseData = {
       // Nouveaux champs attendus par le front Tableau de bord
-      employes,
+      employes, // Employés actifs EN SERVICE
+      employesActifs: employes, // Alias explicite
+      totalEmployes, // Total incluant inactifs
+      employesInactifs, // Compteur des inactifs/partis
       pointes,
       totalHeures,
       heuresPrevues,
@@ -118,7 +162,11 @@ const getStatsRH = async (req, res) => {
       nbCongesCeMois,
       congesParType: repartitionConges,
       statutsDemandes
-    });
+    };
+
+    console.log('📤 [STATS API] Réponse envoyée:', { employes, pointes, absents, prochainsConges: prochainsConges.length });
+
+    res.json(responseData);
   } catch (e) {
     console.error('Erreur getStatsRH:', e);
     res.status(500).json({ error: 'Erreur chargement statistiques RH' });
