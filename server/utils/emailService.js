@@ -2,9 +2,6 @@
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
 
-// Resend client (API HTTP - fonctionne sur Render free tier)
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-
 // Cache pour limiter les envois d'emails répétés
 const emailSendCache = new Map();
 
@@ -319,7 +316,7 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
                       
                       <!-- Bouton -->
                       <div style="text-align: center; margin: 24px 0 20px 0;">
-                        <a href="${process.env.CLIENT_URL || 'http://localhost:3000'}/login" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 4px; font-weight: 500; font-size: 13px;">
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 4px; font-weight: 500; font-size: 13px;">
                           Se connecter
                         </a>
                       </div>
@@ -366,12 +363,14 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
 
     
     console.log(`📬 Envoi de l'email...`);
+    console.log(`🔑 RESEND_API_KEY présente: ${!!process.env.RESEND_API_KEY}`);
     
     // Priorité 1: Resend (API HTTP - fonctionne sur Render)
-    if (resend) {
+    if (process.env.RESEND_API_KEY) {
       console.log('📧 Envoi via Resend...');
       try {
-        const { data, error } = await resend.emails.send({
+        const resendClient = new Resend(process.env.RESEND_API_KEY);
+        const { data, error } = await resendClient.emails.send({
           from: `${restaurantName} <onboarding@resend.dev>`,
           to: [email],
           subject: mailOptions.subject,
@@ -387,13 +386,18 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
         recordEmailSent(email, 'identifiants');
         return { success: true, messageId: data?.id, provider: 'resend' };
       } catch (resendError) {
-        console.error('❌ Erreur Resend, fallback Gmail:', resendError.message);
-        // Continue vers Gmail fallback
+        console.error('❌ Erreur Resend:', resendError.message);
+        // Ne pas fallback sur Gmail - retourner l'erreur directement
+        return { 
+          success: false, 
+          error: resendError.message,
+          code: 'RESEND_ERROR'
+        };
       }
     }
     
-    // Priorité 2: Gmail/SMTP (fallback)
-    console.log('📧 Envoi via Gmail/SMTP...');
+    // Priorité 2: Gmail/SMTP (fallback seulement si pas de clé Resend)
+    console.log('📧 Envoi via Gmail/SMTP (pas de RESEND_API_KEY)...');
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
     
