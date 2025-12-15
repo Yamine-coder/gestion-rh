@@ -152,21 +152,12 @@
         });
       })();
 
-      // Enregistrer le Service Worker
+      // Enregistrer le Service Worker (sans rechargement auto)
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
           navigator.serviceWorker.register('/sw.js')
             .then(function(registration) {
               console.log('✅ Service Worker enregistré:', registration.scope);
-              
-              // Recharger automatiquement quand un nouveau SW prend le contrôle
-              var refreshing = false;
-              navigator.serviceWorker.addEventListener('controllerchange', function() {
-                if (refreshing) return;
-                refreshing = true;
-                console.log('🔄 Nouveau Service Worker actif, rechargement...');
-                window.location.reload();
-              });
             })
             .catch(function(error) {
               console.log('❌ Service Worker erreur:', error);
