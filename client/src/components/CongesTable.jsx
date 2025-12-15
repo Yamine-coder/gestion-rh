@@ -682,13 +682,13 @@
                 })
                 ) : (
                 <tr>
-                  <td colSpan="5" className="text-center py-16">
+                  <td colSpan="6" className="text-center py-16">
                     <div className="flex flex-col items-center justify-center">
                       <div className="mb-4 p-4 rounded-full bg-gray-50 border border-gray-100 shadow-inner">
                         <AlertCircle size={40} className="text-gray-300" />
                       </div>
                       <p className="text-lg font-semibold text-gray-600">Aucun congé trouvé</p>
-                      <p className="text-sm text-gray-500 mt-2 max-w-md">
+                      <p className="text-sm text-gray-500 mt-2 max-w-md text-center">
                         Aucune demande ne correspond à vos critères actuels. Essayez de modifier vos filtres ou effectuez une nouvelle recherche.
                       </p>
                       <button 
