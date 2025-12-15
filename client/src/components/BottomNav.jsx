@@ -192,9 +192,9 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
         loading={loadingNotifs}
       />
 
-      {/* Mobile: Bottom Navigation Bar - Design incurvé premium */}
+      {/* Mobile: Bottom Navigation Bar - Design premium comme TikTok */}
       <nav 
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-50" 
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#dc2626]" 
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         role="navigation" 
         aria-label="Navigation principale"
@@ -224,7 +224,7 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
             </div>
           </button>
 
-          {/* Background simple rouge avec coins arrondis en haut */}
+          {/* Coins arrondis en haut seulement */}
           <div className="absolute inset-0 bg-[#dc2626] rounded-t-3xl" />
 
           {/* Navigation Items */}
