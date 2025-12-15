@@ -1,5 +1,9 @@
 // utils/emailService.js
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
+
+// Resend client (API HTTP - fonctionne sur Render free tier)
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 // Cache pour limiter les envois d'emails répétés
 const emailSendCache = new Map();
@@ -362,6 +366,34 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
 
     
     console.log(`📬 Envoi de l'email...`);
+    
+    // Priorité 1: Resend (API HTTP - fonctionne sur Render)
+    if (resend) {
+      console.log('📧 Envoi via Resend...');
+      try {
+        const { data, error } = await resend.emails.send({
+          from: `${restaurantName} <onboarding@resend.dev>`,
+          to: [email],
+          subject: mailOptions.subject,
+          html: mailOptions.html
+        });
+        
+        if (error) {
+          console.error('❌ Erreur Resend:', error);
+          throw new Error(error.message);
+        }
+        
+        console.log(`✅ Email envoyé via Resend à ${email}, ID: ${data?.id}`);
+        recordEmailSent(email, 'identifiants');
+        return { success: true, messageId: data?.id, provider: 'resend' };
+      } catch (resendError) {
+        console.error('❌ Erreur Resend, fallback Gmail:', resendError.message);
+        // Continue vers Gmail fallback
+      }
+    }
+    
+    // Priorité 2: Gmail/SMTP (fallback)
+    console.log('📧 Envoi via Gmail/SMTP...');
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
     
