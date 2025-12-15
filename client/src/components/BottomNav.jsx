@@ -199,8 +199,8 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
         role="navigation" 
         aria-label="Navigation principale"
       >
-        {/* Container principal */}
-        <div className="relative h-[64px]">
+        {/* Container principal - 56px standard */}
+        <div className="relative h-[56px]">
           
           {/* FAB Central - Bouton flottant avec cercle blanc autour */}
           <button 
