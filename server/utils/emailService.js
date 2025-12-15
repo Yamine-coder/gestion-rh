@@ -1,6 +1,6 @@
 // utils/emailService.js
 const nodemailer = require('nodemailer');
-const { Resend } = require('resend');
+const SibApiV3Sdk = require('sib-api-v3-sdk');
 
 // Cache pour limiter les envois d'emails répétés
 const emailSendCache = new Map();
@@ -363,41 +363,45 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
 
     
     console.log(`📬 Envoi de l'email...`);
-    console.log(`🔑 RESEND_API_KEY présente: ${!!process.env.RESEND_API_KEY}`);
+    console.log(`🔑 BREVO_API_KEY présente: ${!!process.env.BREVO_API_KEY}`);
     
-    // Priorité 1: Resend (API HTTP - fonctionne sur Render)
-    if (process.env.RESEND_API_KEY) {
-      console.log('📧 Envoi via Resend...');
+    // Priorité 1: Brevo (API HTTP - fonctionne sur Render, pas besoin de domaine)
+    if (process.env.BREVO_API_KEY) {
+      console.log('📧 Envoi via Brevo...');
       try {
-        const resendClient = new Resend(process.env.RESEND_API_KEY);
-        const { data, error } = await resendClient.emails.send({
-          from: `${restaurantName} <onboarding@resend.dev>`,
-          to: [email],
-          subject: mailOptions.subject,
-          html: mailOptions.html
-        });
+        // Configurer le client Brevo
+        const defaultClient = SibApiV3Sdk.ApiClient.instance;
+        const apiKey = defaultClient.authentications['api-key'];
+        apiKey.apiKey = process.env.BREVO_API_KEY;
         
-        if (error) {
-          console.error('❌ Erreur Resend:', error);
-          throw new Error(error.message);
-        }
+        const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+        const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
         
-        console.log(`✅ Email envoyé via Resend à ${email}, ID: ${data?.id}`);
+        sendSmtpEmail.subject = mailOptions.subject;
+        sendSmtpEmail.htmlContent = mailOptions.html;
+        sendSmtpEmail.sender = { 
+          name: restaurantName, 
+          email: process.env.EMAIL_FROM || 'moussaouiyamine1@gmail.com' 
+        };
+        sendSmtpEmail.to = [{ email: email, name: `${prenom} ${nom}` }];
+        
+        const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+        
+        console.log(`✅ Email envoyé via Brevo à ${email}, ID: ${result.messageId}`);
         recordEmailSent(email, 'identifiants');
-        return { success: true, messageId: data?.id, provider: 'resend' };
-      } catch (resendError) {
-        console.error('❌ Erreur Resend:', resendError.message);
-        // Ne pas fallback sur Gmail - retourner l'erreur directement
+        return { success: true, messageId: result.messageId, provider: 'brevo' };
+      } catch (brevoError) {
+        console.error('❌ Erreur Brevo:', brevoError.message || brevoError);
         return { 
           success: false, 
-          error: resendError.message,
-          code: 'RESEND_ERROR'
+          error: brevoError.message || 'Erreur Brevo',
+          code: 'BREVO_ERROR'
         };
       }
     }
     
-    // Priorité 2: Gmail/SMTP (fallback seulement si pas de clé Resend)
-    console.log('📧 Envoi via Gmail/SMTP (pas de RESEND_API_KEY)...');
+    // Priorité 2: Gmail/SMTP (fallback seulement si pas de clé Brevo)
+    console.log('📧 Envoi via Gmail/SMTP (pas de BREVO_API_KEY)...');
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
     
