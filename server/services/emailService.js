@@ -53,106 +53,200 @@ const envoyerEmailAccueil = async (employeData, motDePasseTemporaire) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Bienvenue</title>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5;">
+    <body style="margin: 0; padding: 0; background-color: #f0f0f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">
+      <!-- Wrapper externe pour centrer -->
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f0f0f0;">
         <tr>
-          <td style="padding: 40px 20px;">
-            <table role="presentation" width="500" cellspacing="0" cellpadding="0" style="margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0;">
+          <td align="center" style="padding: 40px 20px;">
+            
+            <!-- Container principal - largeur fixe 600px pour desktop -->
+            <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
               
-              <!-- Header avec couleur de la charte -->
+              <!-- Header rouge -->
               <tr>
-                <td style="background-color: #cf292c; padding: 28px 32px;">
-                  <h1 style="color: #ffffff; margin: 0; font-size: 18px; font-weight: 600;">
-                    ${restaurantName}
-                  </h1>
+                <td style="background-color: #cf292c; padding: 36px 48px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td>
+                        <h1 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.5px;">
+                          ${restaurantName}
+                        </h1>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
               
-              <!-- Contenu -->
+              <!-- Contenu principal -->
               <tr>
-                <td style="padding: 32px;">
-                  <h2 style="color: #333333; margin: 0 0 12px 0; font-size: 16px; font-weight: 600;">
+                <td style="padding: 48px;">
+                  
+                  <!-- Salutation -->
+                  <h2 style="color: #1a1a1a; margin: 0 0 16px 0; font-size: 24px; font-weight: 600;">
                     Bienvenue ${prenom},
                   </h2>
                   
-                  <p style="color: #555555; font-size: 14px; line-height: 1.5; margin: 0 0 20px 0;">
-                    Votre compte a été créé. Voici vos identifiants de connexion.
+                  <p style="color: #4a4a4a; font-size: 16px; line-height: 1.7; margin: 0 0 32px 0;">
+                    Votre compte a été créé avec succès. Voici vos identifiants de connexion.
                   </p>
                   
-                  <!-- Catégorie -->
+                  <!-- Catégorie(s) / Poste(s) -->
                   ${categorie ? `
-                  <div style="margin-bottom: 20px;">
-                    <p style="color: #888888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">Poste</p>
-                    <span style="display: inline-block; background: #f5f5f5; color: #333333; padding: 5px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid #e0e0e0;">${categorie}</span>
-                  </div>
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 32px;">
+                    <tr>
+                      <td>
+                        <p style="color: #888888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin: 0 0 12px 0;">Postes</p>
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            ${categorie.split(',').map(cat => `
+                              <td style="padding-right: 10px; padding-bottom: 8px;">
+                                <span style="display: inline-block; background: #f8f8f8; color: #333333; padding: 10px 20px; border-radius: 25px; font-size: 14px; font-weight: 500; border: 1px solid #e5e5e5;">${cat.trim()}</span>
+                              </td>
+                            `).join('')}
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
                   ` : ''}
                   
-                  <!-- Identifiants -->
-                  <div style="background: #fafafa; border-radius: 6px; padding: 20px; margin: 20px 0; border: 1px solid #e0e0e0;">
-                    <p style="color: #888888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 12px 0;">Identifiants de connexion</p>
-                    
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                      <tr>
-                        <td style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
-                          <span style="color: #888888; font-size: 11px;">Email</span><br>
-                          <span style="color: #333333; font-size: 14px; font-weight: 500;">${email}</span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0;">
-                          <span style="color: #888888; font-size: 11px;">Mot de passe temporaire</span><br>
-                          <code style="display: inline-block; background: #cf292c; color: #ffffff; padding: 8px 12px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: 600; letter-spacing: 1px; margin-top: 4px;">${motDePasseTemporaire}</code>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
+                  <!-- Box Identifiants -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background: #f9f9f9; border-radius: 12px; margin-bottom: 32px; border: 1px solid #eeeeee;">
+                    <tr>
+                      <td style="padding: 28px 32px;">
+                        <p style="color: #888888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin: 0 0 20px 0;">Identifiants de connexion</p>
+                        
+                        <!-- Email -->
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-bottom: 1px solid #e5e5e5; margin-bottom: 16px; padding-bottom: 16px;">
+                          <tr>
+                            <td>
+                              <p style="color: #888888; font-size: 12px; margin: 0 0 6px 0;">Email</p>
+                              <a href="mailto:${email}" style="color: #cf292c; font-size: 17px; font-weight: 600; text-decoration: none;">${email}</a>
+                            </td>
+                          </tr>
+                        </table>
+                        
+                        <!-- Mot de passe -->
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            <td>
+                              <p style="color: #888888; font-size: 12px; margin: 0 0 10px 0;">Mot de passe temporaire</p>
+                              <span style="display: inline-block; background: #cf292c; color: #ffffff; padding: 14px 24px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; font-size: 18px; font-weight: 700; letter-spacing: 2px;">${motDePasseTemporaire}</span>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
                   
-                  <!-- Alerte -->
-                  <div style="background: #fff8e6; border-radius: 4px; padding: 12px; margin: 20px 0; border-left: 3px solid #f5a623;">
-                    <p style="color: #8a6d3b; margin: 0; font-size: 12px; line-height: 1.4;">
-                      <strong>Important :</strong> Modifiez ce mot de passe lors de votre première connexion.
-                    </p>
-                  </div>
+                  <!-- Alerte Important -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background: #fffbeb; border-radius: 10px; margin-bottom: 32px; border-left: 5px solid #f59e0b;">
+                    <tr>
+                      <td style="padding: 20px 24px;">
+                        <p style="color: #92400e; margin: 0; font-size: 15px; line-height: 1.6;">
+                          <strong>⚠️ Important :</strong> Modifiez ce mot de passe lors de votre première connexion pour sécuriser votre compte.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
                   
-                  <!-- Bouton -->
-                  <div style="text-align: center; margin: 24px 0 20px 0;">
-                    <a href="${frontendUrl}/login" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 10px 24px; text-decoration: none; border-radius: 4px; font-weight: 500; font-size: 13px;">
-                      Se connecter
-                    </a>
-                  </div>
+                  <!-- Bouton Se connecter -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 40px;">
+                    <tr>
+                      <td align="center">
+                        <a href="${frontendUrl}/login" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 18px 48px; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 16px; box-shadow: 0 4px 12px rgba(207, 41, 44, 0.35);">
+                          Se connecter →
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
                   
                   <!-- Étapes -->
-                  <div style="border-top: 1px solid #e0e0e0; padding-top: 20px; margin-top: 8px;">
-                    <p style="color: #888888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 10px 0;">Étapes</p>
-                    <p style="color: #555555; font-size: 12px; margin: 4px 0;">1. Connectez-vous</p>
-                    <p style="color: #555555; font-size: 12px; margin: 4px 0;">2. Changez votre mot de passe</p>
-                    <p style="color: #555555; font-size: 12px; margin: 4px 0;">3. Consultez votre planning</p>
-                  </div>
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top: 2px solid #f0f0f0; padding-top: 32px;">
+                    <tr>
+                      <td>
+                        <p style="color: #888888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin: 0 0 20px 0;">Premières étapes</p>
+                        
+                        <!-- Étape 1 -->
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 14px;">
+                          <tr>
+                            <td width="40" valign="top">
+                              <span style="display: inline-block; width: 28px; height: 28px; background: #f0f0f0; border-radius: 50%; text-align: center; line-height: 28px; font-size: 13px; font-weight: 700; color: #666;">1</span>
+                            </td>
+                            <td style="padding-left: 12px;">
+                              <p style="color: #4a4a4a; font-size: 15px; margin: 0; line-height: 28px;">Connectez-vous avec vos identifiants</p>
+                            </td>
+                          </tr>
+                        </table>
+                        
+                        <!-- Étape 2 -->
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 14px;">
+                          <tr>
+                            <td width="40" valign="top">
+                              <span style="display: inline-block; width: 28px; height: 28px; background: #f0f0f0; border-radius: 50%; text-align: center; line-height: 28px; font-size: 13px; font-weight: 700; color: #666;">2</span>
+                            </td>
+                            <td style="padding-left: 12px;">
+                              <p style="color: #4a4a4a; font-size: 15px; margin: 0; line-height: 28px;">Créez votre mot de passe personnel</p>
+                            </td>
+                          </tr>
+                        </table>
+                        
+                        <!-- Étape 3 -->
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            <td width="40" valign="top">
+                              <span style="display: inline-block; width: 28px; height: 28px; background: #f0f0f0; border-radius: 50%; text-align: center; line-height: 28px; font-size: 13px; font-weight: 700; color: #666;">3</span>
+                            </td>
+                            <td style="padding-left: 12px;">
+                              <p style="color: #4a4a4a; font-size: 15px; margin: 0; line-height: 28px;">Consultez votre planning de la semaine</p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  
                 </td>
               </tr>
               
-              <!-- Support -->
+              <!-- Section Support -->
               <tr>
-                <td style="background-color: #fafafa; padding: 16px 32px; border-top: 1px solid #e0e0e0;">
-                  <p style="color: #888888; font-size: 11px; margin: 0 0 4px 0;">Besoin d'aide ?</p>
-                  <p style="color: #555555; font-size: 12px; margin: 0;">
-                    <a href="tel:${supportPhone.replace(/\s/g, '')}" style="color: #cf292c; text-decoration: none;">${supportPhone}</a>
-                    &nbsp;·&nbsp;
-                    <a href="mailto:${supportEmail}" style="color: #cf292c; text-decoration: none;">${supportEmail}</a>
-                  </p>
+                <td style="background-color: #f9f9f9; padding: 28px 48px; border-top: 1px solid #eeeeee;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td>
+                        <p style="color: #888888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; margin: 0 0 12px 0;">Besoin d'aide ?</p>
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            <td style="padding-right: 24px;">
+                              <p style="margin: 0; font-size: 15px;">
+                                📞 <a href="tel:${supportPhone.replace(/\s/g, '')}" style="color: #cf292c; text-decoration: none; font-weight: 600;">${supportPhone}</a>
+                              </p>
+                            </td>
+                            <td>
+                              <p style="margin: 0; font-size: 15px;">
+                                ✉️ <a href="mailto:${supportEmail}" style="color: #cf292c; text-decoration: none; font-weight: 600;">${supportEmail}</a>
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
               
               <!-- Footer -->
               <tr>
-                <td style="padding: 12px 32px; text-align: center; border-top: 1px solid #e0e0e0;">
-                  <p style="color: #aaaaaa; font-size: 10px; margin: 0;">
-                    © ${new Date().getFullYear()} ${restaurantName}
+                <td style="padding: 24px 48px; text-align: center; background: #f0f0f0;">
+                  <p style="color: #999999; font-size: 13px; margin: 0;">
+                    © ${new Date().getFullYear()} ${restaurantName} • Tous droits réservés
                   </p>
                 </td>
               </tr>
               
             </table>
+            
           </td>
         </tr>
       </table>

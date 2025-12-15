@@ -5,10 +5,12 @@ import {
   Calendar, Clock, ChevronLeft, ChevronRight, Users, 
   AlertCircle, RefreshCw, Sun, Moon, Coffee, UserPlus,
   CheckCircle, XCircle, Send, Eye, Filter, Search,
-  CalendarDays, Palmtree, User, X, Plus, Trash2
+  CalendarDays, Palmtree, User, X, Plus, Trash2,
+  UtensilsCrossed, Layers
 } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import { toLocalDateString } from '../utils/parisTimeUtils';
+import { getCreneauFromSegments, getCreneauStyle } from '../utils/creneauUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const brand = '#cf292c';
@@ -51,6 +53,23 @@ const getShiftTypeStyle = (type) => {
     default:
       return { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300', icon: Calendar };
   }
+};
+
+// Utilitaire pour obtenir le style à partir des segments (nouveau système)
+const getShiftStyleFromSegments = (segments, fallbackType) => {
+  const creneau = getCreneauFromSegments(segments);
+  if (creneau) {
+    const creneauStyle = getCreneauStyle(creneau);
+    return {
+      bg: `bg-[${creneauStyle.colorHex}20]`,
+      text: `text-[${creneauStyle.colorHex}]`,
+      border: `border-[${creneauStyle.colorHex}50]`,
+      icon: creneauStyle.Icon,
+      label: creneauStyle.label,
+      colorHex: creneauStyle.colorHex
+    };
+  }
+  return getShiftTypeStyle(fallbackType);
 };
 
 const getWeekDates = (date) => {
@@ -170,21 +189,29 @@ function ShiftCard({ shift, onRequestReplacement }) {
         </div>
       </div>
       
-      {!isPast && onRequestReplacement && (
-        <button
-          onClick={() => onRequestReplacement(shift)}
-          className="mt-2 w-full py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-white/50 transition-colors flex items-center justify-center gap-1"
-        >
-          <UserPlus className="w-3 h-3" />
-          Demander remplacement
-        </button>
-      )}
+      {/* Badge repas - 1 repas par shift */}
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200/50">
+        <div className="flex items-center gap-1 text-xs text-amber-600">
+          <UtensilsCrossed className="w-3.5 h-3.5" />
+          <span className="font-medium">1 repas inclus</span>
+        </div>
+        
+        {!isPast && onRequestReplacement && (
+          <button
+            onClick={() => onRequestReplacement(shift)}
+            className="py-1 px-2 text-xs font-medium rounded-lg border border-gray-300 text-gray-600 hover:bg-white/50 transition-colors flex items-center gap-1"
+          >
+            <UserPlus className="w-3 h-3" />
+            Remplacement
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-// Cellule équipe
-function ShiftCellEquipe({ shift, conge, isCurrentUser }) {
+// Cellule équipe - supporte les doubles shifts
+function ShiftCellEquipe({ shifts, conge, isCurrentUser }) {
   if (conge) {
     return (
       <div className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs text-center">
@@ -193,10 +220,9 @@ function ShiftCellEquipe({ shift, conge, isCurrentUser }) {
       </div>
     );
   }
-  if (!shift) return <div className="px-2 py-1 text-center text-gray-300 text-xs">—</div>;
+  if (!shifts || shifts.length === 0) return <div className="px-2 py-1 text-center text-gray-300 text-xs">—</div>;
   
-  const style = getShiftTypeStyle(shift.type);
-  const getHoraires = () => {
+  const getHoraires = (shift) => {
     if (!shift.segments || shift.segments.length === 0) return '';
     const travailSegs = shift.segments.filter(s => s.type?.toLowerCase() !== 'pause' && s.type?.toLowerCase() !== 'break');
     if (travailSegs.length === 0) return '';
@@ -205,9 +231,36 @@ function ShiftCellEquipe({ shift, conge, isCurrentUser }) {
     return `${first?.slice(0,5)}-${last?.slice(0,5)}`;
   };
   
+  // Si plusieurs shifts (double shift)
+  if (shifts.length > 1) {
+    return (
+      <div className="space-y-0.5">
+        {shifts.sort((a, b) => {
+          const aStart = a.segments?.[0]?.start || a.segments?.[0]?.debut || '00:00';
+          const bStart = b.segments?.[0]?.start || b.segments?.[0]?.debut || '00:00';
+          return aStart.localeCompare(bStart);
+        }).map((shift, idx) => {
+          const style = getShiftTypeStyle(shift.type);
+          return (
+            <div key={shift.id || idx} className={`px-1 py-0.5 rounded ${style.bg} ${style.text} text-[9px] text-center ${isCurrentUser ? 'ring-1 ring-red-400' : ''}`}>
+              <span className="font-medium">{getHoraires(shift)}</span>
+            </div>
+          );
+        })}
+        <div className="flex justify-center">
+          <Layers className="w-2.5 h-2.5 text-blue-500" />
+        </div>
+      </div>
+    );
+  }
+  
+  // Shift unique
+  const shift = shifts[0];
+  const style = getShiftTypeStyle(shift.type);
+  
   return (
     <div className={`px-1.5 py-1 rounded ${style.bg} ${style.text} text-[10px] text-center ${isCurrentUser ? 'ring-2 ring-red-400' : ''}`}>
-      <span className="font-medium">{getHoraires()}</span>
+      <span className="font-medium">{getHoraires(shift)}</span>
     </div>
   );
 }
@@ -367,6 +420,7 @@ export default function Planning() {
   // Filtres équipe
   const [searchTerm, setSearchTerm] = useState('');
   const [showOnlyWorking, setShowOnlyWorking] = useState(false);
+  const [selectedEquipeDay, setSelectedEquipeDay] = useState(null); // null = aujourd'hui
   
   const token = localStorage.getItem('token');
   const currentUserId = parseInt(localStorage.getItem('userId') || '0');
@@ -613,25 +667,25 @@ export default function Planning() {
               <div className="space-y-4">
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-2 text-gray-600 text-sm mb-1">
-                      <Calendar className="w-4 h-4" />
+                  <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-1.5 text-gray-600 text-xs mb-1">
+                      <Calendar className="w-3.5 h-3.5" />
                       Shifts cette semaine
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: brand }}>{myShifts.length}</div>
+                    <div className="text-xl font-bold" style={{ color: brand }}>{myShifts.length}</div>
                   </div>
-                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-2 text-gray-600 text-sm mb-1">
-                      <Clock className="w-4 h-4" />
+                  <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-1.5 text-gray-600 text-xs mb-1">
+                      <Clock className="w-3.5 h-3.5" />
                       Heures prévues
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: brand }}>
+                    <div className="text-xl font-bold" style={{ color: brand }}>
                       {weeklyHours.hours}h{weeklyHours.minutes > 0 ? weeklyHours.minutes.toString().padStart(2,'0') : ''}
                     </div>
                   </div>
                 </div>
                 
-                {/* Liste shifts */}
+                {/* Liste shifts groupés par jour */}
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Mes shifts</h3>
                   {myShifts.length === 0 ? (
@@ -640,14 +694,69 @@ export default function Planning() {
                       Aucun shift cette semaine
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {myShifts.sort((a,b) => new Date(a.date) - new Date(b.date)).map(shift => (
-                        <ShiftCard 
-                          key={shift.id} 
-                          shift={shift} 
-                          onRequestReplacement={handleRequestReplacement}
-                        />
-                      ))}
+                    <div className="space-y-4">
+                      {/* Grouper par jour */}
+                      {Object.entries(
+                        myShifts.reduce((acc, shift) => {
+                          const dateStr = toLocalDateString(shift.date);
+                          if (!acc[dateStr]) acc[dateStr] = [];
+                          acc[dateStr].push(shift);
+                          return acc;
+                        }, {})
+                      ).sort(([a], [b]) => new Date(a) - new Date(b)).map(([dateStr, dayShifts]) => {
+                        const date = new Date(dateStr);
+                        const isToday = date.toDateString() === new Date().toDateString();
+                        const isDoubleShift = dayShifts.length > 1;
+                        
+                        return (
+                          <div key={dateStr}>
+                            {/* En-tête jour */}
+                            <div className={`flex items-center gap-2 mb-2`}>
+                              {isToday && (
+                                <span 
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                                  style={{ backgroundColor: brand }}
+                                >
+                                  {date.getDate()}
+                                </span>
+                              )}
+                              <span className={`text-sm font-medium capitalize ${isToday ? '' : 'text-gray-600'}`} style={isToday ? { color: brand } : {}}>
+                                {date.toLocaleDateString('fr-FR', { 
+                                  weekday: 'long', 
+                                  day: isToday ? undefined : 'numeric', 
+                                  month: 'short' 
+                                })}
+                              </span>
+                              {isToday && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${brand}15`, color: brand }}>
+                                  Aujourd'hui
+                                </span>
+                              )}
+                              {isDoubleShift && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 flex items-center gap-1">
+                                  <Layers className="w-3 h-3" />
+                                  {dayShifts.length} shifts
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* Shifts du jour */}
+                            <div className="space-y-2">
+                              {dayShifts.sort((a, b) => {
+                                const aStart = a.segments?.[0]?.start || a.segments?.[0]?.debut || '00:00';
+                                const bStart = b.segments?.[0]?.start || b.segments?.[0]?.debut || '00:00';
+                                return aStart.localeCompare(bStart);
+                              }).map(shift => (
+                                <ShiftCard 
+                                  key={shift.id} 
+                                  shift={shift} 
+                                  onRequestReplacement={handleRequestReplacement}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -657,24 +766,49 @@ export default function Planning() {
             {/* ═══════ VUE ÉQUIPE ═══════ */}
             {activeView === 'equipe' && (
               <div>
-                {/* Stats équipe */}
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  <div className="bg-white rounded-xl p-3 shadow-sm border text-center">
-                    <div className="text-xl font-bold text-gray-900">{stats.totalEmployes}</div>
-                    <div className="text-xs text-gray-500">Équipiers</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 shadow-sm border text-center">
-                    <div className="text-xl font-bold text-green-600">{stats.presentAujourdhui}</div>
-                    <div className="text-xs text-gray-500">Aujourd'hui</div>
-                  </div>
-                  <div className="bg-white rounded-xl p-3 shadow-sm border text-center">
-                    <div className="text-xl font-bold text-orange-500">{stats.demandesEnAttente}</div>
-                    <div className="text-xs text-gray-500">À remplacer</div>
-                  </div>
+                {/* Sélecteur de jour compact */}
+                <div className="grid grid-cols-7 gap-1 mb-4 bg-white rounded-xl p-2 shadow-sm border">
+                  {weekDates.map((date, idx) => {
+                    const dateStr = toLocalDateString(date);
+                    const todayStr = toLocalDateString(new Date());
+                    const isToday = dateStr === todayStr;
+                    const isSelected = selectedEquipeDay === dateStr || (selectedEquipeDay === null && isToday);
+                    const shiftsCount = equipeData.shifts.filter(s => toLocalDateString(s.date) === dateStr).length;
+                    
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedEquipeDay(isToday && selectedEquipeDay === null ? null : dateStr)}
+                        className={`flex flex-col items-center py-2 rounded-lg transition-all ${
+                          isSelected 
+                            ? 'ring-2 ring-offset-1'
+                            : 'hover:bg-gray-100'
+                        }`}
+                        style={isSelected ? { 
+                          backgroundColor: `${brand}10`,
+                          '--tw-ring-color': brand
+                        } : {}}
+                      >
+                        <span className={`text-[10px] font-medium uppercase ${
+                          isSelected ? '' : 'text-gray-400'
+                        }`} style={isSelected ? { color: brand } : {}}>
+                          {date.toLocaleDateString('fr-FR', { weekday: 'short' }).slice(0,2)}
+                        </span>
+                        <span className={`text-sm font-bold ${
+                          isSelected ? '' : 'text-gray-700'
+                        }`} style={isSelected ? { color: brand } : {}}>
+                          {date.getDate()}
+                        </span>
+                        {shiftsCount > 0 && (
+                          <div className="mt-0.5 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: brand }}></div>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-                
-                {/* Filtres */}
-                <div className="flex items-center gap-2 mb-4">
+
+                {/* Stats + Filtres en ligne */}
+                <div className="flex items-center gap-2 mb-3">
                   <div className="flex-1 relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
@@ -685,92 +819,130 @@ export default function Planning() {
                       className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-red-500"
                     />
                   </div>
-                  <button
-                    onClick={() => setShowOnlyWorking(!showOnlyWorking)}
-                    className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-                      showOnlyWorking ? 'bg-red-50 border-red-300 text-red-700' : 'border-gray-200 text-gray-600'
-                    }`}
-                  >
-                    <Filter className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                {/* Tableau équipe */}
-                <div className="overflow-x-auto -mx-4 px-4">
-                  <table className="w-full min-w-[550px] border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="sticky left-0 bg-gray-50 z-10 px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase border-r">
-                          Équipier
-                        </th>
-                        {weekDates.map((date, idx) => {
-                          const isToday = date.toDateString() === new Date().toDateString();
-                          return (
-                            <th key={idx} className={`px-1 py-2 text-center text-xs font-medium min-w-[60px] ${isToday ? 'bg-yellow-100' : ''}`}>
-                              <div className="capitalize">{date.toLocaleDateString('fr-FR', { weekday: 'short' })}</div>
-                              <div className={`text-base font-bold ${isToday ? 'text-yellow-700' : 'text-gray-700'}`}>{date.getDate()}</div>
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredEmployes.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="py-8 text-center text-gray-500">
-                            <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                            Aucun équipier
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredEmployes.map(employe => {
-                          const isCurrentUser = employe.id === currentUserId;
-                          return (
-                            <tr key={employe.id} className={`border-b ${isCurrentUser ? 'bg-red-50/50' : 'hover:bg-gray-50'}`}>
-                              <td className="sticky left-0 bg-white z-10 px-2 py-2 border-r">
-                                <div className="flex items-center gap-1.5 min-w-[90px]">
-                                  <EmployeAvatar employe={employe} size="sm" />
-                                  <div className="truncate">
-                                    <div className="font-medium text-xs text-gray-900 truncate">
-                                      {employe.prenom}
-                                      {isCurrentUser && <span className="text-red-500 ml-1">(moi)</span>}
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                              {weekDates.map((date, idx) => {
-                                const dateStr = toLocalDateString(date);
-                                const shift = equipeData.shifts.find(s => 
-                                  toLocalDateString(s.date) === dateStr && s.employeId === employe.id
-                                );
-                                const conge = equipeData.conges.find(c => 
-                                  c.userId === employe.id && date >= new Date(c.dateDebut) && date <= new Date(c.dateFin)
-                                );
-                                const isToday = date.toDateString() === new Date().toDateString();
-                                return (
-                                  <td key={idx} className={`px-1 py-2 ${isToday ? 'bg-yellow-50' : ''}`}>
-                                    <ShiftCellEquipe shift={shift} conge={conge} isCurrentUser={isCurrentUser} />
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                
-                {/* Légende */}
-                <div className="mt-4">
-                  <div className="flex flex-wrap gap-1.5 text-[10px]">
-                    {[{type:'matin',label:'Matin'},{type:'soir',label:'Soir'},{type:'nuit',label:'Nuit'},{type:'journee',label:'Journée'}].map(item => {
-                      const style = getShiftTypeStyle(item.type);
-                      return <div key={item.type} className={`px-2 py-0.5 rounded ${style.bg} ${style.text}`}>{item.label}</div>;
-                    })}
-                    <div className="px-2 py-0.5 rounded bg-green-100 text-green-700">🌴 Congé</div>
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 px-2 py-2 rounded-lg">
+                    <Users className="w-3.5 h-3.5" />
+                    <span className="font-semibold" style={{ color: brand }}>{stats.presentAujourdhui}</span>
+                    <span>/{stats.totalEmployes}</span>
                   </div>
                 </div>
+
+                {/* Liste des employés pour le jour sélectionné */}
+                {(() => {
+                  const todayStr = toLocalDateString(new Date());
+                  const displayDateStr = selectedEquipeDay || todayStr;
+                  const displayDate = weekDates.find(d => toLocalDateString(d) === displayDateStr) || new Date();
+                  
+                  // Filtrer les shifts pour le jour sélectionné
+                  const shiftsJour = equipeData.shifts.filter(s => toLocalDateString(s.date) === displayDateStr);
+                  
+                  // Grouper par employé
+                  const employesAvecShifts = filteredEmployes.map(emp => {
+                    const empShifts = shiftsJour.filter(s => s.employeId === emp.id);
+                    const conge = equipeData.conges.find(c => 
+                      c.userId === emp.id && displayDate >= new Date(c.dateDebut) && displayDate <= new Date(c.dateFin)
+                    );
+                    return { ...emp, shifts: empShifts, conge };
+                  }).filter(emp => {
+                    if (showOnlyWorking) return emp.shifts.length > 0 || emp.conge;
+                    return true;
+                  });
+
+                  return (
+                    <>
+                      {/* En-tête jour */}
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-900 capitalize">
+                          {displayDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                        </h3>
+                        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                          {shiftsJour.length} shift{shiftsJour.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+
+                      {/* Liste compacte */}
+                      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                        {employesAvecShifts.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                            <p className="text-sm">Aucun équipier</p>
+                          </div>
+                        ) : (
+                          employesAvecShifts.map(emp => {
+                            const isCurrentUser = emp.id === currentUserId;
+                            
+                            return (
+                              <div 
+                                key={emp.id}
+                                className={`flex items-center gap-3 p-2.5 rounded-xl border transition-colors ${
+                                  isCurrentUser 
+                                    ? 'bg-red-50/50 border-red-200' 
+                                    : 'bg-white border-gray-100 hover:border-gray-200'
+                                }`}
+                              >
+                                {/* Avatar */}
+                                <EmployeAvatar employe={emp} size="sm" />
+                                
+                                {/* Infos */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium text-sm text-gray-900 truncate">
+                                      {emp.prenom} {emp.nom?.charAt(0)}.
+                                    </span>
+                                    {isCurrentUser && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded text-white font-medium" style={{ backgroundColor: brand }}>
+                                        Moi
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-gray-500">{emp.categorie || 'Non assigné'}</span>
+                                </div>
+                                
+                                {/* Horaires */}
+                                <div className="text-right">
+                                  {emp.conge ? (
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg">
+                                      <Palmtree className="w-3 h-3" />
+                                      Congé
+                                    </span>
+                                  ) : emp.shifts.length > 0 ? (
+                                    <div className="space-y-0.5">
+                                      {emp.shifts.map((shift, i) => {
+                                        const segments = shift.segments?.filter(s => s.type?.toLowerCase() !== 'pause') || [];
+                                        const debut = segments[0]?.start || segments[0]?.debut || '--:--';
+                                        const fin = segments[segments.length - 1]?.end || segments[segments.length - 1]?.fin || '--:--';
+                                        const shiftType = getShiftType(debut);
+                                        const style = getShiftTypeStyle(shiftType);
+                                        
+                                        return (
+                                          <div key={i} className={`text-xs font-semibold px-2 py-1 rounded-lg ${style.bg} ${style.text}`}>
+                                            {debut?.slice(0,5)} - {fin?.slice(0,5)}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">Repos</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      {/* Légende compacte */}
+                      <div className="mt-3 pt-3 border-t flex flex-wrap gap-1.5 text-[10px]">
+                        {[{type:'matin',label:'Matin'},{type:'soir',label:'Soir'},{type:'journee',label:'Journée'}].map(item => {
+                          const style = getShiftTypeStyle(item.type);
+                          return <div key={item.type} className={`px-2 py-0.5 rounded ${style.bg} ${style.text}`}>{item.label}</div>;
+                        })}
+                        <div className="px-2 py-0.5 rounded bg-green-100 text-green-700 flex items-center gap-1">
+                          <Palmtree className="w-3 h-3" /> Congé
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
             

@@ -14,7 +14,37 @@ const {
 } = require('../controllers/pointageController');
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 🔥 DÉTECTION TEMPS RÉEL DES ANOMALIES - Best Practice Apps RH Pro
+// � HELPER: Extraire heures de début/fin d'un shift (segments ou champs directs)
+// ═══════════════════════════════════════════════════════════════════════════════
+function getShiftHours(shift) {
+  // Essayer d'abord les champs directs
+  if (shift.heureDebut && shift.heureFin) {
+    return { heureDebut: shift.heureDebut, heureFin: shift.heureFin };
+  }
+  
+  // Sinon, extraire depuis les segments
+  if (shift.segments && Array.isArray(shift.segments) && shift.segments.length > 0) {
+    // Trier les segments par heure de début
+    const sortedSegments = [...shift.segments].sort((a, b) => {
+      const startA = a.start || a.debut || '00:00';
+      const startB = b.start || b.debut || '00:00';
+      return startA.localeCompare(startB);
+    });
+    
+    const firstSegment = sortedSegments[0];
+    const lastSegment = sortedSegments[sortedSegments.length - 1];
+    
+    return {
+      heureDebut: firstSegment.start || firstSegment.debut,
+      heureFin: lastSegment.end || lastSegment.fin
+    };
+  }
+  
+  return { heureDebut: null, heureFin: null };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// �🔥 DÉTECTION TEMPS RÉEL DES ANOMALIES - Best Practice Apps RH Pro
 // Comme Factorial, PayFit, Lucca : feedback immédiat à l'employé
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -29,10 +59,23 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
   const anomaliesDetectees = [];
   
   try {
-    // Récupérer le shift du jour pour cet employé
-    const dateJour = toLocalDateString(horodatage);
+    // Déterminer quelle date de shift chercher
+    // Avant 6h du matin = on cherche d'abord le shift de la veille (journée de travail en cours)
+    const heurePointage = horodatage.getHours();
+    let dateJour;
     
-    const shift = await prisma.shift.findFirst({
+    if (heurePointage < 6) {
+      // Avant 6h : chercher le shift de la veille d'abord
+      const hier = new Date(horodatage);
+      hier.setDate(hier.getDate() - 1);
+      dateJour = toLocalDateString(hier);
+    } else {
+      // Après 6h : chercher le shift du jour calendaire
+      dateJour = toLocalDateString(horodatage);
+    }
+    
+    // Chercher le shift
+    let shift = await prisma.shift.findFirst({
       where: {
         employeId: userId,
         date: new Date(dateJour)
@@ -41,6 +84,23 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         employe: { select: { nom: true, prenom: true } }
       }
     });
+    
+    // Si pas de shift trouvé et avant 6h, essayer aussi la date du jour (cas edge)
+    if (!shift && heurePointage < 6) {
+      const dateAujourdhui = toLocalDateString(horodatage);
+      shift = await prisma.shift.findFirst({
+        where: {
+          employeId: userId,
+          date: new Date(dateAujourdhui)
+        },
+        include: {
+          employe: { select: { nom: true, prenom: true } }
+        }
+      });
+      if (shift) {
+        dateJour = dateAujourdhui;
+      }
+    }
     
     // Vérifier si l'employé est en congé
     const conge = await prisma.conge.findFirst({
@@ -52,7 +112,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       }
     });
     
-    const heurePointage = horodatage.toLocaleTimeString('fr-FR', { 
+    const heurePointageStr = horodatage.toLocaleTimeString('fr-FR', { 
       hour: '2-digit', 
       minute: '2-digit',
       timeZone: 'Europe/Paris'
@@ -89,7 +149,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         userId,
         type: 'pointage_hors_planning',
         gravite: 'moyenne',
-        description: `Pointage hors planning à ${heurePointage} - Aucun shift prévu aujourd'hui`,
+        description: `Pointage hors planning à ${heurePointageStr} - Aucun shift prévu aujourd'hui`,
         date: new Date(dateJour)
       });
       
@@ -105,7 +165,18 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // 🟢 DÉTECTION À L'ARRIVÉE
+    // � EXTRAIRE LES HEURES DU SHIFT (depuis segments ou champs directs)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const shiftHours = getShiftHours(shift);
+    console.log(`📋 Shift ${shift.id} du ${dateJour} - Heures: ${shiftHours.heureDebut} - ${shiftHours.heureFin}`);
+    
+    if (!shiftHours.heureDebut || !shiftHours.heureFin) {
+      console.warn(`⚠️ Shift ${shift.id} sans heures définies, skip détection`);
+      return anomaliesDetectees;
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // �🟢 DÉTECTION À L'ARRIVÉE
     // ═══════════════════════════════════════════════════════════════════════════
     if (type === 'arrivee') {
       // Récupérer les pointages du jour pour détecter si c'est un retour de pause
@@ -199,7 +270,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       // ⏰ DÉTECTION RETARD (uniquement pour la 1ère arrivée)
       // ═══════════════════════════════════════════════════════════════════════════
       if (arrivees.length === 0) {
-        const [heureDebut, minuteDebut] = shift.heureDebut.split(':').map(Number);
+        const [heureDebut, minuteDebut] = shiftHours.heureDebut.split(':').map(Number);
         const debutPrevu = new Date(horodatage);
         debutPrevu.setHours(heureDebut, minuteDebut, 0, 0);
         
@@ -213,7 +284,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             shiftId: shift.id,
             type: 'hors_plage_in',
             gravite: 'moyenne',
-            description: `Arrivée hors plage - ${avanceMinutes} minutes en avance (${heurePointage} au lieu de ${shift.heureDebut})`,
+            description: `Arrivée hors plage - ${avanceMinutes} minutes en avance (${heurePointageStr} au lieu de ${shiftHours.heureDebut})`,
             date: new Date(dateJour)
           });
           
@@ -221,7 +292,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             anomaliesDetectees.push({
               type: 'hors_plage_in',
               message: `📍 Vous êtes ${avanceMinutes} min en avance`,
-              detail: `Shift prévu à ${shift.heureDebut}`,
+              detail: `Shift prévu à ${shiftHours.heureDebut}`,
               gravite: 'moyenne',
               icon: '📍'
             });
@@ -235,7 +306,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             shiftId: shift.id,
             type: 'retard_modere',
             gravite: 'moyenne',
-            description: `Retard de ${diffMinutes} minutes - Arrivée à ${heurePointage} au lieu de ${shift.heureDebut}`,
+            description: `Retard de ${diffMinutes} minutes - Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
             date: new Date(dateJour)
           });
           
@@ -243,7 +314,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             anomaliesDetectees.push({
               type: 'retard_modere',
               message: `⏰ Retard de ${diffMinutes} minutes`,
-              detail: `Arrivée à ${heurePointage} au lieu de ${shift.heureDebut}`,
+              detail: `Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
               gravite: 'moyenne',
               icon: '⏰'
             });
@@ -257,7 +328,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             shiftId: shift.id,
             type: 'retard_critique',
             gravite: 'haute',
-            description: `Retard critique de ${diffMinutes} minutes - Arrivée à ${heurePointage} au lieu de ${shift.heureDebut}`,
+            description: `Retard critique de ${diffMinutes} minutes - Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
             date: new Date(dateJour)
           });
           
@@ -265,7 +336,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             anomaliesDetectees.push({
               type: 'retard_critique',
               message: `🔴 Retard critique de ${diffMinutes} minutes`,
-              detail: `Arrivée à ${heurePointage} au lieu de ${shift.heureDebut}`,
+              detail: `Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
               gravite: 'haute',
               icon: '🔴'
             });
@@ -278,7 +349,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     // 🔴 DÉTECTION AU DÉPART
     // ═══════════════════════════════════════════════════════════════════════════
     if (type === 'depart') {
-      const [heureFin, minuteFin] = shift.heureFin.split(':').map(Number);
+      const [heureFin, minuteFin] = shiftHours.heureFin.split(':').map(Number);
       const finPrevue = new Date(horodatage);
       finPrevue.setHours(heureFin, minuteFin, 0, 0);
       
@@ -291,7 +362,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
           shiftId: shift.id,
           type: 'depart_anticipe',
           gravite: 'moyenne',
-          description: `Départ anticipé de ${diffMinutes} minutes - Sortie à ${heurePointage} au lieu de ${shift.heureFin}`,
+          description: `Départ anticipé de ${diffMinutes} minutes - Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
           date: new Date(dateJour)
         });
         
@@ -299,7 +370,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
           anomaliesDetectees.push({
             type: 'depart_anticipe',
             message: `🚪 Départ anticipé de ${diffMinutes} min`,
-            detail: `Sortie à ${heurePointage} au lieu de ${shift.heureFin}`,
+            detail: `Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
             gravite: 'moyenne',
             icon: '🚪'
           });
@@ -313,7 +384,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
           shiftId: shift.id,
           type: 'depart_premature_critique',
           gravite: 'critique',
-          description: `⚠️ Départ prématuré critique - ${diffMinutes} minutes avant la fin (${heurePointage} au lieu de ${shift.heureFin})`,
+          description: `⚠️ Départ prématuré critique - ${diffMinutes} minutes avant la fin (${heurePointageStr} au lieu de ${shiftHours.heureFin})`,
           date: new Date(dateJour)
         });
         
@@ -321,7 +392,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
           anomaliesDetectees.push({
             type: 'depart_premature_critique',
             message: `🚨 Départ critique ${diffMinutes} min avant la fin`,
-            detail: `Sortie à ${heurePointage} au lieu de ${shift.heureFin}`,
+            detail: `Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
             gravite: 'critique',
             icon: '🚨'
           });
@@ -336,7 +407,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
           shiftId: shift.id,
           type: 'hors_plage_out',
           gravite: 'haute',
-          description: `Départ hors plage - ${depassementHeures}h après la fin prévue (${heurePointage} au lieu de ${shift.heureFin})`,
+          description: `Départ hors plage - ${depassementHeures}h après la fin prévue (${heurePointageStr} au lieu de ${shiftHours.heureFin})`,
           date: new Date(dateJour)
         });
         
@@ -438,13 +509,18 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
 async function creerAnomalieTempsReel({ userId, shiftId, type, gravite, description, date }) {
   try {
     // Vérifier si anomalie existe déjà pour ce jour/user/type
+    const dateDebut = new Date(date);
+    dateDebut.setHours(0, 0, 0, 0);
+    const dateFin = new Date(date);
+    dateFin.setHours(23, 59, 59, 999);
+    
     const existante = await prisma.anomalie.findFirst({
       where: {
-        userId,
+        employeId: userId,
         type,
         date: {
-          gte: new Date(date.setHours(0, 0, 0, 0)),
-          lt: new Date(date.setHours(23, 59, 59, 999))
+          gte: dateDebut,
+          lt: dateFin
         }
       }
     });
@@ -454,14 +530,16 @@ async function creerAnomalieTempsReel({ userId, shiftId, type, gravite, descript
       return null;
     }
     
+    const dateAnomalie = new Date(date);
+    dateAnomalie.setHours(12, 0, 0, 0);
+    
     const anomalie = await prisma.anomalie.create({
       data: {
-        userId,
-        shiftId,
+        employeId: userId,
         type,
         gravite,
         description,
-        date: new Date(date.setHours(12, 0, 0, 0)),
+        date: dateAnomalie,
         statut: 'en_attente'
       }
     });
@@ -495,13 +573,35 @@ router.post('/auto', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     
+    // 📋 Récupérer les infos de l'employé pour la réponse
+    const employe = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, prenom: true, nom: true, email: true }
+    });
+    
+    if (!employe) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+    
     // 🧪 MODE TEST: Permet de simuler une heure pour les tests
     // Utilisation: POST /pointage/auto { "testTime": "2025-12-06T12:45:00" }
+    // 📴 MODE HORS-LIGNE: Utilise l'heure du scan original (max 30 min de retard)
     const testTime = req.body?.testTime;
-    const maintenant = testTime ? new Date(testTime) : new Date();
+    const offlineTimestamp = req.body?.offlineTimestamp;
+    
+    let maintenant = new Date();
     
     if (testTime) {
+      maintenant = new Date(testTime);
       console.log(`🧪 MODE TEST: Heure simulée = ${maintenant.toISOString()}`);
+    } else if (offlineTimestamp) {
+      // 📴 MODE HORS-LIGNE: Tablette fixe = pas de risque de fraude
+      // On accepte le pointage avec l'heure exacte du scan original
+      const offlineTime = new Date(offlineTimestamp);
+      const ageMs = Date.now() - offlineTime.getTime();
+      
+      maintenant = offlineTime;
+      console.log(`📴 MODE HORS-LIGNE: Heure originale = ${maintenant.toISOString()} (synchro après ${Math.round(ageMs / 1000)}s)`);
     }
 
     // 🛡️ Validations de sécurité
@@ -571,7 +671,8 @@ router.post('/auto', authenticateToken, async (req, res) => {
         });
       }
     
-      const limiteAntiDoublon = new Date(now.getTime() - 5000); // 5 secondes avant
+      // Protection anti-spam : 30 secondes entre chaque pointage
+      const limiteAntiDoublon = new Date(now.getTime() - 30000); // 30 secondes avant
 
       const pointageRecentIdentique = await prisma.pointage.findFirst({
         where: {
@@ -585,8 +686,8 @@ router.post('/auto', authenticateToken, async (req, res) => {
 
       if (pointageRecentIdentique) {
         return res.status(409).json({ 
-          message: "Pointage identique trop récent",
-          details: `Un ${type} a déjà été enregistré il y a moins de 5 secondes`
+          message: "Veuillez patienter",
+          details: `Un ${type} a déjà été enregistré récemment. Attendez 30 secondes.`
         });
       }
     }
@@ -606,6 +707,11 @@ router.post('/auto', authenticateToken, async (req, res) => {
     res.status(201).json({
       message: `✅ ${type === 'arrivee' ? 'Arrivée' : 'Départ'} enregistré`,
       pointage: nouveau,
+      employe: {
+        id: employe.id,
+        prenom: employe.prenom,
+        nom: employe.nom
+      },
       anomalies: anomaliesDetectees // Feedback immédiat à l'employé
     });
   } catch (err) {

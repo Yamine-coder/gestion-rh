@@ -51,8 +51,8 @@ function RecupererCodePage() {
         </button>
 
         {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <img src={logo} alt="Logo" className="h-20" />
+        <div className="flex justify-center mb-8">
+          <img src={logo} alt="Logo" className="h-28 w-auto object-contain" />
         </div>
         
         <h1 className="text-2xl font-bold mb-2 text-center text-blue-700">

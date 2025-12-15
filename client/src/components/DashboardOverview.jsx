@@ -3,12 +3,13 @@ import { HiUsers } from 'react-icons/hi';
 import axios from 'axios';
 import { computeKPIs } from '../utils/kpiHelpers';
 import AlertesTempsReel from './AlertesTempsReel';
-import NavigoWidget from './NavigoWidget';
+import IntelligenceHero from './IntelligenceHero';
 import { 
   Megaphone, Plus, Edit2, Trash2, X, AlertTriangle, AlertCircle, Info, Check, 
   Bell, Calendar, Clock, Zap, FileText, Send, PartyPopper, Users, Coffee,
   Sparkles, Star, Heart, MessageCircle, Volume2, CalendarDays, CalendarClock,
-  CalendarRange, CalendarCheck, Timer
+  CalendarRange, CalendarCheck, Timer, CheckCircle, Circle, ClipboardList, LogOut, Mail, Phone,
+  TrendingUp, Activity, ClipboardCheck, Download, RefreshCw, ChevronRight, UserCheck, UserX, Hourglass, Percent, Plane
 } from 'lucide-react';
 import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
 import DatePickerCustom from './DatePickerCustom';
@@ -205,9 +206,9 @@ const ConsigneModal = ({ isOpen, onClose, onSave, form, setForm, isEditing, cate
       />
       
       {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[51] flex items-center justify-center p-4 pointer-events-none">
         <div 
-          className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+          className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-200 pointer-events-auto"
           onClick={e => e.stopPropagation()}
         >
           {/* En-tête moderne */}
@@ -538,10 +539,12 @@ const formatDate = (date) => {
 
 function DashboardOverview({ onGoToConges }) {
   const token = (typeof localStorage!=='undefined') ? localStorage.getItem('token') : null;
+  const userPrenom = (typeof localStorage!=='undefined') ? localStorage.getItem('prenom') : null;
   const [stats, setStats] = useState({});
   const [pendingConges, setPendingConges] = useState(0);
   const [pendingLeavesList, setPendingLeavesList] = useState([]);
   const [congesAVenir, setCongesAVenir] = useState(0); // Congés à venir dans la semaine
+  const [congesAVenirList, setCongesAVenirList] = useState([]); // Liste détaillée des congés à venir
   const [dailyNote, setDailyNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -551,6 +554,7 @@ function DashboardOverview({ onGoToConges }) {
   const [loadingConsignes, setLoadingConsignes] = useState(true);
   const [showConsigneModal, setShowConsigneModal] = useState(false);
   const [editingConsigne, setEditingConsigne] = useState(null);
+  const [showAllConsignes, setShowAllConsignes] = useState(false);
   const [consigneForm, setConsigneForm] = useState({ titre: '', contenu: '', type: 'info', dateFin: '', cibleCategorie: '' });
   const [categoriesDisponibles, setCategoriesDisponibles] = useState([]);
   // Shifts / planning
@@ -564,6 +568,10 @@ function DashboardOverview({ onGoToConges }) {
   const [showNonPointes, setShowNonPointes] = useState(false);
   const [showPresents, setShowPresents] = useState(false);
   const [showAnomalies, setShowAnomalies] = useState(false);
+  // Filtre planning
+  const [planningFilter, setPlanningFilter] = useState('all'); // 'all', 'ongoing', 'upcoming'
+  // Tab colonne droite (centre de notifications)
+  const [rightColumnTab, setRightColumnTab] = useState('consignes'); // 'consignes', 'alertes', 'actions'
   // Liste des employés
   const [employesList, setEmployesList] = useState([]);
 
@@ -804,21 +812,23 @@ function DashboardOverview({ onGoToConges }) {
       if(Array.isArray(resApprouves.data)) approuves=resApprouves.data; 
       else if(Array.isArray(resApprouves.data?.conges)) approuves=resApprouves.data.conges;
       
-      // Filtrer les congés qui commencent dans les 7 prochains jours
+      // Filtrer les congés qui commencent dans les 14 prochains jours
       const now = new Date();
-      const dans7Jours = new Date(now.getTime() + 7*24*60*60*1000);
+      const dans14Jours = new Date(now.getTime() + 14*24*60*60*1000);
       const congesProchains = approuves.filter(c => {
         const debut = new Date(c.dateDebut);
-        return debut > now && debut <= dans7Jours;
-      });
-      console.log('✅ [DASHBOARD] Congés à venir dans la semaine:', congesProchains.length);
+        return debut >= now && debut <= dans14Jours;
+      }).sort((a, b) => new Date(a.dateDebut) - new Date(b.dateDebut));
+      console.log('✅ [DASHBOARD] Congés à venir (14j):', congesProchains.length);
       setCongesAVenir(congesProchains.length);
+      setCongesAVenirList(congesProchains);
       
     } catch(e){ 
       console.error('❌ [DASHBOARD] Erreur API /admin/conges:', e.response?.status, e.response?.data || e.message);
       setPendingLeavesList([]); 
       setPendingConges(0);
       setCongesAVenir(0);
+      setCongesAVenirList([]);
     } 
   },[token]);
 
@@ -1090,1087 +1100,681 @@ function DashboardOverview({ onGoToConges }) {
 
   if(error) return <div className='p-4 text-sm text-red-600'>{error}</div>;
 
+  // Calculs pour l'affichage
+  const totalAnomalies = (anomalies.absencesNonPlanifiees?.length || 0) + 
+    (anomalies.retards?.length || 0) + 
+    (anomalies.horsPlage?.length || 0) + 
+    (anomalies.departsAnticipes?.length || 0) + 
+    (anomalies.nonAssignes?.length || 0);
+
+  const totalActionsEnAttente = pendingConges + replacements.length;
+  const employesPresents = employesList.filter(e => e.aPointe);
+  const employesNonPointes = employesList.filter(e => !e.aPointe);
+
+  // Salutation contextuelle
+  const getGreeting = () => {
+    const h = now.getHours();
+    if (h < 12) return 'Bonjour';
+    if (h < 18) return 'Bon après-midi';
+    return 'Bonsoir';
+  };
+  
+  const formatDateFr = () => {
+    return now.toLocaleDateString('fr-FR', { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  };
+
   return (
-    <div className='p-4 lg:p-6 space-y-4 bg-gray-50 min-h-[calc(100vh-3rem)]'>
-      {/* Widget Alertes Temps Réel - Retards et Absences */}
-      <AlertesTempsReel />
-      
-      {/* Widget Navigo - Justificatifs en attente */}
-      <NavigoWidget />
-      
-      {/* Indicateur d'état des données - alerte si pas de données chargées */}
-      {!loading && employes === 0 && (
-        <div className='bg-yellow-50 border border-yellow-200 rounded-lg p-3'>
-          <div className='flex items-start gap-2'>
-            <svg className='w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5' fill='currentColor' viewBox='0 0 20 20'>
-              <path fillRule='evenodd' d='M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z' clipRule='evenodd'/>
-            </svg>
-            <div className='flex-1'>
-              <h3 className='text-xs font-semibold text-yellow-800'>Aucune donnée chargée</h3>
-              <p className='text-xs text-yellow-700 mt-1'>
-                Le serveur ne répond pas ou les APIs retournent des données vides. 
-                Vérifiez que le serveur backend est démarré et consultez la console pour plus de détails.
-              </p>
-              <div className='mt-2 text-xs text-yellow-600'>
-                <div>• Stats: {stats?.employes !== undefined ? '✅ OK' : '❌ Vide'}</div>
-                <div>• Shifts: {shifts.length > 0 ? `✅ ${shifts.length} chargés` : '❌ Aucun'}</div>
-                <div>• Comparaisons: {comparaisons.length > 0 ? `✅ ${comparaisons.length} chargées` : '❌ Aucune'}</div>
+    <div className='p-4 sm:p-6 lg:p-8 space-y-5 bg-slate-50 min-h-screen'>
+
+      {/* Section Hero Intelligence du jour */}
+      <IntelligenceHero />
+
+      {/* KPIs - Vue rapide */}
+      <div className='grid grid-cols-2 lg:grid-cols-4 gap-3'>
+        <KpiCard
+          label='Effectif attendu'
+          value={effectifAttendu}
+          sub={enCongeAujourdHui > 0 ? `${enCongeAujourdHui} en congé aujourd'hui` : 'Aucun congé aujourd\'hui'}
+          tone='neutral'
+          icon={Users}
+          loading={loading}
+        />
+        <KpiCard
+          label='Pointages'
+          value={pointes}
+          sub={`${presenceReellePct}% de présence`}
+          tone={colorPresence}
+          icon={UserCheck}
+          trend={pointes > 0 ? { value: 5, direction: 'up', positive: true } : null}
+          loading={loading}
+        />
+        <KpiCard
+          label='Non pointés'
+          value={nonPointes}
+          sub={nonPointes > 0 ? `${nonPointesPct}% de l'effectif` : 'RAS'}
+          tone={colorNonPointes}
+          icon={Hourglass}
+          trend={nonPointes > 0 ? { value: 2, direction: 'down', positive: true } : null}
+          loading={loading}
+        />
+        <KpiCard
+          label='Congés à venir'
+          value={congesAVenir}
+          sub={congesAVenir > 0 ? 'Cette semaine' : 'Aucun congé prévu'}
+          tone={congesAVenir > 0 ? 'warning' : 'ok'}
+          icon={Plane}
+          loading={loading}
+        />
+      </div>
+
+      {/* Section Principale - Grid 2 colonnes */}
+      <div className='grid lg:grid-cols-3 gap-6'>
+        
+        {/* COLONNE GAUCHE - Planning + Équipe (2/3) */}
+        <div className='lg:col-span-2 space-y-6'>
+          
+          {/* Planning du jour - Timeline visuelle */}
+          <section className='bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4 hover:shadow-md transition-shadow duration-200'>
+            <div className='flex items-center justify-between mb-3'>
+              <div className='flex items-center gap-2'>
+                <div className='w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center border border-primary-100'>
+                  <CalendarDays className='w-4 h-4 text-primary-600' />
+                </div>
+                <div>
+                  <h3 className='text-sm font-semibold text-gray-900'>Planning du jour</h3>
+                  <p className='text-[10px] text-gray-500'>{validShifts.length} shifts programmés</p>
+                </div>
+              </div>
+              <div className='flex items-center gap-2'>
+                {/* Filtres rapides */}
+                <div className='flex bg-slate-100 rounded-lg p-0.5'>
+                  {[
+                    { key: 'all', label: 'Tous' },
+                    { key: 'ongoing', label: 'En cours' },
+                    { key: 'upcoming', label: 'À venir' }
+                  ].map(f => (
+                    <button
+                      key={f.key}
+                      onClick={() => setPlanningFilter(f.key)}
+                      className={`px-2.5 py-1 text-[10px] font-medium rounded-md transition-all ${
+                        planningFilter === f.key 
+                          ? 'bg-white text-gray-900 shadow-sm' 
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                  onClick={fetchShiftsToday} 
+                  className='p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 transition-colors'
+                  aria-label='Actualiser le planning'
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingShifts ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Message d'information si les stats semblent incohérentes */}
-      {!loading && employes > 0 && pointes === 0 && (
-        <div className='bg-orange-50 border border-orange-200 rounded-lg p-3'>
-          <div className='flex items-start gap-2'>
-            <svg className='w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5' fill='currentColor' viewBox='0 0 20 20'>
-              <path fillRule='evenodd' d='M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z' clipRule='evenodd'/>
-            </svg>
-            <div className='flex-1'>
-              <h3 className='text-xs font-semibold text-orange-800'>Données incohérentes détectées</h3>
-              <p className='text-xs text-orange-700 mt-1'>
-                {employes} employés enregistrés mais 0 pointages aujourd'hui. 
-                Cela peut indiquer un problème de calcul ou de synchronisation des données.
-                Consultez la console du navigateur (F12) pour les détails.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* En-tête avec actualisation */}
-      <div className='flex items-center justify-between mb-4'>
-        <h2 className='text-lg font-semibold text-gray-800'>Tableau de bord</h2>
-        <button 
-          onClick={()=>{fetchStats(); fetchPendingLeaves(); fetchComparaisons(); fetchEmployesList();}} 
-          className='px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors flex items-center gap-1.5 shadow-sm'
-        >
-          <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'/>
-          </svg>
-          Actualiser
-        </button>
-      </div>
-
-      {/* 3 cartes métriques inspirées de Skello */}
-      <div className='grid grid-cols-3 gap-4 mb-4'>
-        {/* Carte 1: Effectif aujourd'hui */}
-        <div className='bg-white border border-gray-200 rounded-lg p-4 shadow-sm'>
-          <div className='text-xs text-gray-500 font-medium mb-2'>Effectif aujourd'hui</div>
-          <div className='flex items-baseline gap-2 mb-3'>
-            <span className='text-3xl font-bold text-gray-900'>{loading? '—': pointes}</span>
-            <span className='text-lg text-gray-400'>/ {loading? '—': effectifAttendu}</span>
-          </div>
-          <div className='flex items-center gap-2'>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              colorPresence==='ok'? 'bg-green-100': 
-              colorPresence==='warn'? 'bg-orange-100': 
-              'bg-red-100'
-            }`}>
-              <svg className={`w-4 h-4 ${
-                colorPresence==='ok'? 'text-green-600': 
-                colorPresence==='warn'? 'text-orange-600': 
-                'text-red-600'
-              }`} fill='currentColor' viewBox='0 0 20 20'>
-                <path d='M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z'/>
-              </svg>
-            </div>
-            <div className='text-xs text-gray-600'>
-              {loading? '...' : 
-                enCongeAujourdHui > 0 || absencesNonPlanifiees > 0 
-                  ? `${enCongeAujourdHui} en congé · ${absencesNonPlanifiees} absent${absencesNonPlanifiees>1?'s':''}`
-                  : 'Équipe au complet'
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* Carte 2: Personnes en congé aujourd'hui */}
-        <div className='bg-white border border-gray-200 rounded-lg p-4 shadow-sm'>
-          <div className='text-xs text-gray-500 font-medium mb-2'>En congé aujourd'hui</div>
-          <div className='flex items-baseline gap-2 mb-3'>
-            <span className={`text-3xl font-bold ${enCongeAujourdHui > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
-              {loading? '—': enCongeAujourdHui}
-            </span>
-            <span className='text-sm text-gray-400'>
-              {enCongeAujourdHui > 1 ? 'personnes' : 'personne'}
-            </span>
-          </div>
-          <div className='flex items-center gap-2'>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              enCongeAujourdHui === 0 ? 'bg-gray-100' : 'bg-blue-100'
-            }`}>
-              <svg className={`w-4 h-4 ${enCongeAujourdHui === 0 ? 'text-gray-400' : 'text-blue-600'}`} fill='currentColor' viewBox='0 0 20 20'>
-                <path fillRule='evenodd' d='M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z' clipRule='evenodd'/>
-              </svg>
-            </div>
-            <div className='text-xs text-gray-600'>
-              {loading? '...' : enCongeAujourdHui === 0 ? 'Aucun congé' : 'Absents planifiés'}
-            </div>
-          </div>
-        </div>
-
-        {/* Carte 3: Congés à venir dans la semaine */}
-        <div className='bg-white border border-gray-200 rounded-lg p-4 shadow-sm'>
-          <div className='text-xs text-gray-500 font-medium mb-2'>Congés à venir (7j)</div>
-          <div className='flex items-baseline gap-2 mb-3'>
-            <span className={`text-3xl font-bold ${congesAVenir > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
-              {loading? '—': congesAVenir}
-            </span>
-            <span className='text-sm text-gray-400'>
-              {congesAVenir > 1 ? 'congés' : 'congé'}
-            </span>
-          </div>
-          <div className='flex items-center gap-2'>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              congesAVenir === 0 ? 'bg-gray-100' : 'bg-purple-100'
-            }`}>
-              <svg className={`w-4 h-4 ${congesAVenir === 0 ? 'text-gray-400' : 'text-purple-600'}`} fill='currentColor' viewBox='0 0 20 20'>
-                <path fillRule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z' clipRule='evenodd'/>
-              </svg>
-            </div>
-            <div className='text-xs text-gray-600'>
-              {loading? '...' : congesAVenir === 0 ? 'Aucun prévu' : 'À anticiper'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Planning du jour - Ligne complète */}
-      <section className='bg-white border border-gray-200 rounded-lg p-4 shadow-sm mb-4'>
-        <div className='flex items-center justify-between mb-3'>
-          <h2 className='text-sm font-semibold text-gray-700 flex items-center gap-2'>
-            <svg className='w-5 h-5 text-blue-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'/>
-            </svg>
-            Planning du jour
-          </h2>
-          <button 
-            onClick={fetchShiftsToday} 
-            className='text-xs px-2.5 py-1.5 border rounded-lg bg-white hover:bg-gray-50 transition-colors flex items-center gap-1.5'
-          >
-            <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'/>
-            </svg>
-            Actualiser
-          </button>
-        </div>
-        
-        {shiftError && <div className='text-xs text-red-600 mb-2 p-2 bg-red-50 rounded'>{shiftError}</div>}
-        
-        {loadingShifts ? (
-          <div className='text-sm text-gray-500 py-4 text-center'>Chargement du planning…</div>
-        ) : validShifts.length===0 ? (
-          <div className='text-sm text-gray-500 italic p-4 bg-gray-50 rounded text-center'>Aucun shift programmé aujourd'hui</div>
-        ) : (
-          <>
-            {/* Vue en grille compacte pour 30+ personnes */}
-            <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2'>
-              {validShifts.sort((a,b)=> new Date(a.start)-new Date(b.start)).map((s, idx) => {
-                  const status = shiftStatus(s);
-                  const start=new Date(s.start), end=new Date(s.end);
-                  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
-                  const duration = end-start; 
-                  const widthPct = Math.max(8, (duration/dayMs)*100);
-                  const isRetard = anomalies.retards.includes(s);
-                  const isNonAssigne = !s.employeeId;
-                  const employeeName = s.employeeName || s.employeNom || s.nom || 
-                                      (s.employe?.prenom && s.employe?.nom ? `${s.employe.prenom} ${s.employe.nom}` : 
-                                      s.employe?.email || 'Non assigné');
+            
+            {loadingShifts ? (
+              <div className='space-y-3 py-4'>
+                {/* Skeleton loading pour planning */}
+                {[1, 2, 3].map(i => (
+                  <div key={i} className='flex items-center gap-2 animate-pulse'>
+                    <div className='w-24 h-4 bg-slate-200 rounded'></div>
+                    <div className='flex-1 h-6 bg-slate-100 rounded-lg'></div>
+                  </div>
+                ))}
+              </div>
+            ) : validShifts.length === 0 ? (
+              <div className='flex flex-col items-center justify-center py-8 px-4'>
+                <div className='w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-3'>
+                  <CalendarDays className='w-8 h-8 text-slate-300' />
+                </div>
+                <p className='text-sm font-medium text-gray-600'>Aucun shift programmé</p>
+                <p className='text-xs text-gray-400 mt-1'>Le planning du jour est vide</p>
+              </div>
+            ) : (
+              <>
+                {/* Timeline visuelle 8h-24h */}
+                <div className='relative'>
+                  {/* Barre de temps avec graduations */}
+                  <div className='flex items-center text-[9px] text-gray-400 mb-2 pl-24'>
+                    {[8, 10, 12, 14, 16, 18, 20, 22, 24].map(h => (
+                      <span key={h} className='flex-1 text-center font-medium'>{h}h</span>
+                    ))}
+                  </div>
                   
-                  const aPointe = s.employeeId ? employesList.some(e => e.id === s.employeeId && e.aPointe) : false;
-                  
-                  let retardMinutes = 0;
-                  let avanceMinutes = 0;
-                  let departAnticipeMinutes = 0;
-                  let heuresSupMinutes = 0;
-                  let hasRealRetard = isRetard;
-                  let statusIcon = null;
-                  let statusColor = '';
-                  let statusTitle = '';
-                  let departStatus = null;
-                  
-                  const formatMinutes = (mins) => {
-                    if (mins >= 60) {
-                      const heures = Math.floor(mins / 60);
-                      const minutes = mins % 60;
-                      return minutes > 0 ? `${heures}h${minutes.toString().padStart(2, '0')}` : `${heures}h`;
-                    }
-                    return `${mins}min`;
-                  };
-                  
-                  if (isRetard) {
-                    const start = new Date(s.start);
-                    retardMinutes = Math.floor((now - start) / 60000);
-                    statusIcon = '⏳';
-                    statusColor = 'text-orange-500';
-                    statusTitle = 'En attente de pointage';
-                  }
-                  
-                  const comparaison = comparaisons.find(c => 
-                    c.employeId === s.employeeId && 
-                    c.date === formatDate(new Date(s.start))
-                  );
-                  
-                  if (comparaison && comparaison.ecarts && comparaison.ecarts.length > 0) {
-                    const ecartArrivee = comparaison.ecarts.find(e => 
-                      e.type?.includes('retard') || 
-                      e.type?.includes('arrivee') ||
-                      e.type?.includes('hors_plage_in')
-                    );
-                    
-                    const ecartDepart = comparaison.ecarts.find(e => 
-                      e.type?.includes('depart') ||
-                      e.type?.includes('hors_plage_out') ||
-                      e.type?.includes('heures_sup')
-                    );
-                    
-                    if (ecartArrivee) {
-                      const ecartMins = ecartArrivee.ecartMinutes || 0;
-                      
-                      if (ecartMins < 0) {
-                        retardMinutes = Math.abs(ecartMins);
-                        hasRealRetard = true;
-                        statusIcon = '⚠️';
-                        statusColor = 'text-red-600';
-                        statusTitle = `Retard arrivée: ${formatMinutes(retardMinutes)}`;
-                      } else if (ecartMins > 0) {
-                        avanceMinutes = ecartMins;
-                        hasRealRetard = false;
-                        statusIcon = '✓';
-                        statusColor = 'text-green-600';
-                        statusTitle = `En avance: ${formatMinutes(avanceMinutes)}`;
-                      } else {
-                        hasRealRetard = false;
-                        statusIcon = '✓';
-                        statusColor = 'text-green-600';
-                        statusTitle = 'À l\'heure';
+                  {/* Barre de fond avec indicateur heure actuelle */}
+                  <div className='relative h-1.5 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 rounded-full mb-3 ml-24'>
+                    {(() => {
+                      const nowHour = now.getHours() + now.getMinutes() / 60;
+                      if (nowHour >= 8 && nowHour <= 24) {
+                        const pos = ((nowHour - 8) / 16) * 100;
+                        return (
+                          <div 
+                            className='absolute -top-0.5 w-2.5 h-2.5 bg-red-500 rounded-full shadow-md border-2 border-white z-10'
+                            style={{ left: `calc(${pos}% - 5px)` }}
+                          />
+                        );
                       }
-                    }
-                    
-                    if (ecartDepart) {
-                      const ecartDepartMins = ecartDepart.ecartMinutes || 0;
-                      
-                      if (ecartDepart.type?.includes('depart_premature') || ecartDepart.type?.includes('depart_anticipe')) {
-                        departAnticipeMinutes = ecartDepart.dureeMinutes || Math.abs(ecartDepartMins);
-                        departStatus = {
-                          icon: '🚪',
-                          color: 'bg-red-500',
-                          text: `Parti ${formatMinutes(departAnticipeMinutes)} tôt`,
-                          title: `Départ anticipé de ${formatMinutes(departAnticipeMinutes)}`
+                      return null;
+                    })()}
+                  </div>
+                  
+                  {/* Shifts sur la timeline */}
+                  <div className='space-y-2 max-h-[250px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent'>
+                    {validShifts
+                      .filter(s => s.type !== 'repos')
+                      .filter(s => {
+                        if (planningFilter === 'all') return true;
+                        const status = shiftStatus(s);
+                        if (planningFilter === 'ongoing') return status === 'ongoing';
+                        if (planningFilter === 'upcoming') return status === 'upcoming';
+                        return true;
+                      })
+                      .sort((a, b) => new Date(a.start) - new Date(b.start))
+                      .map((s, idx) => {
+                        // Nom employé
+                        let employeeName = 'N/A';
+                        if (s.employe?.prenom || s.employe?.nom) {
+                          const prenom = s.employe.prenom || '';
+                          const nom = s.employe.nom || '';
+                          employeeName = prenom ? `${prenom} ${nom.charAt(0)}.` : nom;
+                        } else if (s.employePrenom) {
+                          employeeName = s.employePrenom;
+                        }
+                        
+                        const isAbsence = s.type === 'absence';
+                        const isRemplacement = s.isRemplacement || s.replacementRequested || s.remplacantId || s.motif?.toLowerCase()?.includes('remplacement');
+                        const isNonAssigne = !s.employeeId && !s.employeId;
+                        const status = shiftStatus(s);
+                        
+                        // Absence
+                        if (isAbsence) {
+                          return (
+                            <div key={s.id || `shift-${idx}`} className='flex items-center gap-2 group'>
+                              <div className='w-24 flex items-center gap-1.5'>
+                                <div className='w-1.5 h-1.5 rounded-full bg-red-400'></div>
+                                <span className='text-[11px] font-medium text-gray-700 truncate'>{employeeName}</span>
+                              </div>
+                              <div className='flex-1'>
+                                <div className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 text-red-700 text-[10px] font-medium'>
+                                  <UserX className='w-3 h-3' />
+                                  <span>Absent{s.motif ? ` · ${s.motif}` : ''}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        // Segments
+                        const hasSegments = Array.isArray(s.segments) && s.segments.length > 0;
+                        const isCoupure = hasSegments && s.segments.length > 1;
+                        
+                        const getSegmentBars = () => {
+                          if (!hasSegments) {
+                            const start = new Date(s.start);
+                            const end = new Date(s.end);
+                            const startH = start.getHours() + start.getMinutes() / 60;
+                            const endH = end.getHours() + end.getMinutes() / 60 + (end.getDate() > start.getDate() ? 24 : 0);
+                            return [{ startH, endH, label: `${formatHM(s.start)} - ${formatHM(s.end)}`, isExtra: false }];
+                          }
+                          
+                          return s.segments.map(seg => {
+                            const [sh, sm] = (seg.debut || seg.start || '08:00').split(':').map(Number);
+                            const [eh, em] = (seg.fin || seg.end || '16:00').split(':').map(Number);
+                            let startH = sh + sm / 60;
+                            let endH = eh + em / 60;
+                            if (endH < startH) endH += 24;
+                            return { 
+                              startH, endH, 
+                              label: `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')} - ${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`,
+                              isExtra: seg.isExtra,
+                              isPaid: seg.paymentStatus === 'payé' || seg.paymentStatus === 'paye'
+                            };
+                          });
                         };
-                      } else if (ecartDepart.type?.includes('heures_sup') || ecartDepartMins < 0) {
-                        heuresSupMinutes = ecartDepart.dureeMinutes || Math.abs(ecartDepartMins);
-                        departStatus = {
-                          icon: '⏱️',
-                          color: 'bg-blue-500',
-                          text: `H.Sup ${formatMinutes(heuresSupMinutes)}`,
-                          title: `Heures supplémentaires: ${formatMinutes(heuresSupMinutes)}`
+                        
+                        const segmentBars = getSegmentBars();
+                        
+                        // Couleurs inspirées de PlanningRH
+                        const getBarStyle = (seg) => {
+                          if (seg?.isExtra && seg?.isPaid) return 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm';
+                          if (seg?.isExtra) return 'bg-gradient-to-r from-orange-400 to-amber-500 text-white shadow-sm';
+                          if (isRemplacement) return 'bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white shadow-sm';
+                          if (status === 'ongoing') return 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-sm';
+                          if (status === 'upcoming') return 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm';
+                          return 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-700';
                         };
-                      }
-                    }
-                  } else if (aPointe && !isRetard) {
-                    statusIcon = '✓';
-                    statusColor = 'text-green-600';
-                    statusTitle = 'Présent';
-                  }
+                        
+                        // Dot color
+                        const getDotColor = () => {
+                          if (isRemplacement) return 'bg-fuchsia-500';
+                          if (status === 'ongoing') return 'bg-emerald-500';
+                          if (status === 'upcoming') return 'bg-blue-500';
+                          return 'bg-gray-400';
+                        };
+                        
+                        return (
+                          <div key={s.id || `shift-${idx}`} className='flex items-center gap-2 group'>
+                            {/* Nom employé */}
+                            <div className='w-24 flex items-center gap-1.5'>
+                              <div className={`w-1.5 h-1.5 rounded-full ${getDotColor()}`}></div>
+                              <span className='text-[11px] font-medium text-gray-700 truncate flex items-center gap-1'>
+                                {isRemplacement && <RefreshCw className='w-2.5 h-2.5 text-fuchsia-500' />}
+                                {employeeName}
+                              </span>
+                            </div>
+                            
+                            {/* Timeline des segments */}
+                            <div className='flex-1 relative h-6'>
+                              {segmentBars.map((bar, barIdx) => {
+                                const leftPct = Math.max(0, ((bar.startH - 8) / 16) * 100);
+                                const widthPct = Math.min(100 - leftPct, ((bar.endH - bar.startH) / 16) * 100);
+                                
+                                return (
+                                  <div
+                                    key={barIdx}
+                                    className={`absolute h-full rounded-lg flex items-center justify-center px-1 text-[9px] font-semibold ${getBarStyle(bar)} ${isNonAssigne ? 'opacity-60 border-2 border-dashed border-orange-400' : ''}`}
+                                    style={{ 
+                                      left: `${leftPct}%`, 
+                                      width: `${Math.max(widthPct, 6)}%`,
+                                      minWidth: '40px'
+                                    }}
+                                    title={`${employeeName} : ${bar.label}${isCoupure ? ' (coupure)' : ''}${bar.isExtra ? ' [Extra]' : ''}`}
+                                  >
+                                    <span className='truncate drop-shadow-sm'>{bar.label}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            
+                            {/* Badge coupure */}
+                            {isCoupure && (
+                              <span className='text-[8px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium'>
+                                Coupure
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+                
+                {/* Légende améliorée */}
+                <div className='flex flex-wrap gap-3 text-[9px] text-gray-500 pt-3 mt-3 border-t border-gray-100'>
+                  <span className='flex items-center gap-1.5'>
+                    <span className='w-3 h-2 rounded bg-gradient-to-r from-emerald-500 to-green-500'></span>En cours
+                  </span>
+                  <span className='flex items-center gap-1.5'>
+                    <span className='w-3 h-2 rounded bg-gradient-to-r from-blue-500 to-blue-600'></span>À venir
+                  </span>
+                  <span className='flex items-center gap-1.5'>
+                    <span className='w-3 h-2 rounded bg-gradient-to-r from-gray-300 to-gray-400'></span>Terminé
+                  </span>
+                  <span className='flex items-center gap-1.5'>
+                    <span className='w-3 h-2 rounded bg-gradient-to-r from-fuchsia-500 to-pink-500'></span>Remplacement
+                  </span>
+                  <span className='flex items-center gap-1.5'>
+                    <span className='w-3 h-2 rounded bg-gradient-to-r from-orange-400 to-amber-500'></span>Extra
+                  </span>
+                  <span className='flex items-center gap-1.5'>
+                    <span className='w-2 h-2 rounded-full bg-red-500'></span>Maintenant
+                  </span>
+                </div>
+              </>
+            )}
+          </section>
+
+          {/* Congés à venir - Nouveau widget */}
+          {congesAVenirList.length > 0 && (
+            <section className='bg-white rounded-2xl border border-slate-200/70 shadow-sm p-4 hover:shadow-md transition-shadow duration-200'>
+              <div className='flex items-center justify-between mb-3'>
+                <div className='flex items-center gap-2'>
+                  <div className='w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center border border-primary-100'>
+                    <Plane className='w-4 h-4 text-primary-600' />
+                  </div>
+                  <div>
+                    <h3 className='text-sm font-semibold text-gray-900'>Congés à venir</h3>
+                    <p className='text-[10px] text-gray-500'>{congesAVenirList.length} absence{congesAVenirList.length > 1 ? 's' : ''} prévue{congesAVenirList.length > 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => onGoToConges && onGoToConges()}
+                  className='text-[10px] px-3 py-1.5 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 font-medium border border-primary-100 transition-colors group'
+                >
+                  Voir tout <ChevronRight className='w-3 h-3 inline ml-0.5 group-hover:translate-x-0.5 transition-transform' />
+                </button>
+              </div>
+              
+              <div className='space-y-2'>
+                {congesAVenirList.slice(0, 5).map((conge, idx) => {
+                  const debut = new Date(conge.dateDebut);
+                  const fin = new Date(conge.dateFin);
+                  const joursRestants = Math.ceil((debut - now) / (1000 * 60 * 60 * 24));
+                  const dureeJours = Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1;
+                  
+                  const employeNom = conge.employe?.prenom && conge.employe?.nom 
+                    ? `${conge.employe.prenom} ${conge.employe.nom}`
+                    : conge.employe?.email || 'Employé';
+                  
+                  const initials = employeNom.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
                   
                   return (
                     <div 
-                      key={s.id || s._id || `shift-${idx}`} 
-                      className={`relative rounded-lg border ${shiftLight(status)} p-2 hover:shadow-md transition-shadow`}
+                      key={conge.id || idx}
+                      className={`flex items-center gap-3 p-2.5 rounded-xl hover:shadow-sm transition-all cursor-default ${
+                        joursRestants <= 2 ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
                     >
-                      {/* Point de statut en haut à droite */}
-                      <div className={`absolute top-2 right-2 w-2 h-2 rounded-full ${shiftColor(status)}`}></div>
-                      
-                      {/* Nom de l'employé */}
-                      <div className='text-xs font-semibold text-gray-800 truncate pr-4 mb-1' title={employeeName}>
-                        {employeeName}
+                      {/* Avatar avec initiales */}
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                        joursRestants <= 2 ? 'bg-amber-200 text-amber-800' : 'bg-violet-100 text-violet-700'
+                      }`}>
+                        {initials}
                       </div>
                       
-                      {/* Horaires */}
-                      <div className='text-[10px] text-gray-600 font-medium mb-1.5'>
-                        {formatHM(s.start)} - {formatHM(s.end)}
+                      {/* Infos */}
+                      <div className='flex-1 min-w-0'>
+                        <p className='text-xs font-semibold text-gray-900 truncate'>{employeNom}</p>
+                        <p className='text-[10px] text-gray-500'>
+                          {debut.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                          {dureeJours > 1 && ` → ${fin.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
+                          <span className='text-gray-400 ml-1'>· {dureeJours}j</span>
+                        </p>
                       </div>
                       
-                      {/* Badges compacts */}
-                      <div className='flex flex-wrap gap-1'>
-                        {statusIcon === '✓' && (
-                          <span className='inline-flex items-center text-[9px] text-green-600' title={statusTitle}>
-                            <svg className='w-3 h-3' fill='currentColor' viewBox='0 0 20 20'>
-                              <path fillRule='evenodd' d='M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z' clipRule='evenodd'/>
-                            </svg>
-                          </span>
-                        )}
-                        {hasRealRetard && retardMinutes > 0 && (
-                          <span 
-                            className='bg-red-500 text-white rounded px-1 py-0.5 text-[8px] font-semibold' 
-                            title={`Retard: ${formatMinutes(retardMinutes)}`}
-                          >
-                            ⚠️ {formatMinutes(retardMinutes)}
-                          </span>
-                        )}
-                        {avanceMinutes > 0 && !hasRealRetard && (
-                          <span 
-                            className='bg-green-500 text-white rounded px-1 py-0.5 text-[8px] font-semibold' 
-                            title={`Avance: ${formatMinutes(avanceMinutes)}`}
-                          >
-                            +{formatMinutes(avanceMinutes)}
-                          </span>
-                        )}
-                        {departStatus && (
-                          <span 
-                            className={`${departStatus.color} text-white rounded px-1 py-0.5 text-[8px] font-semibold`}
-                            title={departStatus.title}
-                          >
-                            {departStatus.icon} {departStatus.text}
-                          </span>
-                        )}
-                        {isNonAssigne && (
-                          <span className='bg-orange-100 text-orange-700 rounded px-1 py-0.5 text-[8px] font-semibold'>
-                            NA
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }).filter(Boolean)}
-            </div>
-            
-            {/* Légende */}
-            <div className='flex flex-wrap gap-3 text-xs text-gray-600 pt-3 mt-3 border-t border-gray-100'>
-              <span className='flex items-center gap-1.5'>
-                <span className='w-2 h-2 rounded-full bg-green-500'></span>
-                En cours
-              </span>
-              <span className='flex items-center gap-1.5'>
-                <span className='w-2 h-2 rounded-full bg-blue-500'></span>
-                À venir
-              </span>
-              <span className='flex items-center gap-1.5'>
-                <span className='w-2 h-2 rounded-full bg-gray-400'></span>
-                Terminé
-              </span>
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* État de l'équipe - Liste détaillée */}
-      {console.log('🔍 [RENDER] employesList.length =', employesList.length, 'Liste:', employesList)}
-      {employesList.length > 0 && (
-        <section className='space-y-2'>
-          <h3 className='text-sm font-semibold text-gray-800 flex items-center gap-2 px-1'>
-            <svg className='w-4 h-4 text-gray-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z'/>
-            </svg>
-            État de l'équipe
-          </h3>
-
-          <div className='grid grid-cols-2 gap-2'>
-            {/* Présents */}
-            <button
-              onClick={() => setShowPresents(!showPresents)}
-              className='flex items-center justify-between p-2.5 rounded-lg bg-white border border-green-200 hover:bg-green-50 transition-colors text-left shadow-sm'
-            >
-              <div className='flex items-center gap-2'>
-                <div className='w-2 h-2 rounded-full bg-green-500'></div>
-                <div>
-                  <div className='text-[10px] text-gray-600'>Présents</div>
-                  <div className='text-base font-bold text-green-700'>{employesList.filter(e => e.aPointe).length}</div>
-                </div>
-              </div>
-              <svg className={`w-3.5 h-3.5 text-green-700 transition-transform ${showPresents?'rotate-180':''}`} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7'/>
-              </svg>
-            </button>
-
-            {/* Non pointés */}
-            <button
-              onClick={() => setShowNonPointes(!showNonPointes)}
-              className={`flex items-center justify-between p-2.5 rounded-lg bg-white border transition-colors text-left shadow-sm ${
-                employesList.filter(e => !e.aPointe).length === 0 
-                  ? 'border-green-200 hover:bg-green-50'
-                  : 'border-red-200 hover:bg-red-50'
-              }`}
-            >
-              <div className='flex items-center gap-2'>
-                <div className={`w-2 h-2 rounded-full ${
-                  employesList.filter(e => !e.aPointe).length === 0 ? 'bg-green-500' : 'bg-red-500'
-                }`}></div>
-                <div>
-                  <div className='text-[10px] text-gray-600'>Non pointés</div>
-                  <div className={`text-base font-bold ${
-                    employesList.filter(e => !e.aPointe).length === 0 ? 'text-green-700' : 'text-red-700'
-                  }`}>
-                    {employesList.filter(e => !e.aPointe).length}
-                  </div>
-                </div>
-              </div>
-              <svg className={`w-3.5 h-3.5 transition-transform ${
-                employesList.filter(e => !e.aPointe).length === 0 ? 'text-green-700' : 'text-red-700'
-              } ${showNonPointes?'rotate-180':''}`} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7'/>
-              </svg>
-            </button>
-          </div>
-
-          {/* Liste des présents */}
-          {showPresents && (
-            <div className='p-2.5 rounded-lg bg-white border border-green-200 shadow-sm'>
-              <div className='text-[10px] font-medium text-green-800 mb-1.5'>✓ Employés présents ({employesList.filter(e => e.aPointe).length})</div>
-              <div className='space-y-1.5'>
-                {employesList.filter(e => e.aPointe).map(emp => {
-                  const heureEntree = emp.heureEntree ? new Date(emp.heureEntree) : null;
-                  const heureAffichage = heureEntree && !isNaN(heureEntree.getTime()) 
-                    ? heureEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                    : 'N/A';
-                  
-                  return (
-                    <div key={emp.id} className='flex items-center justify-between gap-2 text-[11px] text-gray-700 bg-green-50 rounded px-2 py-1.5 border border-green-100'>
-                      <div className='flex items-center gap-1.5 flex-1 min-w-0'>
-                        <div className='w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0'></div>
-                        <span className='truncate font-medium' title={emp.nomComplet}>{emp.nomComplet}</span>
-                      </div>
-                      <div className='flex items-center gap-2 flex-shrink-0'>
-                        <span className='text-[10px] text-green-700 font-semibold'>{heureAffichage}</span>
-                        {emp.telephone && (
-                          <a 
-                            href={`tel:${emp.telephone}`} 
-                            className='text-green-600 hover:text-green-800'
-                            title={`Appeler ${emp.nomComplet}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <svg className='w-3.5 h-3.5' fill='currentColor' viewBox='0 0 20 20'>
-                              <path d='M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z'/>
-                            </svg>
-                          </a>
-                        )}
+                      {/* Badge J-X et type */}
+                      <div className='flex flex-col items-end gap-1'>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          joursRestants <= 2 ? 'bg-amber-500 text-white' : 'bg-violet-500 text-white'
+                        }`}>
+                          J-{joursRestants}
+                        </span>
+                        <span className='text-[9px] text-gray-400 capitalize'>
+                          {conge.type || 'congé'}
+                        </span>
                       </div>
                     </div>
                   );
                 })}
-              </div>
-            </div>
-          )}
-
-          {/* Liste des non pointés */}
-          {showNonPointes && employesList.filter(e => !e.aPointe).length > 0 && (
-            <div className='p-2.5 rounded-lg bg-white border border-red-200 shadow-sm'>
-              <div className='text-[10px] font-medium text-red-800 mb-1.5'>⚠️ Employés non pointés ({employesList.filter(e => !e.aPointe).length})</div>
-              <div className='space-y-1.5'>
-                {employesList.filter(e => !e.aPointe).map(emp => (
-                  <div key={emp.id} className='flex items-center justify-between gap-2 text-[11px] text-gray-700 bg-red-50 rounded px-2 py-1.5 border border-red-100'>
-                    <div className='flex items-center gap-1.5 flex-1 min-w-0'>
-                      <div className='w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0'></div>
-                      <span className='truncate font-medium' title={emp.nomComplet}>{emp.nomComplet}</span>
-                    </div>
-                    <div className='flex items-center gap-1.5 flex-shrink-0'>
-                      {emp.email && (
-                        <a 
-                          href={`mailto:${emp.email}`}
-                          className='text-red-600 hover:text-red-800'
-                          title={`Envoyer un email à ${emp.nomComplet}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <svg className='w-3.5 h-3.5' fill='currentColor' viewBox='0 0 20 20'>
-                            <path d='M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z'/>
-                            <path d='M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z'/>
-                          </svg>
-                        </a>
-                      )}
-                      {emp.telephone && (
-                        <a 
-                          href={`tel:${emp.telephone}`}
-                          className='text-red-600 hover:text-red-800'
-                          title={`Appeler ${emp.nomComplet}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <svg className='w-3.5 h-3.5' fill='currentColor' viewBox='0 0 20 20'>
-                            <path d='M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z'/>
-                          </svg>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {showNonPointes && employesList.filter(e => !e.aPointe).length === 0 && (
-            <div className='p-2 rounded-lg bg-white border border-green-200 text-center shadow-sm'>
-              <div className='text-xs font-medium text-green-800'>🎉 Tous les employés ont pointé</div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Anomalies & alertes */}
-      <section className='bg-white border border-gray-200 rounded-lg p-3 shadow-sm'>
-        <button
-          onClick={() => setShowAnomalies(!showAnomalies)}
-          className='w-full flex items-center justify-between hover:bg-gray-50 rounded-lg px-2 py-1.5 transition-all group'
-        >
-          <div className='flex items-center gap-2.5'>
-            <div className={`p-1.5 rounded-lg transition-colors ${
-              hasAnomalies && !loadingShifts && !loadingComparaisons
-                ? 'bg-orange-100 text-orange-600 group-hover:bg-orange-200'
-                : 'bg-green-100 text-green-600 group-hover:bg-green-200'
-            }`}>
-              <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'/>
-              </svg>
-            </div>
-            
-            <div className='flex flex-col items-start'>
-              <h2 className='text-xs font-semibold text-gray-800'>
-                Anomalies & alertes
-              </h2>
-              {!hasAnomalies && !loadingShifts && !loadingComparaisons && (
-                <span className='text-[9px] text-green-600 font-medium'>Aucune anomalie</span>
-              )}
-              {(loadingShifts || loadingComparaisons) && (
-                <span className='text-[9px] text-gray-500'>Analyse en cours...</span>
-              )}
-            </div>
-            
-            {hasAnomalies && !loadingShifts && !loadingComparaisons && (
-              <div className='flex items-center gap-1 ml-2'>
-                <div className='h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold animate-pulse'>
-                  {(anomalies.absencesNonPlanifiees.length || 0) + 
-                   (anomalies.retards.length || 0) + 
-                   (anomalies.horsPlage.length || 0) + 
-                   (anomalies.departsAnticipes.length || 0) + 
-                   (anomalies.nonAssignes.length || 0)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <svg className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${showAnomalies?'rotate-180':''}`} fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 9l-7 7-7-7'/>
-          </svg>
-        </button>
-
-        {/* Message de chargement */}
-        {(loadingShifts || loadingComparaisons) && (
-          <div className='mt-2 flex items-center gap-2 text-[10px] text-gray-500 p-3 bg-gray-50 rounded-lg'>
-            <svg className='animate-spin h-4 w-4 text-blue-600' fill='none' viewBox='0 0 24 24'>
-              <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4'></circle>
-              <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
-            </svg>
-            <span>Analyse des anomalies en cours...</span>
-          </div>
-        )}
-
-        {/* Aperçu rapide (toujours visible) - Badges modernisés */}
-        {!loadingShifts && !loadingComparaisons && hasAnomalies && !showAnomalies && (
-          <div className='mt-3 flex flex-wrap gap-2'>
-              {anomalies.absencesNonPlanifiees.length > 0 && (
-                <div className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-red-50 to-red-100 border border-red-200 shadow-sm'>
-                  <span className='text-sm'>🚨</span>
-                  <span className='text-[10px] font-semibold text-red-800'>
-                    {anomalies.absencesNonPlanifiees.length} Absence{anomalies.absencesNonPlanifiees.length>1?'s':''}
-                  </span>
-                </div>
-              )}
-              {anomalies.retards.length > 0 && (
-                <div className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 shadow-sm'>
-                  <span className='text-sm'>⚠️</span>
-                  <span className='text-[10px] font-semibold text-orange-800'>
-                    {anomalies.retards.length} Retard{anomalies.retards.length>1?'s':''}
-                  </span>
-                </div>
-              )}
-              {anomalies.horsPlage.length > 0 && (
-                <div className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200 shadow-sm'>
-                  <span className='text-sm'>🔵</span>
-                  <span className='text-[10px] font-semibold text-purple-800'>
-                    {anomalies.horsPlage.length} Hors-plage
-                  </span>
-                </div>
-              )}
-              {anomalies.departsAnticipes.length > 0 && (
-                <div className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-red-50 to-red-100 border border-red-200 shadow-sm'>
-                  <span className='text-sm'>⏰</span>
-                  <span className='text-[10px] font-semibold text-red-800'>
-                    {anomalies.departsAnticipes.length} Départ{anomalies.departsAnticipes.length>1?'s':''} anticipé{anomalies.departsAnticipes.length>1?'s':''}
-                  </span>
-                </div>
-              )}
-              {anomalies.nonAssignes.length > 0 && (
-                <div className='flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 shadow-sm'>
-                  <span className='text-sm'>📋</span>
-                  <span className='text-[10px] font-semibold text-gray-800'>
-                    {anomalies.nonAssignes.length} Non assigné{anomalies.nonAssignes.length>1?'s':''}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Détails complets (déroulant) */}
-          {showAnomalies && !loadingShifts && !loadingComparaisons && hasAnomalies && (
-            <ul className='space-y-1.5 text-[10px] text-gray-700'>
-              {/* Absences non planifiées */}
-              {anomalies.absencesNonPlanifiees.length>0 && (
-                <li className='p-2 bg-red-50 rounded border border-red-200'>
-                  <div className='flex items-start gap-1.5'>
-                    <span className='text-red-600 text-sm'>🚨</span>
-                    <div className='flex-1'>
-                      <div className='font-semibold text-red-800 mb-1.5 flex items-center justify-between'>
-                        <span>{anomalies.absencesNonPlanifiees.length} Absence{anomalies.absencesNonPlanifiees.length>1?'s':''} non planifiée{anomalies.absencesNonPlanifiees.length>1?'s':''}</span>
-                        <span className='text-[8px] bg-red-600 text-white px-1.5 py-0.5 rounded'>CRITIQUE</span>
-                      </div>
-                      <div className='space-y-1'>
-                        {anomalies.absencesNonPlanifiees.some(a => a.source !== 'stats') ? (
-                          anomalies.absencesNonPlanifiees.map((a, idx) => {
-                            const emp = employesList.find(e => e.nomComplet === a.employeNom || e.id === a.employeId);
-                            return (
-                              <div key={idx} className='bg-white rounded px-2 py-1.5 border border-red-100'>
-                                <div className='flex items-center justify-between mb-0.5'>
-                                  <span className='font-medium text-gray-800 text-[10px]'>{a.employeNom}</span>
-                                  <span className='text-[8px] text-red-600 font-semibold'>Aucun pointage</span>
-                                </div>
-                                <div className='text-[9px] text-gray-600'>
-                                  {a.message || 'Employé programmé mais absent'}
-                                </div>
-                                {emp && (emp.email || emp.telephone) && (
-                                  <div className='flex gap-1.5 mt-1'>
-                                    {emp.email && (
-                                      <a 
-                                        href={`mailto:${emp.email}`}
-                                        className='text-[8px] px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 flex items-center gap-0.5'
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <svg className='w-2.5 h-2.5' fill='currentColor' viewBox='0 0 20 20'>
-                                          <path d='M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z'/>
-                                          <path d='M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z'/>
-                                        </svg>
-                                        Email
-                                      </a>
-                                    )}
-                                    {emp.telephone && (
-                                      <a 
-                                        href={`tel:${emp.telephone}`}
-                                        className='text-[8px] px-1.5 py-0.5 rounded bg-red-600 text-white hover:bg-red-700 flex items-center gap-0.5'
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <svg className='w-2.5 h-2.5' fill='currentColor' viewBox='0 0 20 20'>
-                                          <path d='M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z'/>
-                                        </svg>
-                                        Appeler
-                                      </a>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          <div className='text-[9px] text-gray-600 bg-white rounded px-2 py-1.5'>
-                            Aucun pointage enregistré pour {anomalies.absencesNonPlanifiees.length} employé{anomalies.absencesNonPlanifiees.length>1?'s':''}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              )}
-
-              {/* Retards */}
-              {anomalies.retards.length>0 && (
-                <li className='p-2 bg-orange-50 rounded border border-orange-200'>
-                  <div className='flex items-start gap-1.5'>
-                    <span className='text-orange-600 text-sm'>⚠️</span>
-                    <div className='flex-1'>
-                      <div className='font-semibold text-orange-800 mb-1.5 flex items-center justify-between'>
-                        <span>{anomalies.retards.length} Retard{anomalies.retards.length>1?'s':''} en cours</span>
-                        <span className='text-[8px] bg-orange-600 text-white px-1.5 py-0.5 rounded'>URGENT</span>
-                      </div>
-                      <div className='space-y-1'>
-                        {anomalies.retards.map((s, idx) => {
-                          const start = new Date(s.start);
-                          const retardMinutes = Math.floor((now - start) / 60000);
-                          const employeeName = s.employeeName || s.employeNom || s.nom || 
-                            (s.employe?.prenom && s.employe?.nom ? `${s.employe.prenom} ${s.employe.nom}` : 
-                            s.employe?.email || 'Non assigné');
-                          const emp = employesList.find(e => e.nomComplet === employeeName || e.id === s.employeeId);
-                          const heureDebut = start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                          const heureActuelle = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                          
-                          return (
-                            <div key={idx} className='bg-white rounded px-2 py-1.5 border border-orange-100'>
-                              <div className='flex items-center justify-between mb-0.5'>
-                                <span className='font-medium text-gray-800 text-[10px]'>{employeeName}</span>
-                                <span className='text-[8px] bg-orange-600 text-white px-1.5 py-0.5 rounded font-semibold'>
-                                  +{retardMinutes} min
-                                </span>
-                              </div>
-                              <div className='text-[9px] text-gray-600 space-y-0.5'>
-                                <div className='flex items-center gap-1'>
-                                  <span className='text-gray-500'>Début prévu:</span>
-                                  <span className='font-medium'>{heureDebut}</span>
-                                </div>
-                                <div className='flex items-center gap-1'>
-                                  <span className='text-gray-500'>Heure actuelle:</span>
-                                  <span className='font-medium text-orange-700'>{heureActuelle}</span>
-                                </div>
-                              </div>
-                              {emp && (emp.email || emp.telephone) && (
-                                <div className='flex gap-1.5 mt-1'>
-                                  {emp.email && (
-                                    <a 
-                                      href={`mailto:${emp.email}`}
-                                      className='text-[8px] px-1.5 py-0.5 rounded bg-orange-600 text-white hover:bg-orange-700 flex items-center gap-0.5'
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      📧 Email
-                                    </a>
-                                  )}
-                                  {emp.telephone && (
-                                    <a 
-                                      href={`tel:${emp.telephone}`}
-                                      className='text-[8px] px-1.5 py-0.5 rounded bg-orange-600 text-white hover:bg-orange-700 flex items-center gap-0.5'
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      📞 Appeler
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              )}
-
-              {/* Hors-plage */}
-              {anomalies.horsPlage.length>0 && (
-                <li className='p-2 bg-purple-50 rounded border border-purple-200'>
-                  <div className='flex items-start gap-1.5'>
-                    <span className='text-purple-600 text-sm'>🔵</span>
-                    <div className='flex-1'>
-                      <div className='font-semibold text-purple-800 mb-1.5 flex items-center justify-between'>
-                        <span>{anomalies.horsPlage.length} Pointage{anomalies.horsPlage.length>1?'s':''} hors-plage</span>
-                        <span className='text-[8px] bg-purple-600 text-white px-1.5 py-0.5 rounded'>INFO</span>
-                      </div>
-                      <div className='space-y-1'>
-                        {anomalies.horsPlage.map((a, idx) => (
-                          <div key={idx} className='bg-white rounded px-2 py-1.5 border border-purple-100'>
-                            <div className='font-medium text-gray-800 text-[10px] mb-0.5'>{a.employeNom}</div>
-                            <div className='text-[9px] text-gray-600'>
-                              {a.message || 'Pointage en dehors des horaires prévus'}
-                            </div>
-                            {a.dureeMinutes && (
-                              <div className='text-[8px] text-purple-600 mt-0.5'>
-                                Écart: {Math.abs(a.dureeMinutes)} minutes
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              )}
-
-              {/* Départs anticipés */}
-              {anomalies.departsAnticipes.length>0 && (
-                <li className='p-2 bg-red-50 rounded border border-red-200'>
-                  <div className='flex items-start gap-1.5'>
-                    <span className='text-red-600 text-sm'>⏰</span>
-                    <div className='flex-1'>
-                      <div className='font-semibold text-red-800 mb-1.5 flex items-center justify-between'>
-                        <span>{anomalies.departsAnticipes.length} Départ{anomalies.departsAnticipes.length>1?'s':''} anticipé{anomalies.departsAnticipes.length>1?'s':''}</span>
-                        <span className='text-[8px] bg-red-600 text-white px-1.5 py-0.5 rounded'>ATTENTION</span>
-                      </div>
-                      <div className='space-y-1'>
-                        {anomalies.departsAnticipes.map((a, idx) => (
-                          <div key={idx} className='bg-white rounded px-2 py-1.5 border border-red-100'>
-                            <div className='font-medium text-gray-800 text-[10px] mb-0.5'>{a.employeNom}</div>
-                            <div className='text-[9px] text-gray-600'>
-                              {a.message || 'Parti avant l\'heure prévue'}
-                            </div>
-                            {a.dureeMinutes && (
-                              <div className='text-[8px] text-red-600 mt-0.5 font-semibold'>
-                                Parti {Math.abs(a.dureeMinutes)} min en avance
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              )}
-
-              {/* Shifts non assignés */}
-              {anomalies.nonAssignes.length>0 && (
-                <li className='p-2 bg-gray-50 rounded border border-gray-200'>
-                  <div className='flex items-start gap-1.5'>
-                    <span className='text-gray-600 text-sm'>📋</span>
-                    <div className='flex-1'>
-                      <div className='font-semibold text-gray-800 mb-1.5 flex items-center justify-between'>
-                        <span>{anomalies.nonAssignes.length} Shift{anomalies.nonAssignes.length>1?'s':''} non assigné{anomalies.nonAssignes.length>1?'s':''}</span>
-                        <span className='text-[8px] bg-gray-600 text-white px-1.5 py-0.5 rounded'>À TRAITER</span>
-                      </div>
-                      <div className='space-y-1'>
-                        {anomalies.nonAssignes.map((s, idx) => {
-                          const start = new Date(s.start);
-                          const end = new Date(s.end);
-                          const heureDebut = start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                          const heureFin = end.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                          const status = start > now ? 'À venir' : start <= now && end > now ? 'En cours' : 'Passé';
-                          
-                          return (
-                            <div key={idx} className='bg-white rounded px-2 py-1.5 border border-gray-200'>
-                              <div className='flex items-center justify-between mb-0.5'>
-                                <span className='font-medium text-gray-800 text-[10px]'>
-                                  {heureDebut} - {heureFin}
-                                </span>
-                                <span className={`text-[8px] px-1.5 py-0.5 rounded font-semibold ${
-                                  status === 'En cours' ? 'bg-red-600 text-white' :
-                                  status === 'À venir' ? 'bg-blue-600 text-white' :
-                                  'bg-gray-400 text-white'
-                                }`}>
-                                  {status}
-                                </span>
-                              </div>
-                              <div className='text-[9px] text-gray-600'>
-                                Aucun employé assigné pour ce créneau
-                              </div>
-                              {status === 'En cours' && (
-                                <div className='text-[8px] text-red-600 mt-0.5 font-semibold'>
-                                  ⚠️ Nécessite une action immédiate
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              )}
-            </ul>
-          )}
-
-          {/* Message "Tout va bien" */}
-          {!loadingShifts && !loadingComparaisons && !hasAnomalies && (
-            <div className='text-[10px] text-green-700 p-2 bg-green-50 rounded text-center'>✓ Aucune anomalie détectée</div>
-          )}
-        </section>
-
-      {/* Remplacements / Demandes de congé - Regroupés */}
-      <div className='grid lg:grid-cols-2 gap-4'>
-        {/* Demandes de congé en attente */}
-        {pendingLeavesList.length > 0 && (
-          <section className='bg-white border border-gray-200 rounded-lg p-3'>
-            <h2 className='text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5'>
-              <svg className='w-4 h-4 text-blue-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2'/>
-              </svg>
-              Demandes de congé ({pendingConges})
-            </h2>
-            <div className='space-y-1.5'>
-              {pendingLeavesList.slice(0,5).map((c, idx) => {
-                const isUrgent = c?.dateDebut && (new Date(c.dateDebut).getTime()-now.getTime()) < 48*3600*1000;
-                const joursRestants = c?.dateDebut ? Math.ceil((new Date(c.dateDebut).getTime()-now.getTime()) / (24*3600*1000)) : null;
                 
-                return (
-                  <div 
-                    key={c.id||idx} 
-                    onClick={() => onGoToConges && onGoToConges()}
-                    className={`p-2 rounded border text-[10px] cursor-pointer transition-all hover:shadow-md ${
-                      isUrgent
-                        ? 'bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
+                {congesAVenirList.length > 5 && (
+                  <p className='text-[10px] text-gray-400 text-center pt-1'>
+                    +{congesAVenirList.length - 5} autre{congesAVenirList.length - 5 > 1 ? 's' : ''}
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
+        </div>
+
+        {/* COLONNE DROITE - Centre de notifications unifié (1/3) */}
+        <div className='space-y-4'>
+          
+          {/* Centre de notifications avec tabs */}
+          <div className='bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-200'>
+            
+            {/* Header avec tabs */}
+            <div className='border-b border-slate-100'>
+              <div className='flex items-center justify-between px-4 pt-4 pb-2'>
+                <div className='flex items-center gap-2'>
+                  <div className='w-8 h-8 rounded-lg bg-primary-50 flex items-center justify-center border border-primary-100'>
+                    <Bell className='w-4 h-4 text-primary-600' />
+                  </div>
+                  <h3 className='text-sm font-semibold text-gray-900'>Infos & Actions</h3>
+                </div>
+                {rightColumnTab === 'consignes' && (
+                  <button
+                    onClick={() => {
+                      setEditingConsigne(null);
+                      setConsigneForm({ titre: '', contenu: '', type: 'info', dateFin: '' });
+                      setShowConsigneModal(true);
+                    }}
+                    className='p-1.5 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-600 transition-colors'
+                    aria-label='Ajouter une consigne'
+                  >
+                    <Plus className='w-4 h-4' />
+                  </button>
+                )}
+              </div>
+              
+              {/* Tabs */}
+              <div className='flex px-4 gap-1'>
+                {[
+                  { key: 'consignes', label: 'Consignes', icon: Megaphone, count: consignes.filter(c => c.active).length },
+                  { key: 'alertes', label: 'Alertes', icon: AlertTriangle, count: totalAnomalies },
+                  { key: 'actions', label: 'Actions', icon: ClipboardCheck, count: pendingLeavesList.length + replacements.length }
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setRightColumnTab(tab.key)}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-all relative ${
+                      rightColumnTab === tab.key 
+                        ? 'text-primary-700 bg-primary-50' 
+                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    <div className='flex justify-between items-start gap-2'>
-                      <div className='flex-1'>
-                        <div className='font-medium text-gray-800'>{c.user?.nom || c.user?.email || 'N/A'}</div>
-                        <div className='text-gray-600 mt-0.5'>
-                          {c.dateDebut && new Date(c.dateDebut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                          {c.dateFin && ` → ${new Date(c.dateFin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`}
-                        </div>
-                        {c.type && <div className='text-gray-500 mt-0.5'>Type: {c.type}</div>}
-                        {joursRestants !== null && (
-                          <div className={`mt-0.5 text-[9px] ${isUrgent ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                            Début dans {joursRestants} jour{joursRestants > 1 ? 's' : ''}
-                          </div>
-                        )}
-                      </div>
-                      <div className='flex items-center gap-2'>
-                        {isUrgent && <span className='text-[8px] px-1.5 py-0.5 rounded bg-red-500 text-white font-semibold'>URGENT</span>}
-                        <svg className='w-4 h-4 text-gray-400' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M9 5l7 7-7 7'/>
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {pendingLeavesList.length > 5 && (
-              <div className='text-[9px] text-gray-500 italic mt-1.5'>
-                +{pendingLeavesList.length-5} autres demandes
-              </div>
-            )}
-            {onGoToConges && (
-              <button
-                onClick={() => onGoToConges()}
-                className='mt-2 w-full px-3 py-1.5 text-[10px] font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5'
-              >
-                <span>Voir toutes les demandes</span>
-                <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M13 7l5 5m0 0l-5 5m5-5H6'/>
-                </svg>
-              </button>
-            )}
-          </section>
-        )}
-
-        {/* Remplacements / Échanges */}
-        <section className='bg-white border border-gray-200 rounded-lg p-3'>
-          <h2 className='text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5'>
-            <svg className='w-4 h-4 text-purple-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'/>
-            </svg>
-            Remplacements
-            {replacements.length===0 && <span className='text-[9px] text-green-600 font-medium ml-1'>(Aucun)</span>}
-          </h2>
-          {loadingShifts ? (
-            <div className='text-[10px] text-gray-500 p-2 bg-gray-50 rounded'>Chargement…</div>
-          ) : replacements.length>0 ? (
-            <>
-              {(urgentReplacements.length>0 || ongoingReplacements.length>0) && (
-                <div className='flex flex-wrap gap-1.5 text-[9px] mb-2'>
-                  {ongoingReplacements.length>0 && <span className='px-1.5 py-0.5 rounded bg-red-600 text-white font-medium'>En cours: {ongoingReplacements.length}</span>}
-                  {urgentReplacements.length>0 && <span className='px-1.5 py-0.5 rounded bg-orange-500 text-white font-medium'>Urgent: {urgentReplacements.length}</span>}
-                </div>
-              )}
-              <div className='space-y-1.5'>
-                {replacements.slice(0,4).map(r => (
-                  <div key={r.id} className='p-2 flex items-center justify-between gap-2 text-[10px] border rounded bg-gray-50'>
-                    <div className='flex-1'>
-                      <span className='font-medium text-gray-700'>{formatHM(r.start)}–{formatHM(r.end)}</span>
-                      <div className='text-gray-500'>{r.employeeName}</div>
-                    </div>
-                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold ${r.urgence==='urgent'?'bg-orange-500 text-white': r.urgence==='en cours'?'bg-red-600 text-white': 'bg-gray-200 text-gray-600'}`}>
-                      {r.urgence}
-                    </span>
-                  </div>
+                    <tab.icon className='w-3.5 h-3.5' />
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span className={`ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded-full ${
+                        rightColumnTab === tab.key 
+                          ? tab.key === 'alertes' ? 'bg-red-100 text-red-700' : 'bg-primary-100 text-primary-700'
+                          : tab.key === 'alertes' && tab.count > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    )}
+                    {rightColumnTab === tab.key && (
+                      <span className='absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 rounded-full' />
+                    )}
+                  </button>
                 ))}
               </div>
-              {replacements.length>4 && <div className='text-[9px] text-gray-500 italic mt-1.5'>+{replacements.length-4} autres</div>}
-            </>
-          ) : (
-            <div className='text-[10px] text-green-700 p-2 bg-green-50 rounded text-center'>✓ Aucun remplacement en attente</div>
-          )}
-        </section>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════════════
-          SECTION CONSIGNES DU JOUR
-      ═══════════════════════════════════════════════════════════════════════════ */}
-      <div className='bg-white border border-gray-200 rounded-lg overflow-hidden'>
-        <div className='flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50'>
-          <div className='flex items-center gap-2'>
-            <Megaphone className='w-4 h-4 text-red-500' />
-            <span className='text-xs font-semibold text-gray-700'>Consignes actives</span>
-            <span className='text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600'>
-              {consignes.filter(c => c.active).length}
-            </span>
-          </div>
-          <button
-            onClick={() => {
-              setEditingConsigne(null);
-              setConsigneForm({ titre: '', contenu: '', type: 'info', dateFin: '' });
-              setShowConsigneModal(true);
-            }}
-            className='flex items-center gap-1 text-[10px] font-medium text-white px-2 py-1 rounded-md hover:opacity-90 transition-opacity'
-            style={{ backgroundColor: '#cf292c' }}
-          >
-            <Plus className='w-3 h-3' />
-            Nouvelle
-          </button>
-        </div>
-        
-        <div className='p-2 max-h-[180px] overflow-y-auto'>
-          {loadingConsignes ? (
-            <div className='h-12 bg-gray-100 rounded animate-pulse' />
-          ) : consignes.length === 0 ? (
-            <p className='text-xs text-gray-400 text-center py-4'>Aucune consigne créée</p>
-          ) : (
-            <div className='space-y-1.5'>
-              {consignes.map(consigne => (
-                <div 
-                  key={consigne.id}
-                  className={`p-2 rounded-lg flex items-start gap-2 ${
-                    !consigne.active 
-                      ? 'bg-gray-100 opacity-60'
-                      : consigne.type === 'urgent'
-                        ? 'bg-red-50 border border-red-200'
-                        : consigne.type === 'important'
-                          ? 'bg-amber-50 border border-amber-200'
-                          : 'bg-blue-50 border border-blue-200'
-                  }`}
-                >
-                  <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 ${
-                    consigne.type === 'urgent' ? 'bg-red-100' 
-                    : consigne.type === 'important' ? 'bg-amber-100' 
-                    : 'bg-blue-100'
-                  }`}>
-                    {consigne.type === 'urgent' ? <AlertTriangle className='w-3 h-3 text-red-600' />
-                    : consigne.type === 'important' ? <AlertCircle className='w-3 h-3 text-amber-600' />
-                    : <Info className='w-3 h-3 text-blue-600' />}
-                  </div>
-                  <div className='flex-1 min-w-0'>
-                    <div className='flex items-center gap-1.5'>
-                      <span className={`text-xs font-medium ${!consigne.active ? 'text-gray-500' : 'text-gray-800'}`}>
-                        {consigne.titre}
-                      </span>
-                      {!consigne.active && (
-                        <span className='text-[9px] px-1 py-0.5 rounded bg-gray-300 text-gray-600'>Inactive</span>
-                      )}
-                    </div>
-                    <p className='text-[10px] text-gray-500 line-clamp-1'>{consigne.contenu}</p>
-                  </div>
-                  <div className='flex items-center gap-1 shrink-0'>
-                    <button
-                      onClick={() => handleToggleConsigne(consigne)}
-                      className={`p-1 rounded ${consigne.active ? 'text-green-600 hover:bg-green-100' : 'text-gray-400 hover:bg-gray-200'}`}
-                      title={consigne.active ? 'Désactiver' : 'Activer'}
-                    >
-                      <Check className='w-3.5 h-3.5' />
-                    </button>
-                    <button
-                      onClick={() => openEditConsigne(consigne)}
-                      className='p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50'
-                      title='Modifier'
-                    >
-                      <Edit2 className='w-3.5 h-3.5' />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteConsigne(consigne.id)}
-                      className='p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50'
-                      title='Supprimer'
-                    >
-                      <Trash2 className='w-3.5 h-3.5' />
-                    </button>
-                  </div>
-                </div>
-              ))}
             </div>
-          )}
+            
+            {/* Contenu des tabs */}
+            <div className='p-4 min-h-[200px]'>
+              
+              {/* Tab Consignes */}
+              {rightColumnTab === 'consignes' && (
+                <div className='space-y-2'>
+                  {loadingConsignes ? (
+                    <div className='space-y-2'>
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className='h-10 bg-slate-100 rounded-lg animate-pulse' />
+                      ))}
+                    </div>
+                  ) : consignes.filter(c => c.active).length === 0 ? (
+                    <div className='flex flex-col items-center justify-center py-6'>
+                      <div className='w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-2'>
+                        <Megaphone className='w-6 h-6 text-slate-300' />
+                      </div>
+                      <p className='text-sm text-gray-500'>Aucune consigne active</p>
+                      <p className='text-xs text-gray-400 mt-1'>Cliquez sur + pour en créer</p>
+                    </div>
+                  ) : (
+                    <>
+                      {consignes.filter(c => c.active).slice(0, showAllConsignes ? undefined : 4).map(consigne => (
+                        <div 
+                          key={consigne.id}
+                          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs cursor-pointer hover:shadow-sm transition-all ${
+                            consigne.type === 'urgent'
+                              ? 'bg-red-50 border border-red-200 text-red-700 hover:bg-red-100'
+                              : consigne.type === 'important'
+                                ? 'bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100'
+                                : 'bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100'
+                          }`}
+                          onClick={() => openEditConsigne(consigne)}
+                        >
+                          {consigne.type === 'urgent' ? <AlertTriangle className='w-4 h-4 flex-shrink-0' />
+                          : consigne.type === 'important' ? <AlertCircle className='w-4 h-4 flex-shrink-0' />
+                          : <Info className='w-4 h-4 flex-shrink-0' />}
+                          <span className='font-medium truncate flex-1'>{consigne.titre}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleToggleConsigne(consigne); }}
+                            className='p-1 rounded-lg hover:bg-white/50 flex-shrink-0 opacity-60 hover:opacity-100'
+                          >
+                            <X className='w-3.5 h-3.5' />
+                          </button>
+                        </div>
+                      ))}
+                      {consignes.filter(c => c.active).length > 4 && (
+                        <button 
+                          onClick={() => setShowAllConsignes(!showAllConsignes)}
+                          className='text-[11px] text-primary-600 hover:text-primary-700 text-center w-full py-2 hover:underline cursor-pointer font-medium'
+                        >
+                          {showAllConsignes ? '↑ Réduire' : `Voir ${consignes.filter(c => c.active).length - 4} autres →`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              
+              {/* Tab Alertes */}
+              {rightColumnTab === 'alertes' && (
+                <div className='space-y-2'>
+                  {!hasAnomalies ? (
+                    <div className='flex flex-col items-center justify-center py-6'>
+                      <div className='w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-2'>
+                        <CheckCircle className='w-6 h-6 text-emerald-500' />
+                      </div>
+                      <p className='text-sm font-medium text-emerald-700'>Tout est OK !</p>
+                      <p className='text-xs text-gray-400 mt-1'>Aucune alerte à traiter</p>
+                    </div>
+                  ) : (
+                    <>
+                      {anomalies.absencesNonPlanifiees.length > 0 && (
+                        <div className='flex items-center gap-2.5 p-3 rounded-xl bg-red-50 border border-red-100 hover:bg-red-100 transition-colors cursor-pointer'>
+                          <div className='w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center'>
+                            <Bell className='w-4 h-4 text-red-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-red-800'>{anomalies.absencesNonPlanifiees.length} absence{anomalies.absencesNonPlanifiees.length>1?'s':''}</p>
+                            <p className='text-[10px] text-red-600'>Non planifiée{anomalies.absencesNonPlanifiees.length>1?'s':''}</p>
+                          </div>
+                          <ChevronRight className='w-4 h-4 text-red-400' />
+                        </div>
+                      )}
+                      {anomalies.retards.length > 0 && (
+                        <div className='flex items-center gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-100 hover:bg-amber-100 transition-colors cursor-pointer'>
+                          <div className='w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center'>
+                            <Clock className='w-4 h-4 text-amber-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-amber-800'>{anomalies.retards.length} retard{anomalies.retards.length>1?'s':''}</p>
+                            <p className='text-[10px] text-amber-600'>Shift commencé non pointé</p>
+                          </div>
+                          <ChevronRight className='w-4 h-4 text-amber-400' />
+                        </div>
+                      )}
+                      {anomalies.horsPlage.length > 0 && (
+                        <div className='flex items-center gap-2.5 p-3 rounded-xl bg-purple-50 border border-purple-100 hover:bg-purple-100 transition-colors cursor-pointer'>
+                          <div className='w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center'>
+                            <Activity className='w-4 h-4 text-purple-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-purple-800'>{anomalies.horsPlage.length} hors-plage</p>
+                            <p className='text-[10px] text-purple-600'>Pointage hors planning</p>
+                          </div>
+                          <ChevronRight className='w-4 h-4 text-purple-400' />
+                        </div>
+                      )}
+                      {anomalies.departsAnticipes.length > 0 && (
+                        <div className='flex items-center gap-2.5 p-3 rounded-xl bg-orange-50 border border-orange-100 hover:bg-orange-100 transition-colors cursor-pointer'>
+                          <div className='w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center'>
+                            <LogOut className='w-4 h-4 text-orange-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-orange-800'>{anomalies.departsAnticipes.length} départ{anomalies.departsAnticipes.length>1?'s':''} anticipé{anomalies.departsAnticipes.length>1?'s':''}</p>
+                            <p className='text-[10px] text-orange-600'>Avant fin de shift</p>
+                          </div>
+                          <ChevronRight className='w-4 h-4 text-orange-400' />
+                        </div>
+                      )}
+                      {anomalies.nonAssignes.length > 0 && (
+                        <div className='flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-colors cursor-pointer'>
+                          <div className='w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center'>
+                            <ClipboardList className='w-4 h-4 text-slate-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-slate-700'>{anomalies.nonAssignes.length} non assigné{anomalies.nonAssignes.length>1?'s':''}</p>
+                            <p className='text-[10px] text-slate-500'>Shift sans employé</p>
+                          </div>
+                          <ChevronRight className='w-4 h-4 text-slate-400' />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              
+              {/* Tab Actions */}
+              {rightColumnTab === 'actions' && (
+                <div className='space-y-2'>
+                  {pendingLeavesList.length === 0 && replacements.length === 0 ? (
+                    <div className='flex flex-col items-center justify-center py-6'>
+                      <div className='w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-2'>
+                        <CheckCircle className='w-6 h-6 text-slate-300' />
+                      </div>
+                      <p className='text-sm text-gray-500'>Aucune action en attente</p>
+                      <p className='text-xs text-gray-400 mt-1'>Tout est à jour</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Congés */}
+                      {pendingLeavesList.length > 0 && (
+                        <div 
+                          onClick={() => onGoToConges && onGoToConges()}
+                          className='flex items-center gap-2.5 p-3 rounded-xl bg-blue-50 border border-blue-100 hover:bg-blue-100 cursor-pointer transition-all group'
+                        >
+                          <div className='w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center'>
+                            <Calendar className='w-4 h-4 text-blue-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-blue-800'>{pendingLeavesList.length} demande{pendingLeavesList.length>1?'s':''} de congé</p>
+                            <p className='text-[10px] text-blue-600'>En attente de validation</p>
+                          </div>
+                          <ChevronRight className='w-4 h-4 text-blue-400 group-hover:translate-x-0.5 transition-transform' />
+                        </div>
+                      )}
+                      
+                      {/* Remplacements */}
+                      {replacements.length > 0 && (
+                        <div className='flex items-center gap-2.5 p-3 rounded-xl bg-purple-50 border border-purple-100 hover:bg-purple-100 cursor-pointer transition-all group'>
+                          <div className='w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center'>
+                            <RefreshCw className='w-4 h-4 text-purple-600' />
+                          </div>
+                          <div className='flex-1'>
+                            <p className='text-xs font-semibold text-purple-800'>{replacements.length} remplacement{replacements.length>1?'s':''}</p>
+                            <p className='text-[10px] text-purple-600'>
+                              {urgentReplacements.length > 0 
+                                ? `${urgentReplacements.length} urgent${urgentReplacements.length>1?'s':''} !` 
+                                : 'À organiser'}
+                            </p>
+                          </div>
+                          {urgentReplacements.length > 0 && (
+                            <span className='text-[9px] px-2 py-1 rounded-full bg-amber-500 text-white font-bold animate-pulse'>
+                              URGENT
+                            </span>
+                          )}
+                          <ChevronRight className='w-4 h-4 text-purple-400 group-hover:translate-x-0.5 transition-transform' />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2196,22 +1800,107 @@ function DashboardOverview({ onGoToConges }) {
 
 // --- UI Components Simples ---
 
-// Carte simple
-const SimpleCard = ({ label, value, sub, tone='neutral', loading=false }) => {
+const KpiCard = ({ label, value, sub, tone = 'neutral', icon: Icon, trend, loading = false }) => {
   const toneMap = {
-    neutral: 'bg-white border-gray-200 text-gray-700',
-    ok: 'bg-green-50 border-green-200 text-green-700',
-    warn: 'bg-orange-50 border-orange-200 text-orange-700',
-    alert: 'bg-red-50 border-red-200 text-red-700',
-    info: 'bg-blue-50 border-blue-200 text-blue-700'
+    neutral: {
+      wrap: 'bg-white border-slate-200/70 text-slate-900',
+      icon: 'bg-slate-100 text-slate-600',
+      sub: 'text-slate-500'
+    },
+    ok: {
+      wrap: 'bg-white border-slate-200/70 text-slate-900',
+      icon: 'bg-emerald-50 text-emerald-700',
+      sub: 'text-emerald-700'
+    },
+    warn: {
+      wrap: 'bg-white border-slate-200/70 text-slate-900',
+      icon: 'bg-amber-50 text-amber-700',
+      sub: 'text-amber-700'
+    },
+    alert: {
+      wrap: 'bg-white border-slate-200/70 text-slate-900',
+      icon: 'bg-red-50 text-red-700',
+      sub: 'text-red-700'
+    },
+    info: {
+      wrap: 'bg-white border-slate-200/70 text-slate-900',
+      icon: 'bg-sky-50 text-sky-700',
+      sub: 'text-sky-700'
+    },
   };
+
+  const cfg = toneMap[tone] || toneMap.neutral;
+  const displayValue = (value === null || value === undefined) ? '—' : value;
+
+  // Tendance : { value: number, direction: 'up' | 'down' | 'stable' }
+  const getTrendColor = () => {
+    if (!trend) return '';
+    if (trend.direction === 'up') return trend.positive ? 'text-emerald-600' : 'text-red-600';
+    if (trend.direction === 'down') return trend.positive ? 'text-emerald-600' : 'text-red-600';
+    return 'text-gray-400';
+  };
+
+  const TrendIcon = trend?.direction === 'up' ? TrendingUp : trend?.direction === 'down' ? TrendingDown : null;
+
+  if (loading) {
+    return (
+      <div className={`rounded-2xl border shadow-sm p-4 ${cfg.wrap} animate-pulse`}>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='min-w-0 space-y-2 flex-1'>
+            <div className='h-3 bg-slate-200 rounded w-20'></div>
+            <div className='h-7 bg-slate-200 rounded w-12'></div>
+          </div>
+          <div className='w-10 h-10 rounded-xl bg-slate-200'></div>
+        </div>
+        <div className='mt-2 h-4 bg-slate-100 rounded w-24'></div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`rounded-lg border p-3 text-center ${toneMap[tone]||toneMap.neutral}`}>
-      <div className='text-[10px] uppercase tracking-wide font-medium opacity-70 mb-1'>{label}</div>
-      <div className='text-lg font-bold leading-none'>{loading? '…' : value}</div>
-      {sub && !loading && <div className='text-[11px] opacity-70 mt-1'>{sub}</div>}
+    <div className={`rounded-2xl border shadow-sm p-4 ${cfg.wrap} hover:shadow-md hover:border-slate-300 transition-all duration-200 cursor-default group`}>
+      <div className='flex items-start justify-between gap-3'>
+        <div className='min-w-0'>
+          <div className='text-[11px] font-semibold text-slate-600 uppercase tracking-wide truncate'>{label}</div>
+          <div className='mt-1 flex items-baseline gap-2'>
+            <span className='text-2xl font-bold text-slate-900 leading-none'>{displayValue}</span>
+            {trend && TrendIcon && (
+              <span className={`flex items-center gap-0.5 text-xs font-medium ${getTrendColor()}`}>
+                <TrendIcon className='w-3.5 h-3.5' />
+                {trend.value !== undefined && <span>{Math.abs(trend.value)}%</span>}
+              </span>
+            )}
+          </div>
+        </div>
+        {Icon && (
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cfg.icon} group-hover:scale-105 transition-transform duration-200`}>
+            <Icon className='w-5 h-5' />
+          </div>
+        )}
+      </div>
+      {sub && (
+        <div className={`mt-2 text-xs font-medium ${cfg.sub}`}>{sub}</div>
+      )}
     </div>
   );
 };
+
+// Composant TrendingDown pour KpiCard
+const TrendingDown = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+    <polyline points="17 18 23 18 23 12"></polyline>
+  </svg>
+);
+
+// Backward-compat (si jamais réutilisé plus tard)
+const SimpleCard = ({ label, value, sub, tone = 'neutral', loading = false }) => (
+  <KpiCard
+    label={label}
+    value={loading ? '…' : value}
+    sub={!loading ? sub : undefined}
+    tone={tone}
+  />
+);
 
 export default DashboardOverview;

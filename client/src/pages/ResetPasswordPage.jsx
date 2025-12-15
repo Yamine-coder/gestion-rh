@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Lock, Eye, EyeOff, CheckCircle } from "lucide-react";
-import logo from "../assets/logo.jpg";
+import logo from "../assets/onboarding/logo.png";
 
 function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -115,8 +115,8 @@ function ResetPasswordPage() {
     <div className="min-h-screen bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center px-4">
       <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full">
         {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <img src={logo} alt="Logo Chez Antoine" className="h-20" />
+        <div className="flex justify-center mb-8">
+          <img src={logo} alt="Logo Chez Antoine" className="h-28 w-auto object-contain" />
         </div>
         
         <h1 className="text-3xl font-bold mb-6 text-center text-red-700">

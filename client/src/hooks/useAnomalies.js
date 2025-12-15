@@ -13,6 +13,8 @@ export function useAnomalies({
   statut = null,
   type = null,
   gravite = null,
+  limit = null,
+  offset = null,
   autoRefresh = false,
   refreshInterval = 30000
 } = {}) {
@@ -40,6 +42,8 @@ export function useAnomalies({
       if (statut) searchParams.set('statut', statut);
       if (type) searchParams.set('type', type);
       if (gravite) searchParams.set('gravite', gravite);
+      if (limit !== null && limit !== undefined) searchParams.set('limit', String(limit));
+      if (offset !== null && offset !== undefined) searchParams.set('offset', String(offset));
       
       // Paramètres additionnels passés
       Object.entries(params).forEach(([key, value]) => {
@@ -75,7 +79,7 @@ export function useAnomalies({
     } finally {
       setLoading(false);
     }
-  }, [employeId, dateDebut, dateFin, statut, type, gravite]);
+  }, [employeId, dateDebut, dateFin, statut, type, gravite, limit, offset]);
 
   // Fetch initial et rafraîchissement
   useEffect(() => {
@@ -204,10 +208,12 @@ export function useTraiterAnomalie() {
   const [error, setError] = useState(null);
 
   const traiterAnomalie = useCallback(async (anomalieId, action, options = {}) => {
-    const { commentaire, montantExtra, heuresExtra, shiftCorrection, tauxHoraire, methodePaiement } = options;
+    const { commentaire, montantExtra, heuresExtra, shiftCorrection, tauxHoraire, methodePaiement, questionVerification, notifierEmploye } = options;
 
-    if (!['valider', 'refuser', 'corriger', 'payer_extra'].includes(action)) {
-      throw new Error('Action invalide');
+    // Actions supportées
+    const actionsValides = ['valider', 'refuser', 'corriger', 'payer_extra', 'reporter', 'convertir_extra'];
+    if (!actionsValides.includes(action)) {
+      throw new Error(`Action invalide: ${action}. Actions valides: ${actionsValides.join(', ')}`);
     }
 
     setLoading(true);
@@ -231,6 +237,12 @@ export function useTraiterAnomalie() {
       // Ajouter shiftCorrection uniquement pour l'action "corriger"
       if (action === 'corriger' && shiftCorrection) {
         body.shiftCorrection = shiftCorrection;
+      }
+
+      // Ajouter les options pour l'action "reporter"
+      if (action === 'reporter') {
+        body.questionVerification = questionVerification;
+        body.notifierEmploye = notifierEmploye;
       }
 
       const response = await fetch(`${API_BASE}/api/anomalies/${anomalieId}/traiter`, {

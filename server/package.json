@@ -1,22 +1,18 @@
 {
-  "name": "server",
+  "name": "gestion-rh-server",
   "version": "1.0.0",
   "main": "index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "bulk:users": "node scripts/bulk-create-users.js",
-    "bulk:users:20": "node scripts/bulk-create-users.js 20",
-    "bulk:users:50": "node scripts/bulk-create-users.js 50",
-    "bulk:users:100": "node scripts/bulk-create-users.js 100",
-    "seed": "node scripts/seed-data.js",
-    "seed:more": "node scripts/add-more-data.js",
-    "seed:clean": "node scripts/clean-data.js",
-    "seed:today": "node scripts/reset-and-seed-today.js",
-    "seed:anomalies": "node scripts/add-anomalies-scenarios.js",
-    "create:admin": "node scripts/create-admin.js",
-    "fix:shifts": "node scripts/fix-shifts.js"
+    "build": "npx prisma generate",
+    "postinstall": "npx prisma generate",
+    "db:push": "npx prisma db push",
+    "db:migrate": "npx prisma migrate deploy",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
@@ -41,6 +37,7 @@
     "nodemailer": "^7.0.5",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
+    "pg": "^8.16.3",
     "prisma": "^6.15.0",
     "qrcode": "^1.5.4"
   },

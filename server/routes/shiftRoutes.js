@@ -56,7 +56,7 @@ router.get('/mes-shifts', authenticateToken, async (req, res) => {
 
     const shifts = await require('../prisma/client').shift.findMany({
       where,
-      include: { employe: { select: { id: true, email: true } } },
+      include: { employe: { select: { id: true, email: true, categorie: true } } },
       orderBy: [{ date: "asc" }],
     });
 

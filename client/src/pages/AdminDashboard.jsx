@@ -8,7 +8,7 @@ import TopNavAdmin from "../components/TopNavAdmin";
 import DashboardOverview from "../components/DashboardOverview";
 import GestionEmployesPage from "./GestionEmployesPage";
 import CongesTable from "../components/CongesTable";
-import StatsRH from "../components/StatsRH";
+import Performance from "../components/Performance";
 import PlanningRH from "../components/PlanningRH";
 import VueJournaliereRH from "../components/VueJournaliereRH";
 import RapportsHeures from "../components/RapportsHeures";
@@ -77,7 +77,7 @@ export default function AdminDashboard() {
             />
           )}
           {menu === "rapports" && <RapportsHeures />}
-          {menu === "stats" && <StatsRH />}
+          {menu === "performance" && <Performance />}
           {menu === "planning" && <PlanningRH />}
           {menu === "anomalies" && <GestionAnomalies />}
           {menu === "extras" && <SuiviExtras />}

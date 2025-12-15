@@ -12,9 +12,22 @@ export function computeKPIs(stats, { now = new Date() } = {}) {
   
   // Congés aujourd'hui (calculated early so we can use it)
   const prochains = Array.isArray(stats?.prochainsConges) ? stats.prochainsConges : [];
+
+  const toUtcDate = (dateStr, { endOfDay = false } = {}) => {
+    const d = new Date(dateStr);
+    if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      if (endOfDay) {
+        d.setUTCHours(23, 59, 59, 999);
+      } else {
+        d.setUTCHours(0, 0, 0, 0);
+      }
+    }
+    return d;
+  };
+
   const enCongeAujourdHui = prochains.filter(c => {
-    const deb = new Date(c.dateDebut);
-    const fin = new Date(c.dateFin);
+    const deb = toUtcDate(c.dateDebut, { endOfDay: false });
+    const fin = toUtcDate(c.dateFin, { endOfDay: true });
     return now >= deb && now <= fin;
   }).length;
   

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import useNotificationHighlight from '../hooks/useNotificationHighlight';
 import {
   UserIcon,
   LockClosedIcon,
@@ -23,10 +25,12 @@ import {
   FolderIcon,
   EyeIcon,
   ArrowUpTrayIcon,
-  LightBulbIcon
+  LightBulbIcon,
+  AcademicCapIcon
 } from '@heroicons/react/24/outline';
 import BottomNav from '../components/BottomNav';
 import UploadPhotoProfil from '../components/UploadPhotoProfil';
+import MobileOnboarding from '../components/onboarding/MobileOnboarding';
 import { getToken, isTokenValid, setupTokenExpirationCheck, clearToken } from '../utils/tokenManager';
 import { getCategoriesEmploye } from '../utils/categoriesConfig';
 
@@ -775,8 +779,8 @@ const Badge = React.memo(({ children, variant = 'default' }) => {
   return <span className={`${base} ${variants[variant]}`}>{children}</span>;
 });
 
-const Card = React.memo(({ title, icon: Icon, children, actions }) => (
-  <div className="group rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 shadow-sm transition-colors overflow-hidden">
+const Card = React.memo(({ id, title, icon: Icon, children, actions, className = '' }) => (
+  <div id={id} className={`group rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 shadow-sm transition-colors overflow-hidden scroll-mt-20 ${className}`}>
     <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/50">
       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200 font-medium text-sm">
         {Icon && <Icon className="w-4 h-4 text-slate-400 dark:text-slate-500" />}
@@ -790,8 +794,15 @@ const Card = React.memo(({ title, icon: Icon, children, actions }) => (
 
 const ProfilEmploye = React.memo(() => {
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Hooks pour le highlight depuis les notifications
+  const { isHighlighted: isInfosHighlighted } = useNotificationHighlight('infos-personnelles');
+  const { isHighlighted: isDocumentsHighlighted } = useNotificationHighlight('documents-section');
+  
   const [employe, setEmploye] = useState({});
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState('');
   const [confirmMotDePasse, setConfirmMotDePasse] = useState('');
@@ -803,7 +814,6 @@ const ProfilEmploye = React.memo(() => {
   const { theme, toggleTheme, setTheme } = useContext(require('../context/ThemeContext').ThemeContext);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false); // for better loading states
-  const location = useLocation();
   
   // États pour l'édition du profil - PAR CHAMP (nouveau système)
   const [editingField, setEditingField] = useState(null); // 'telephone' | 'adresse' | 'nom' | 'prenom' | 'email' | 'iban' | null
@@ -854,33 +864,43 @@ const ProfilEmploye = React.memo(() => {
 
   // 🆕 Gérer la navigation depuis les notifications
   useEffect(() => {
-    if (location.state?.fromNotification && location.state?.highlightSection === 'infos-personnelles') {
-      // Extraire le champ depuis le type de notification
-      const champ = location.state?.highlightField;
+    if (location.state?.fromNotification && location.state?.highlightSection) {
+      const section = location.state.highlightSection;
       
-      if (champ) {
-        // Ouvrir l'historique automatiquement
-        setShowHistorique(true);
-        setHighlightedField(champ);
-        
-        // Scroll vers la section des infos après un court délai
+      // Si c'est documents-section, changer d'onglet
+      if (section === 'documents-section') {
+        setActiveTab('documents');
         setTimeout(() => {
-          const section = document.getElementById(`field-${champ}`);
-          if (section) {
-            section.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          } else {
-            // Fallback vers section historique
-            const histSection = document.getElementById('historique-modifications');
-            if (histSection) histSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
+          const docSection = document.getElementById('documents-section');
+          if (docSection) docSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 300);
-        
-        // Retirer le highlight après 4 secondes
-        setTimeout(() => setHighlightedField(null), 4000);
       }
       
-      // Nettoyer le state
-      window.history.replaceState({}, document.title);
+      // Si c'est infos-personnelles
+      if (section === 'infos-personnelles') {
+        setActiveTab('infos');
+        const champ = location.state?.highlightField;
+        
+        if (champ) {
+          setShowHistorique(true);
+          setHighlightedField(champ);
+          
+          setTimeout(() => {
+            const fieldSection = document.getElementById(`field-${champ}`);
+            if (fieldSection) {
+              fieldSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+              const histSection = document.getElementById('historique-modifications');
+              if (histSection) histSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 300);
+          
+          setTimeout(() => setHighlightedField(null), 4000);
+        }
+      }
+      
+      // Nettoyer le state pour éviter les boucles de redirection
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [location.state]);
 
@@ -1965,6 +1985,15 @@ const ProfilEmploye = React.memo(() => {
                       )}
                     </div>
                   </div>
+
+              {/* Bouton de déconnexion */}
+              <button
+                onClick={handleLogout}
+                className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200/60 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-900/10 hover:border-red-200 dark:hover:border-red-800/30 px-3 py-2.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-150"
+              >
+                <ArrowLeftOnRectangleIcon className="w-4 h-4" />
+                Se déconnecter
+              </button>
             </div>
 
             {/* Fiche de poste - Accès direct */}
@@ -2007,14 +2036,14 @@ const ProfilEmploye = React.memo(() => {
               </div>
             )}
 
-            {/* Déconnexion - Visible sur tous les écrans */}
+            {/* Revoir le tutoriel */}
             <div className="block">
               <button
-                onClick={handleLogout}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200/60 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-900/10 hover:border-red-200 dark:hover:border-red-800/30 px-3 py-3 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors duration-150"
+                onClick={() => setShowOnboardingModal(true)}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-200/60 dark:border-slate-700/50 bg-white dark:bg-slate-800 hover:bg-primary-50 dark:hover:bg-primary-900/10 hover:border-primary-200 dark:hover:border-primary-800/30 px-3 py-3 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors duration-150"
               >
-                <ArrowLeftOnRectangleIcon className="w-4 h-4" />
-                Se déconnecter
+                <AcademicCapIcon className="w-4 h-4" />
+                Revoir le tutoriel
               </button>
             </div>
 
@@ -2048,8 +2077,10 @@ const ProfilEmploye = React.memo(() => {
             {/* Contenu de l'onglet Infos */}
             {activeTab === 'infos' && (
             <Card 
+              id="infos-personnelles"
               title="Informations personnelles" 
               icon={UserIcon}
+              className={isInfosHighlighted ? 'ring-2 ring-primary-500 animate-pulse' : ''}
             >
               {profilLoading ? (
                 <div className="space-y-2">
@@ -2250,7 +2281,7 @@ const ProfilEmploye = React.memo(() => {
 
             {/* Contenu de l'onglet Documents */}
             {activeTab === 'documents' && (
-              <Card title="Mes Documents" icon={DocumentTextIcon}>
+              <Card id="documents-section" title="Mes Documents" icon={DocumentTextIcon} className={isDocumentsHighlighted ? 'ring-2 ring-primary-500 animate-pulse' : ''}>
                 <div className="space-y-4">
                   {/* Widget Navigo - Système mensuel complet */}
                   <div>
@@ -2592,71 +2623,56 @@ const ProfilEmploye = React.memo(() => {
               </Card>
             )}
 
-            {/* Modal prévisualisation fiche de poste - Rendu en dehors du flux */}
-      {fichePostePreviewUrl && (
-        <div 
-          className="fixed bg-black/85 backdrop-blur-md flex items-center justify-center animate-[fadeIn_0.15s_ease-out]" 
-          style={{ 
-            position: 'fixed',
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0,
-            zIndex: 99999,
-            padding: '8px'
-          }}
-          onClick={(e) => e.target === e.currentTarget && closeFichePostePreview()}
-        >
+            {/* Modal prévisualisation fiche de poste - Rendu via Portal */}
+      {fichePostePreviewUrl && createPortal(
+        <>
+          {/* Overlay plein écran */}
           <div 
-            className="bg-white dark:bg-slate-800 rounded-xl sm:rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden border border-slate-200/50 dark:border-slate-700/50 animate-[scaleIn_0.2s_ease-out]"
-            style={{
-              maxWidth: '1100px',
-              height: 'calc(100vh - 16px)',
-              maxHeight: 'calc(100vh - 16px)'
-            }}
+            className="fixed inset-0 bg-black/90"
+            style={{ zIndex: 99998 }}
+            onClick={closeFichePostePreview}
+          />
+          {/* Modal */}
+          <div 
+            className="fixed inset-0 flex items-center justify-center p-3 sm:p-6"
+            style={{ zIndex: 99999 }}
+            onClick={(e) => e.target === e.currentTarget && closeFichePostePreview()}
           >
-            {/* Header compact et responsive */}
-            <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-primary-50 via-white to-rose-50 dark:from-primary-900/20 dark:via-slate-800 dark:to-rose-900/20 flex-shrink-0">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <div className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-primary-100 dark:bg-primary-900/40 shadow-sm flex-shrink-0">
-                  <DocumentTextIcon className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600 dark:text-primary-400" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100 truncate">
-                    Fiche de poste
-                  </h3>
-                  <span className="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-semibold rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">
-                    {fichePostePreviewCategorie}
-                  </span>
+            <div 
+              className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-slate-700/50 animate-[scaleIn_0.2s_ease-out]"
+              style={{
+                maxHeight: 'calc(100vh - 1.5rem)',
+                height: '90vh',
+              }}
+            >
+              {/* Header compact et responsive */}
+              <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 sm:py-3 border-b border-slate-200 dark:border-slate-700 bg-gradient-to-r from-primary-50 via-white to-rose-50 dark:from-primary-900/20 dark:via-slate-800 dark:to-rose-900/20 flex-shrink-0 gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-primary-100 dark:bg-primary-900/40 shadow-sm flex-shrink-0">
+                    <DocumentTextIcon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600 dark:text-primary-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                      Fiche de poste
+                    </h3>
+                    <span className="px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold rounded bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300">
+                      {fichePostePreviewCategorie}
+                    </span>
                 </div>
               </div>
               
-              {/* Actions compactes */}
-              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                {/* Plein écran - desktop only */}
-                <a
-                  href={fichePostePreviewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                  title="Ouvrir dans un nouvel onglet"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                  Plein écran
-                </a>
-                
+              {/* Actions */}
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                 {/* Télécharger */}
                 <button
                   onClick={() => handleDownloadFichePoste(fichePostePreviewCategorie)}
                   disabled={fichePosteLoading}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 active:scale-95 transition-all shadow-sm"
+                  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-xs font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 active:scale-95 transition-all shadow-sm"
                 >
                   {fichePosteLoading ? (
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    <ArrowUpTrayIcon className="w-4 h-4 rotate-180" />
+                    <ArrowUpTrayIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 rotate-180" />
                   )}
                   <span>Télécharger</span>
                 </button>
@@ -2664,44 +2680,71 @@ const ProfilEmploye = React.memo(() => {
                 {/* Fermer */}
                 <button
                   onClick={closeFichePostePreview}
-                  className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ml-0.5"
                   title="Fermer (Échap)"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             </div>
             
-            {/* PDF Viewer - prend tout l'espace restant */}
-            <div className="flex-1 bg-slate-200 dark:bg-slate-900 min-h-0">
+            {/* PDF Viewer - prend la place disponible */}
+            <div className="flex-1 bg-slate-100 dark:bg-slate-900 overflow-hidden min-h-0 relative">
               <iframe
-                src={fichePostePreviewUrl}
+                src={`${fichePostePreviewUrl}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`}
                 className="w-full h-full"
                 title="Prévisualisation fiche de poste"
                 style={{ border: 'none' }}
               />
             </div>
             
-            {/* Footer minimal */}
-            <div className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200/50 dark:border-slate-700/50 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400 dark:text-slate-500 flex-shrink-0">
-              <div className="flex items-center gap-2 sm:gap-4">
-                <span className="hidden sm:flex items-center gap-1">
-                  <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700 font-mono text-[8px]">Échap</kbd>
-                  fermer
-                </span>
-                <span className="flex items-center gap-1">
-                  <DocumentTextIcon className="w-3 h-3" />
-                  PDF • A4
-                </span>
-              </div>
-              <span className="text-primary-500 dark:text-primary-400 font-medium">
-                Le Fournil à Pizzas
-              </span>
+            {/* Barre d'actions mobile-friendly - remplace la toolbar PDF native */}
+            <div className="px-3 py-2.5 bg-slate-800 dark:bg-slate-900 border-t border-slate-700 flex items-center justify-center gap-4 flex-shrink-0">
+              {/* Télécharger */}
+              <button
+                onClick={() => handleDownloadFichePoste(fichePostePreviewCategorie)}
+                disabled={fichePosteLoading}
+                className="flex flex-col items-center gap-1 p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-all min-w-[60px]"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span className="text-[10px] font-medium">Télécharger</span>
+              </button>
+              
+              {/* Imprimer */}
+              <button
+                onClick={() => {
+                  const iframe = document.querySelector('iframe[title="Prévisualisation fiche de poste"]');
+                  if (iframe) {
+                    iframe.contentWindow.print();
+                  }
+                }}
+                className="flex flex-col items-center gap-1 p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-all min-w-[60px]"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                <span className="text-[10px] font-medium">Imprimer</span>
+              </button>
+              
+              {/* Ouvrir dans nouvel onglet */}
+              <button
+                onClick={() => window.open(fichePostePreviewUrl, '_blank')}
+                className="flex flex-col items-center gap-1 p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 active:bg-slate-600 transition-all min-w-[60px]"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                <span className="text-[10px] font-medium">Ouvrir</span>
+              </button>
+            </div>
             </div>
           </div>
-        </div>
+        </>,
+        document.body
       )}
 
       {/* Modal sélection mois pour rattrapage */}
@@ -3284,6 +3327,14 @@ const ProfilEmploye = React.memo(() => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Tutoriel / Onboarding */}
+      {showOnboardingModal && (
+        <MobileOnboarding 
+          onComplete={() => setShowOnboardingModal(false)} 
+          userName={employe.prenom || 'Utilisateur'} 
+        />
       )}
 
       {/* Modal Confirmation Suppression Photo */}

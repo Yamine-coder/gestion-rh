@@ -9,6 +9,7 @@ node_modules/
 .env.development
 .env.test
 .env.production
+.env.production.local
 
 # Build outputs
 */build/
@@ -28,8 +29,8 @@ yarn-error.log*
 *.sqlite
 *.db
 
-# Prisma
-*/prisma/migrations/
+# Prisma - Garder les migrations pour la prod
+# */prisma/migrations/
 
 # Editor directories and files
 .vscode/
@@ -46,6 +47,19 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Fichiers de test/debug (à supprimer avant déploiement)
+check-*.js
+create-*.js
+debug-*.js
+fix-*.js
+test-*.js
+test-*.html
+verify-*.js
+reset-*.js
+simulation-*.js
+*.xlsx
+cleanup-for-deploy.ps1
 
 # Debug
 .debug/

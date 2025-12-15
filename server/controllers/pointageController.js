@@ -1,6 +1,7 @@
 const prisma = require('../prisma/client');
 const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
+const scoringService = require('../services/scoringService');
 
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
@@ -384,6 +385,38 @@ const enregistrerPointage = async (req, res) => {
       await detecterEtCreerAnomalie(userId, pointage, typeNormalise);
     } catch (anomalieError) {
       console.error('⚠️ Erreur lors de la détection d\'anomalie (non bloquante):', anomalieError);
+    }
+
+    // ========== SCORING AUTOMATIQUE (sur arrivée) ==========
+    if (typeNormalise === 'ENTRÉE' || typeNormalise === 'arrivee') {
+      try {
+        // Récupérer le shift du jour pour comparer l'heure d'arrivée
+        const datePointage = horodatage ? new Date(horodatage) : new Date();
+        const dateStr = datePointage.toISOString().split('T')[0];
+        
+        const shift = await prisma.shift.findFirst({
+          where: {
+            employeId: parseInt(userId),
+            date: new Date(dateStr)
+          }
+        });
+        
+        if (shift && shift.segments && shift.segments.length > 0) {
+          const heurePointage = datePointage.toTimeString().slice(0, 5);
+          await scoringService.onPointage(
+            { 
+              id: pointage.id, 
+              employe_id: parseInt(userId), 
+              type: 'arrivee', 
+              heure: heurePointage,
+              date: dateStr
+            },
+            { start: shift.segments[0].start, end: shift.segments[0].end }
+          );
+        }
+      } catch (scoringError) {
+        console.error('⚠️ Erreur scoring (non bloquante):', scoringError.message);
+      }
     }
 
     // ========== MISE À JOUR DES PAIEMENTS EXTRAS (sur départ) ==========

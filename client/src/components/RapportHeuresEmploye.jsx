@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { useToast } from './ui/Toast';
 
 const RapportHeuresEmploye = ({ employeId, onClose }) => {
   const [employe, setEmploye] = useState(null);
@@ -28,6 +29,7 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
   const [error, setError] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [activeTab, setActiveTab] = useState('synthese'); // synthese, detaille
+  const toast = useToast();
 
   // Couleur de charte principale
   const ACCENT = '#cf292c';
@@ -97,7 +99,8 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
     return rapportData.retards.reduce((acc, r) => {
       if (!r?.date) return acc;
       const d = r.date;
-      const duree = parseInt(r.duree) || 0;
+      // Le backend envoie "retard" (en minutes), pas "duree"
+      const duree = parseInt(r.retard || r.duree) || 0;
       if (!acc[d]) acc[d] = { total: 0, occurrences: 0 };
       acc[d].total += duree;
       acc[d].occurrences += 1;
@@ -160,7 +163,9 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
     const retardsUniques = new Set();
     if (rapportData.retards) {
       rapportData.retards.forEach(retard => {
-        if (retard.date && parseInt(retard.duree) > 0) {
+        // Le backend envoie "retard" (en minutes), pas "duree"
+        const dureeRetard = retard.retard || retard.duree || 0;
+        if (retard.date && parseInt(dureeRetard) > 0) {
           retardsUniques.add(retard.date);
         }
       });
@@ -199,6 +204,12 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
     }
   }, [employeId, fetchRapportData]);
 
+  // Reset le rapport détaillé quand le mois ou la période change
+  useEffect(() => {
+    setRapportDetaille(null);
+  }, [moisSelectionne, periode]);
+
+  // Charger le rapport détaillé quand on est sur l'onglet et que les données sont null
   useEffect(() => {
     if (activeTab === 'detaille' && !rapportDetaille && employeId) {
       fetchRapportDetaille();
@@ -248,7 +259,7 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
 
     } catch (err) {
       console.error("Erreur lors de l'export:", err);
-      alert(err.response?.data?.message || "Erreur lors de l'export du rapport");
+      toast.error('Erreur', err.response?.data?.message || "Erreur lors de l'export du rapport");
     }
   };
 

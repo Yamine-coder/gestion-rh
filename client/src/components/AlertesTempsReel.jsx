@@ -2,7 +2,7 @@
 // Widget d'alertes temps réel pour retards et absences
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Clock, UserX, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, Clock, UserX, RefreshCw, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -167,8 +167,9 @@ const AlertesTempsReel = () => {
               </button>
             </div>
           ) : alertes.length === 0 ? (
-            <div className="text-center py-4 text-gray-500 dark:text-slate-400">
-              <p>✅ Aucune alerte - Tous les employés sont à jour</p>
+            <div className="text-center py-4 text-gray-500 dark:text-slate-400 flex items-center justify-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <p>Aucune alerte - Tous les employés sont à jour</p>
             </div>
           ) : (
             <div className="space-y-3">

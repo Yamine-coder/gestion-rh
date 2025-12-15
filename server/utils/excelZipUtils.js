@@ -28,9 +28,23 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
       console.log('📊 Attribution des numéros PJ...');
       let pjCounter = 0;
       const enrichedEmployes = rapportsEmployes.map(emp => {
-        if (emp.justificatifNavigo && emp.eligibleNavigo) {
+        // Priorité : justificatif mensuel validé (nouveau système) > justificatif simple (ancien)
+        const justifMensuel = emp.justificatifsNavigo?.[0]; // Le premier (il n'y en a qu'un par mois)
+        const fichierNavigo = justifMensuel?.fichier || emp.justificatifNavigo;
+        
+        // Inclure si : justificatif mensuel validé OU ancien système avec eligibleNavigo
+        const hasJustifMensuel = justifMensuel?.fichier;
+        const hasOldJustif = emp.justificatifNavigo && emp.eligibleNavigo;
+        
+        if (fichierNavigo && (hasJustifMensuel || hasOldJustif)) {
           pjCounter++;
-          return { ...emp, pjNumber: pjCounter };
+          console.log(`   ✅ PJ${pjCounter}: ${emp.nom} ${emp.prenom} - ${fichierNavigo}`);
+          return { 
+            ...emp, 
+            pjNumber: pjCounter,
+            fichierNavigo: fichierNavigo, // Chemin du fichier à utiliser
+            dateUploadNavigo: justifMensuel?.dateUpload || null
+          };
         }
         return emp;
       });
@@ -69,17 +83,21 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
       indexContent += '═══════════════════════════════════════════════════════════\n\n';
       let justifCount = 0;
 
-      // 4. Ajouter chaque justificatif Navigo au ZIP (utiliser enrichedEmployes)
+      // 4. Ajouter chaque justificatif Navigo au ZIP (utiliser fichierNavigo enrichi)
       enrichedEmployes.forEach((emp, index) => {
-        if (emp.justificatifNavigo && emp.eligibleNavigo && emp.pjNumber) {
-          const filePath = path.join(__dirname, '..', emp.justificatifNavigo);
+        // Si l'employé a un numéro PJ, c'est qu'il a un justificatif à inclure
+        if (emp.fichierNavigo && emp.pjNumber) {
+          const filePath = path.join(__dirname, '..', emp.fichierNavigo);
           
           if (fs.existsSync(filePath)) {
             justifCount++;
             const extension = path.extname(filePath);
             const stats = fs.statSync(filePath);
             const fileSize = (stats.size / 1024).toFixed(2); // Taille en Ko
-            const dateUpload = stats.mtime.toLocaleDateString('fr-FR');
+            // Utiliser la date d'upload du justificatif si dispo, sinon date du fichier
+            const dateUpload = emp.dateUploadNavigo 
+              ? new Date(emp.dateUploadNavigo).toLocaleDateString('fr-FR')
+              : stats.mtime.toLocaleDateString('fr-FR');
             
             const newFileName = `PJ${emp.pjNumber}_${emp.nom}_${emp.prenom}${extension}`;
             
@@ -93,6 +111,8 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
             indexContent += `       Fichier: Justificatifs_Navigo_${dateDebutStr}_au_${dateFinStr}/${newFileName}\n`;
             indexContent += `       Référence Excel: PJ${emp.pjNumber}\n`;
             indexContent += `       Taille: ${fileSize} Ko | Uploadé le: ${dateUpload}\n\n`;
+          } else {
+            console.warn(`⚠️ Fichier Navigo introuvable: ${filePath} pour ${emp.nom} ${emp.prenom}`);
           }
         }
       });

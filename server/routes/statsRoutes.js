@@ -814,6 +814,48 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
     csvLines.push(`Heures Travaillées Total,${totalTravaillees.toFixed(2)}`);
     csvLines.push(`Écart Total,${(totalTravaillees - totalPrevues).toFixed(2)}`);
 
+    // Calculer les heures par jour d'abord pour détecter les jours présents
+    const heuresParJourMap = new Map();
+    shifts.forEach(shift => {
+      if (shift.type === 'travail' && shift.segments) {
+        const dateKey = toLocalDateString(shift.date);
+        const pointagesJour = pointagesParJour.get(dateKey) || [];
+        const heuresTravailleesJour = calculateRealHours(pointagesJour);
+        heuresParJourMap.set(dateKey, {
+          heures: heuresTravailleesJour,
+          pointages: pointagesJour,
+          segments: shift.segments
+        });
+      }
+    });
+
+    // Calculer les retards pour chaque jour avec heures travaillées > 0
+    let nombreRetards = 0;
+    let joursPresents = 0;
+    
+    heuresParJourMap.forEach((data, dateKey) => {
+      // Considérer présent si heures travaillées > 0 (cohérent avec frontend)
+      if (data.heures > 0) {
+        joursPresents++;
+        
+        // Analyser le retard sur le premier segment
+        const premierSegment = data.segments.find(s => s.start && s.end && !s.isExtra);
+        if (premierSegment && data.pointages.length > 0) {
+          const retardInfo = analyserRetard(premierSegment, data.pointages, dateKey);
+          if (retardInfo.retard > 0) {
+            nombreRetards++;
+          }
+        }
+      }
+    });
+
+    // Calculer le taux de ponctualité
+    const tauxPonctualite = joursPresents > 0 
+      ? Math.round(((joursPresents - nombreRetards) / joursPresents) * 100)
+      : 100;
+
+    console.log(`📊 PDF Export - Jours présents: ${joursPresents}, Retards: ${nombreRetards}, Taux: ${tauxPonctualite}%`);
+
     // Préparer les données complètes du rapport
     const rapportComplet = {
       heuresPrevues: totalPrevues,
@@ -821,7 +863,8 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       heuresSupplementaires: 0,
       absencesJustifiees: shifts.filter(s => s.type === 'absence' && (s.motif?.toLowerCase().includes('congé') || s.motif?.toLowerCase().includes('rtt') || s.motif?.toLowerCase().includes('maladie'))).length,
       absencesInjustifiees: shifts.filter(s => s.type === 'absence' && !(s.motif?.toLowerCase().includes('congé') || s.motif?.toLowerCase().includes('rtt') || s.motif?.toLowerCase().includes('maladie'))).length,
-      nombreRetards: 0,
+      nombreRetards: nombreRetards,
+      tauxPonctualite: tauxPonctualite,
       heuresParJour: shifts.map(shift => {
         const dateKey = toLocalDateString(shift.date);
         const pointagesJour = pointagesParJour.get(dateKey) || [];
@@ -850,7 +893,8 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       statistiques: {
         joursTravailles: shifts.filter(s => s.type === 'travail').length,
         joursAbsents: shifts.filter(s => s.type === 'absence').length,
-        moyenneHeuresJour: pointagesParJour.size > 0 ? totalTravaillees / pointagesParJour.size : 0
+        joursPresents: joursPresents,
+        moyenneHeuresJour: joursPresents > 0 ? totalTravaillees / joursPresents : 0
       }
     };
 
@@ -1416,7 +1460,11 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
         return res.status(400).json({ message: 'Période invalide' });
     }
 
-    // Récupérer les employés et leurs données (même logique que export-all)
+    // Extraire mois/année de la période pour les justificatifs Navigo
+    const moisPeriode = dateDebut.getMonth() + 1; // 1-12
+    const anneePeriode = dateDebut.getFullYear();
+
+    // Récupérer les employés et leurs données + justificatifs Navigo du mois
     const employes = await prisma.user.findMany({
       where: {
         role: 'employee',
@@ -1428,7 +1476,21 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
       },
       select: {
         id: true, email: true, nom: true, prenom: true,
-        justificatifNavigo: true, eligibleNavigo: true
+        justificatifNavigo: true, eligibleNavigo: true,
+        // Récupérer les justificatifs Navigo mensuels pour ce mois
+        justificatifsNavigo: {
+          where: {
+            mois: moisPeriode,
+            annee: anneePeriode,
+            statut: 'valide' // Seulement les validés
+          },
+          select: {
+            fichier: true,
+            dateUpload: true,
+            mois: true,
+            annee: true
+          }
+        }
       },
       orderBy: [{ nom: 'asc' }, { prenom: 'asc' }]
     });

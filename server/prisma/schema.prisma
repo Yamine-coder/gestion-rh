@@ -42,7 +42,6 @@ model User {
   paiementsExtraAsCree                                         PaiementExtra[]            @relation("CreateurPaiementsExtra")
   paiementsExtraAsPaye                                         PaiementExtra[]            @relation("PayeurPaiementsExtra")
   passwordResets                                               PasswordReset[]
-  plannings                                                    Planning[]
   pointages                                                    Pointage[]
   shifts                                                       Shift[]
   demandes_modification_demandes_modification_employe_idToUser demandes_modification[]    @relation("demandes_modification_employe_idToUser")
@@ -95,15 +94,6 @@ model Conge {
   @@index([userId])
   @@index([statut])
   @@index([createdAt])
-}
-
-model Planning {
-  id         Int      @id @default(autoincrement())
-  date       DateTime
-  heureDebut DateTime
-  heureFin   DateTime
-  userId     Int
-  user       User     @relation(fields: [userId], references: [id])
 }
 
 model Shift {

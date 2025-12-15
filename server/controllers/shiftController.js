@@ -231,7 +231,7 @@ const getShifts = async (req, res) => {
 
     const shifts = await prisma.shift.findMany({
       where,
-      include: { employe: { select: { id: true, email: true } } },
+      include: { employe: { select: { id: true, email: true, prenom: true, nom: true } } },
       orderBy: [{ date: "asc" }],
     });
 

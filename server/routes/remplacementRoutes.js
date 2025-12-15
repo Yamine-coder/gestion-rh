@@ -8,6 +8,8 @@ const router = express.Router();
 const prisma = require('../prisma/client');
 const { authMiddleware: authenticateToken } = require('../middlewares/authMiddleware');
 const isAdmin = require('../middlewares/isAdminMiddleware');
+const scoringService = require('../services/scoringService');
+const { notifierDemandeRemplacement } = require('../services/notificationService');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 ROUTES EMPLOYÉ - Mes demandes de remplacement
@@ -246,31 +248,14 @@ router.post('/demande', authenticateToken, async (req, res) => {
         select: { id: true }
       });
       
-      // Formater la date du shift
-      const dateShift = new Date(shift.date);
-      const options = { weekday: 'long', day: 'numeric', month: 'long' };
-      const dateFormatee = dateShift.toLocaleDateString('fr-FR', options);
-      
-      // Créer les notifications pour tous les collègues de l'équipe
+      // Utiliser le service de notification centralisé
       if (collegues.length > 0) {
-        const notificationsData = collegues.map(collegue => ({
-          userId: collegue.id,
-          type: 'remplacement_demande',
-          message: JSON.stringify({
-            title: 'Demande de remplacement',
-            body: `${employeAbsent.prenom} ${employeAbsent.nom} cherche un remplaçant pour le ${dateFormatee}`,
-            demandeId: demande.id,
-            shiftId: shift.id,
-            priorite: priorite,
-            employeAbsentNom: `${employeAbsent.prenom} ${employeAbsent.nom}`
-          }),
-          statut: 'non_lu'
-        }));
-        
-        await prisma.notification.createMany({
-          data: notificationsData
-        });
-        
+        await notifierDemandeRemplacement(
+          collegues.map(c => c.id),
+          demande,
+          employeAbsent,
+          shift
+        );
         console.log(`✅ Notifications envoyées à ${collegues.length} collègue(s) de l'équipe ${employeAbsent.categorie || 'tous'}`);
       }
     } catch (notifError) {
@@ -655,6 +640,18 @@ router.post('/admin/:id/valider', authenticateToken, isAdmin, async (req, res) =
       console.log(`✅ Notifications de validation envoyées aux deux parties`);
     } catch (notifError) {
       console.error('Erreur envoi notifications validation:', notifError);
+    }
+    
+    // 📊 SCORING: Bonus pour le remplaçant
+    try {
+      const dateShift = candidature.demandeRemplacement.shift.date;
+      await scoringService.onRemplacementAccepte({
+        id: candidature.id,
+        remplacant_id: candidature.employeId,
+        date: dateShift instanceof Date ? dateShift.toISOString().split('T')[0] : dateShift
+      });
+    } catch (scoringError) {
+      console.error('Erreur scoring remplacement (non bloquante):', scoringError.message);
     }
     
     res.json(result);

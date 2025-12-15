@@ -140,8 +140,8 @@ const NOTIFICATION_CONFIG = {
     color: '#ef4444',
     bg: '#ef444415',
     label: 'Anomalie détectée',
-    route: '/pointage',
-    highlightSection: 'anomalies-section'
+    route: '/mes-anomalies',
+    highlightSection: 'anomalies-list'
   },
   
   // Justificatifs
@@ -197,6 +197,24 @@ const NOTIFICATION_CONFIG = {
     label: 'Remplacement refusé',
     route: '/home',
     highlightSection: 'remplacements-section'
+  },
+  remplacement_demande: {
+    icon: UserIcon,
+    color: '#6366f1',
+    bg: '#6366f115',
+    label: 'Demande de remplacement',
+    route: '/home',
+    highlightSection: 'remplacements-section'
+  },
+  
+  // Absences équipe
+  absence_equipe: {
+    icon: CalendarIcon,
+    color: '#f59e0b',
+    bg: '#f59e0b15',
+    label: 'Absence équipe',
+    route: '/home',
+    highlightSection: 'planning-section'
   },
   
   // Heures supplémentaires

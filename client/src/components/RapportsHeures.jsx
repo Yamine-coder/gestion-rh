@@ -13,7 +13,6 @@ import {
   HiChartBar
 } from "react-icons/hi";
 import RapportHeuresEmploye from "./RapportHeuresEmploye";
-import ModalJustificatifsNavigo from "./ModalJustificatifsNavigo";
 import { getCurrentDateString } from "../utils/parisTimeUtils";
 
 const RapportsHeures = () => {
@@ -27,7 +26,6 @@ const RapportsHeures = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showNavigoModal, setShowNavigoModal] = useState(false);
 
   // Filtrer les employés selon le terme de recherche
   const filteredEmployes = employes.filter(employe => {
@@ -216,17 +214,7 @@ const RapportsHeures = () => {
               className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all shadow-sm"
             />
           )}
-          <button
-            onClick={() => setShowNavigoModal(true)}
-            className="w-full lg:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 text-sm shadow-sm"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-            </svg>
-            <span className="hidden sm:inline">🚇 Justificatifs Navigo</span>
-            <span className="sm:hidden">🚇 Navigo</span>
-          </button>
-          <button
+<button
             onClick={exporterTousRapports}
             data-export-all
             className="w-full lg:w-auto bg-[#cf292c] text-white px-4 py-2 rounded-lg hover:bg-[#cf292c]/90 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
@@ -428,15 +416,7 @@ const RapportsHeures = () => {
         />
       )}
 
-      {/* Modal de gestion des justificatifs Navigo */}
-      {showNavigoModal && (
-        <ModalJustificatifsNavigo
-          onClose={() => setShowNavigoModal(false)}
-          onEmployesUpdate={fetchEmployes}
-        />
-      )}
-      
-      {/* Footer info */}
+{/* Footer info */}
       <div className="mt-4 px-2 text-sm text-gray-500 flex items-center">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

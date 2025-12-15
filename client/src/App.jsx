@@ -3,6 +3,7 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { ToastProvider } from "./components/ui/Toast";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -16,7 +17,9 @@ import HomeEmploye   from "./pages/HomeEmploye";
 import ProfilEmploye from "./pages/ProfilEmploye";
 import MesConges     from "./components/MesConges";
 import MesAnomalies  from "./pages/MesAnomalies";
-import Planning      from "./pages/Planning";
+import MonPlanning   from "./pages/MonPlanning";
+import MonScore      from "./pages/MonScore";
+import PeerFeedback  from "./components/PeerFeedback";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function AppRoutes() {
@@ -85,7 +88,25 @@ function AppRoutes() {
         path="/planning"
         element={
           <ProtectedRoute roleRequired="employee">
-            <Planning />
+            <MonPlanning />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/feedback"
+        element={
+          <ProtectedRoute roleRequired="employee">
+            <PeerFeedback />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/mon-score"
+        element={
+          <ProtectedRoute roleRequired="employee">
+            <MonScore />
           </ProtectedRoute>
         }
       />
@@ -102,21 +123,23 @@ export default function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-      <Router>
-        <ToastContainer 
-          position="top-right"
-          autoClose={3000}
-          hideProgressBar={false}
-          newestOnTop
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="light"
-        />
-        <AppRoutes />
-      </Router>
+        <ToastProvider>
+          <Router>
+            <ToastContainer 
+              position="top-right"
+              autoClose={3000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="light"
+            />
+            <AppRoutes />
+          </Router>
+        </ToastProvider>
       </ThemeProvider>
     </AuthProvider>
   );

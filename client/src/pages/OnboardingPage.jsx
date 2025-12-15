@@ -1,14 +1,15 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { Lock, Eye, EyeOff } from "lucide-react";
-import logo from "../assets/logo.jpg";
+import { Lock, Eye, EyeOff, Lightbulb, CheckCircle } from "lucide-react";
+import logo from "../assets/onboarding/logo.png";
 
 function OnboardingPage() {
   const navigate = useNavigate();
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState("");
   const [confirmMotDePasse, setConfirmMotDePasse] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [erreur, setErreur] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -36,12 +37,7 @@ function OnboardingPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Redirection vers l'accueil employé
       const role = localStorage.getItem("role");
-      console.log('🔍 ONBOARDING DEBUG:');
-      console.log('- role stocké:', role);
-      console.log('- redirection vers:', role === "admin" ? "/admin" : "/home");
-      
       navigate(role === "admin" ? "/admin" : "/home");
       window.location.reload();
 
@@ -55,88 +51,111 @@ function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-100 to-green-200 flex items-center justify-center px-4">
-      <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full">
+    <div className="min-h-screen bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center p-4 sm:p-6 md:p-8">
+      <div className="bg-white shadow-lg sm:shadow-xl rounded-2xl p-6 sm:p-8 md:p-10 w-full max-w-[420px] sm:max-w-md md:max-w-lg">
         {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <img src={logo} alt="Logo" className="h-20" />
+        <div className="flex justify-center mb-6 sm:mb-8">
+          <img src={logo} alt="Logo" className="h-24 sm:h-28 md:h-32 w-auto object-contain" />
         </div>
         
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-green-700 mb-2">
-            🎉 Bienvenue !
-          </h1>
-          <p className="text-gray-600 text-sm">
-            Créez votre mot de passe personnel pour sécuriser votre compte
-          </p>
-        </div>
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-center text-red-700">Bienvenue !</h1>
+        <p className="text-gray-600 text-sm sm:text-base text-center mb-5 sm:mb-6 md:mb-8">
+          Créez votre mot de passe personnel pour sécuriser votre compte
+        </p>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6">
           {/* Nouveau mot de passe */}
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Nouveau mot de passe"
-              className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-              value={nouveauMotDePasse}
-              onChange={(e) => setNouveauMotDePasse(e.target.value)}
-              required
-              minLength={8}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-            </button>
+          <div>
+            <label className="block text-sm sm:text-base font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
+            <div className="relative flex items-center">
+              <Lock className="absolute left-3 sm:left-4 text-gray-400" size={18} />
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Minimum 8 caractères"
+                className="pl-10 sm:pl-12 pr-10 sm:pr-12 h-11 sm:h-12 md:h-14 text-sm sm:text-base block w-full rounded-lg bg-gray-50 border border-gray-300 shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white hover:bg-gray-100 transition duration-200"
+                value={nouveauMotDePasse}
+                onChange={(e) => setNouveauMotDePasse(e.target.value)}
+                required
+                minLength={8}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 sm:right-4 text-gray-400 hover:text-gray-600 p-1"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           {/* Confirmation mot de passe */}
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-            <input
-              type={showPassword ? "text" : "password"}
-              placeholder="Confirmer le mot de passe"
-              className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-              value={confirmMotDePasse}
-              onChange={(e) => setConfirmMotDePasse(e.target.value)}
-              required
-              minLength={8}
-            />
+          <div>
+            <label className="block text-sm sm:text-base font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
+            <div className="relative flex items-center">
+              <Lock className="absolute left-3 sm:left-4 text-gray-400" size={18} />
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Retapez votre mot de passe"
+                className="pl-10 sm:pl-12 pr-10 sm:pr-12 h-11 sm:h-12 md:h-14 text-sm sm:text-base block w-full rounded-lg bg-gray-50 border border-gray-300 shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white hover:bg-gray-100 transition duration-200"
+                value={confirmMotDePasse}
+                onChange={(e) => setConfirmMotDePasse(e.target.value)}
+                required
+                minLength={8}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 sm:right-4 text-gray-400 hover:text-gray-600 p-1"
+              >
+                {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           {/* Conseils */}
-          <div className="bg-green-50 rounded-lg p-4">
-            <h3 className="font-semibold text-green-800 mb-2 text-sm">💡 Conseils pour un bon mot de passe :</h3>
-            <ul className="text-xs text-green-700 space-y-1">
-              <li>• Au moins 8 caractères</li>
-              <li>• Facile à retenir pour vous</li>
-              <li>• Évitez les informations personnelles évidentes</li>
-            </ul>
+          <div className="bg-red-50 rounded-lg p-3 sm:p-4 border border-red-100">
+            <div className="flex items-start gap-2 sm:gap-3">
+              <Lightbulb className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
+              <div>
+                <h3 className="font-semibold text-red-800 text-xs sm:text-sm mb-1">Conseils pour un bon mot de passe :</h3>
+                <ul className="text-xs sm:text-sm text-red-700 space-y-0.5 sm:space-y-1">
+                  <li className="flex items-center gap-1.5">
+                    <CheckCircle size={12} className="flex-shrink-0" />
+                    <span>Au moins 8 caractères</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <CheckCircle size={12} className="flex-shrink-0" />
+                    <span>Facile à retenir pour vous</span>
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <CheckCircle size={12} className="flex-shrink-0" />
+                    <span>Évitez les informations personnelles</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
 
           {/* Message d'erreur */}
           {erreur && (
-            <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm border border-red-200">
+            <p className="bg-red-100 text-red-600 text-xs sm:text-sm p-2 sm:p-3 rounded-lg" aria-live="assertive">
               {erreur}
-            </div>
+            </p>
           )}
 
           <button
             type="submit"
-            className={`w-full py-3 px-4 rounded-lg text-white font-semibold transition-all duration-300 ${
+            className={`w-full py-3 sm:py-3.5 md:py-4 px-4 rounded-lg text-white text-sm sm:text-base font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
               isLoading || !nouveauMotDePasse || !confirmMotDePasse
-                ? "bg-green-400 cursor-not-allowed"
-                : "bg-green-600 hover:bg-green-700 hover:shadow-lg"
+                ? "bg-red-400 cursor-not-allowed"
+                : "bg-red-600 hover:bg-red-700 hover:shadow-lg active:scale-[0.98]"
             }`}
             disabled={isLoading || !nouveauMotDePasse || !confirmMotDePasse}
           >
             {isLoading ? (
-              <span className="flex items-center justify-center">
+              <>
                 <svg
-                  className="animate-spin h-5 w-5 mr-2 text-white"
+                  className="animate-spin h-5 w-5 text-white"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -155,10 +174,13 @@ function OnboardingPage() {
                     d="M4 12a8 8 0 018-8v8H4z"
                   />
                 </svg>
-                Mise à jour...
-              </span>
+                <span>Mise à jour...</span>
+              </>
             ) : (
-              "🔒 Définir mon mot de passe"
+              <>
+                <Lock size={18} />
+                <span>Définir mon mot de passe</span>
+              </>
             )}
           </button>
         </form>

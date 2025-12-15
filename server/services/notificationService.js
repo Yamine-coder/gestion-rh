@@ -33,6 +33,14 @@ const NOTIFICATION_TYPES = {
   // Justificatifs
   JUSTIFICATIF_AJOUTE: 'justificatif_ajoute',
   
+  // Remplacements
+  REMPLACEMENT_DEMANDE: 'remplacement_demande',
+  REMPLACEMENT_ACCEPTE: 'remplacement_accepte',
+  REMPLACEMENT_REFUSE: 'remplacement_refuse',
+  
+  // Absences équipe
+  ABSENCE_EQUIPE: 'absence_equipe',
+  
   // Général
   INFO: 'info'
 };
@@ -330,6 +338,70 @@ async function notifierModificationRejetee(employeId, modification, motif = null
   });
 }
 
+/**
+ * Notification de demande de remplacement (pour l'équipe)
+ * @param {number[]} employeIds - IDs des employés de l'équipe à notifier
+ * @param {Object} demande - La demande de remplacement
+ * @param {Object} employeAbsent - L'employé qui cherche un remplaçant
+ * @param {Object} shift - Le shift concerné
+ */
+async function notifierDemandeRemplacement(employeIds, demande, employeAbsent, shift) {
+  const dateShift = new Date(shift.date).toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long'
+  });
+  
+  const nomComplet = `${employeAbsent.prenom} ${employeAbsent.nom}`;
+  
+  return await creerNotifications({
+    employeIds,
+    type: NOTIFICATION_TYPES.REMPLACEMENT_DEMANDE,
+    titre: '🔄 Demande de remplacement',
+    message: {
+      text: `${nomComplet} cherche un remplaçant pour le ${dateShift} (${shift.heureDebut} - ${shift.heureFin})`,
+      demandeId: demande.id,
+      shiftId: shift.id,
+      employeNom: nomComplet,
+      date: shift.date,
+      heureDebut: shift.heureDebut,
+      heureFin: shift.heureFin
+    }
+  });
+}
+
+/**
+ * Notification d'absence d'un membre de l'équipe (congé approuvé)
+ * @param {number[]} employeIds - IDs des collègues à notifier
+ * @param {Object} conge - Le congé approuvé
+ * @param {Object} employeAbsent - L'employé qui sera absent
+ */
+async function notifierAbsenceEquipe(employeIds, conge, employeAbsent) {
+  const dateDebut = new Date(conge.dateDebut).toLocaleDateString('fr-FR', {
+    weekday: 'short', day: 'numeric', month: 'short'
+  });
+  const dateFin = new Date(conge.dateFin).toLocaleDateString('fr-FR', {
+    weekday: 'short', day: 'numeric', month: 'short'
+  });
+  
+  const nomComplet = `${employeAbsent.prenom} ${employeAbsent.nom}`;
+  const isSingleDay = conge.dateDebut === conge.dateFin;
+  const periodeText = isSingleDay ? `le ${dateDebut}` : `du ${dateDebut} au ${dateFin}`;
+  
+  return await creerNotifications({
+    employeIds,
+    type: NOTIFICATION_TYPES.ABSENCE_EQUIPE,
+    titre: '📅 Absence équipe',
+    message: {
+      text: `${nomComplet} sera absent(e) ${periodeText} (${conge.type})`,
+      congeId: conge.id,
+      employeNom: nomComplet,
+      employeId: employeAbsent.id,
+      type: conge.type,
+      dateDebut: conge.dateDebut,
+      dateFin: conge.dateFin
+    }
+  });
+}
+
 module.exports = {
   NOTIFICATION_TYPES,
   creerNotification,
@@ -344,5 +416,7 @@ module.exports = {
   notifierNouvelleConsigne,
   notifierAnomalieDetectee,
   notifierModificationApprouvee,
-  notifierModificationRejetee
+  notifierModificationRejetee,
+  notifierDemandeRemplacement,
+  notifierAbsenceEquipe
 };

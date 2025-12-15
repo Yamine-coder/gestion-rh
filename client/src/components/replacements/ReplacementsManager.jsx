@@ -16,6 +16,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import axios from 'axios';
+import { useToast } from '../ui/Toast';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -430,6 +431,7 @@ const DemandeDetailModal = ({ demande, onClose, onValider, onRefuser, loading })
   const [selectedCandidature, setSelectedCandidature] = useState(null);
   const [commentaire, setCommentaire] = useState('');
   const [showRefusConfirm, setShowRefusConfirm] = useState(false);
+  const toast = useToast();
   
   const { shift, employeAbsent, candidatures = [], statut, type, motif, commentaireManager, valideur, dateValidation, employeRemplacant } = demande;
 
@@ -639,7 +641,11 @@ const DemandeDetailModal = ({ demande, onClose, onValider, onRefuser, loading })
                 <button
                   onClick={() => {
                     if (!selectedCandidature) {
-                      alert('Veuillez sélectionner un candidat à valider');
+                      toast.alert({
+                        type: 'warning',
+                        title: 'Sélection requise',
+                        message: 'Veuillez sélectionner un candidat à valider'
+                      });
                       return;
                     }
                     onValider(demande.id, selectedCandidature.id, commentaire);

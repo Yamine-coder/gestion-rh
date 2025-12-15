@@ -19,6 +19,7 @@ import {
   Zap
 } from 'lucide-react';
 import axios from 'axios';
+import { useToast } from '../components/ui/Toast';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -49,6 +50,9 @@ export default function SuiviExtras() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+
+  // Toast notifications
+  const toast = useToast();
 
   // Headers avec token
   const getAuthHeaders = () => ({
@@ -108,10 +112,10 @@ export default function SuiviExtras() {
       fetchPaiements();
       fetchStats();
       
-      alert('✅ Paiement marqué comme effectué !');
+      toast.success('Paiement effectué', 'Le paiement a été marqué comme effectué');
     } catch (err) {
       console.error('Erreur marquage paiement:', err);
-      alert('❌ Erreur lors du marquage du paiement');
+      toast.error('Erreur', 'Erreur lors du marquage du paiement');
     }
   };
 
@@ -124,10 +128,10 @@ export default function SuiviExtras() {
       await axios.put(`${API_URL}/api/paiements-extras/${paiement.id}/annuler`, { raison }, getAuthHeaders());
       fetchPaiements();
       fetchStats();
-      alert('Paiement annulé');
+      toast.success('Annulé', 'Le paiement a été annulé');
     } catch (err) {
       console.error('Erreur annulation:', err);
-      alert('Erreur lors de l\'annulation');
+      toast.error('Erreur', 'Erreur lors de l\'annulation');
     }
   };
 
@@ -138,10 +142,10 @@ export default function SuiviExtras() {
       const response = await axios.put(`${API_URL}/api/paiements-extras/recalculer-tous`, {}, getAuthHeaders());
       fetchPaiements();
       fetchStats();
-      alert(`✅ ${response.data.updated}/${response.data.total} paiements mis à jour avec les heures réelles`);
+      toast.success('Recalcul terminé', `${response.data.updated}/${response.data.total} paiements mis à jour`);
     } catch (err) {
       console.error('Erreur recalcul:', err);
-      alert('❌ Erreur lors du recalcul des heures');
+      toast.error('Erreur', 'Erreur lors du recalcul des heures');
     } finally {
       setLoading(false);
     }
@@ -154,7 +158,7 @@ export default function SuiviExtras() {
       fetchPaiements();
     } catch (err) {
       console.error('Erreur recalcul:', err);
-      alert('❌ Erreur lors du recalcul');
+      toast.error('Erreur', 'Erreur lors du recalcul');
     }
   };
 

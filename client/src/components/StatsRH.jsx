@@ -17,6 +17,11 @@ import {
   AreaChart,
 } from "recharts";
 import { 
+  Wallet, Calculator, TrendingUp as TrendUp, Clock, Calendar, 
+  Euro, Users as UsersIcon, FileText, BarChart3, PieChart as PieChartIcon,
+  Sparkles, Rocket, Construction, Banknote, Receipt, CreditCard
+} from 'lucide-react';
+import { 
   HiUsers, 
   HiClock, 
   HiCalendar, 
@@ -110,7 +115,7 @@ const ChartSection = ({ title, icon, children, badge }) => (
   </div>
 );
 
-const StatsRH = () => {
+const StatsRH = ({ embedded = false }) => {
   // Restaurer la période sauvegardée
   const getInitialPeriode = () => {
     const restored = restoreNavigation('statsRH');
@@ -388,8 +393,9 @@ const StatsRH = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
-      {/* En-tête moderne avec sélecteur de période */}
+    <div className={embedded ? "space-y-6" : "min-h-screen bg-gray-50 p-6 space-y-6"}>
+      {/* En-tête - Masqué si embedded */}
+      {!embedded && (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -465,54 +471,84 @@ const StatsRH = () => {
           </button>
         </div>
         </div>
+      </div>
+      )}
 
-        {/* Navigation par onglets - Simple et sobre */}
-        <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
-          <button
-            onClick={() => setActiveTab('synthese')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              activeTab === 'synthese'
-                ? 'bg-[#cf292c] text-white'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Synthèse
-          </button>
-            
-          <button
-            onClick={() => setActiveTab('absenteisme')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              activeTab === 'absenteisme'
-                ? 'bg-[#cf292c] text-white'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Absentéisme
-          </button>
-            
-          <button
-            onClick={() => setActiveTab('turnover')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              activeTab === 'turnover'
-                ? 'bg-[#cf292c] text-white'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            Turn-over
-          </button>
-            
-          <button
-            onClick={() => setActiveTab('masse')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              activeTab === 'masse'
-                ? 'bg-[#cf292c] text-white'
-                : 'text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <span className="hidden sm:inline">Masse Salariale</span>
-            <span className="sm:hidden">Masse Sal.</span>
-          </button>
+      {/* Barre d'outils compacte si embedded */}
+      {embedded && (
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5 bg-white rounded-lg border border-gray-200 px-3 py-2">
+            <span className="text-xs font-medium text-gray-600">Période</span>
+            <div className="w-px h-4 bg-gray-200"></div>
+            <select 
+              className="bg-transparent border-none text-xs font-medium text-gray-900 focus:outline-none focus:ring-0 cursor-pointer"
+              value={periode}
+              onChange={(e) => setPeriode(e.target.value)}
+            >
+              <option value="semaine">Cette semaine</option>
+              <option value="mois">Ce mois</option>
+              <option value="trimestre">Ce trimestre</option>
+              <option value="annee">Cette année</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+            >
+              <HiDownload size={16} />
+              <span className="hidden sm:inline">Exporter</span>
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Navigation par onglets - Simple et sobre */}
+      <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-1">
+        <button
+          onClick={() => setActiveTab('synthese')}
+          className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            activeTab === 'synthese'
+              ? 'bg-[#cf292c] text-white'
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Synthèse
+        </button>
+          
+        <button
+          onClick={() => setActiveTab('absenteisme')}
+          className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            activeTab === 'absenteisme'
+              ? 'bg-[#cf292c] text-white'
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Absentéisme
+        </button>
+          
+        <button
+          onClick={() => setActiveTab('turnover')}
+          className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            activeTab === 'turnover'
+              ? 'bg-[#cf292c] text-white'
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Turn-over
+        </button>
+          
+        <button
+          onClick={() => setActiveTab('masse')}
+          className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            activeTab === 'masse'
+              ? 'bg-[#cf292c] text-white'
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          <span className="hidden sm:inline">Masse Salariale</span>
+          <span className="sm:hidden">Masse Sal.</span>
+        </button>
       </div>
 
       {/* ONGLET SYNTHÈSE */}
@@ -1244,24 +1280,66 @@ const StatsRH = () => {
       {/* ONGLET MASSE SALARIALE */}
       {activeTab === 'masse' && (
         <div className="space-y-6">
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300 p-8">
-        <div className="flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4 shadow-sm">
-              <HiClock className="text-gray-400" size={32} />
+          {/* Card principale */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Header sobre */}
+            <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[#cf292c]/10 flex items-center justify-center">
+                  <Wallet className="w-6 h-6 text-[#cf292c]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Masse Salariale</h3>
+                  <p className="text-sm text-gray-500">Module financier · Version 2.0</p>
+                </div>
+              </div>
             </div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">
-              Masse Salariale - Version 2.0
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Les indicateurs financiers détaillés (salaires, charges, heures sup.) seront disponibles dans une prochaine mise à jour
-            </p>
-            <span className="inline-block px-4 py-2 bg-amber-100 text-amber-700 text-sm font-medium rounded-full">
-              📅 Prévu pour la V2
-            </span>
+
+            {/* Contenu */}
+            <div className="p-6">
+              <div className="flex items-start gap-4 mb-6">
+                <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    Les indicateurs financiers détaillés (salaires, charges, heures supplémentaires) 
+                    seront disponibles dans une prochaine mise à jour.
+                  </p>
+                </div>
+              </div>
+
+              {/* Fonctionnalités à venir - grille sobre */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { icon: Euro, label: 'Salaires bruts' },
+                  { icon: Calculator, label: 'Charges sociales' },
+                  { icon: Clock, label: 'Heures sup.' },
+                  { icon: Receipt, label: 'Primes & bonus' },
+                  { icon: TrendUp, label: 'Évolution' },
+                  { icon: PieChartIcon, label: 'Répartition' },
+                  { icon: FileText, label: 'Rapports' },
+                  { icon: Banknote, label: 'Prévisionnel' },
+                ].map((item, i) => {
+                  const IconComp = item.icon;
+                  return (
+                    <div key={i} className="flex items-center gap-2.5 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                      <IconComp className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-600">{item.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Badge */}
+              <div className="mt-6 flex justify-center">
+                <span className="inline-flex items-center gap-2 px-4 py-2 bg-[#cf292c]/10 text-[#cf292c] rounded-lg text-sm font-medium">
+                  <Rocket className="w-4 h-4" />
+                  Prévu pour la V2
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
         </div>
       )}
 

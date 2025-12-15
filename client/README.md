@@ -2,6 +2,13 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Configuration API (important)
+
+Le frontend appelle le backend via la variable d'environnement `REACT_APP_API_URL`.
+
+- Exemple: `REACT_APP_API_URL=http://localhost:5000`
+- Un exemple est disponible dans `client/.env.example` (à copier en `client/.env` si besoin).
+
 ## Available Scripts
 
 In the project directory, you can run:

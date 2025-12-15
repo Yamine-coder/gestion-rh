@@ -61,12 +61,13 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
       // Ligne de séparation fine
       doc.moveTo(40, statsY - 10).lineTo(555, statsY - 10).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
 
-      const joursTravailles = rapportData.statistiques?.joursTravailles || 0;
+      // Utiliser joursPresents pour être cohérent avec le rapport web
+      const joursPresents = rapportData.statistiques?.joursPresents || 0;
       const absJust = rapportData.absencesJustifiees || 0;
       const absInjust = rapportData.absencesInjustifiees || 0;
       const retards = rapportData.nombreRetards || 0;
       const moyHeures = (rapportData.statistiques?.moyenneHeuresJour || 0).toFixed(1);
-      const tauxPonctualite = rapportData.tauxPonctualite || 100;
+      const tauxPonctualite = rapportData.tauxPonctualite !== undefined ? rapportData.tauxPonctualite : 100;
 
       // Layout: 3 colonnes x 2 lignes
       const statCol1 = 40;
@@ -74,8 +75,8 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
       const statCol3 = 390;
       
       // Ligne 1
-      doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica').text('Jours travailles', statCol1, statsY);
-      doc.fontSize(16).fillColor(DARK).font('Helvetica-Bold').text(joursTravailles.toString(), statCol1, statsY + 12);
+      doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica').text('Jours presents', statCol1, statsY);
+      doc.fontSize(16).fillColor(DARK).font('Helvetica-Bold').text(joursPresents.toString(), statCol1, statsY + 12);
 
       doc.fontSize(8).fillColor(LIGHT_GRAY).text('Absences justifiees', statCol2, statsY);
       doc.fontSize(16).fillColor(DARK).text(absJust.toString(), statCol2, statsY + 12);
@@ -184,12 +185,13 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
         }
       }
 
-      // === PIED DE PAGE MINIMALISTE ===
+      // === PIED DE PAGE MINIMALISTE (position fixe sans créer de nouvelle page) ===
+      const footerY = 800; // Position fixe près du bas de la page A4 (hauteur = 841.89)
       doc.fontSize(7).fillColor(LIGHT_GRAY).font('Helvetica').text(
         `Genere le ${new Date().toLocaleDateString('fr-FR')}`,
         40, 
-        doc.page.height - 30, 
-        { align: 'center', width: 515 }
+        footerY, 
+        { align: 'center', width: 515, lineBreak: false }
       );
 
       doc.end();

@@ -24,7 +24,12 @@ import {
   AlertTriangle,
   Timer,
   CircleDot,
-  Ban
+  Ban,
+  Trophy,
+  MessageCircle,
+  ClipboardList,
+  CheckCircle,
+  FileEdit
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -330,7 +335,7 @@ function ExtrasManager({ embedded = false, onRefresh }) {
           {statsCalc.topEmploye ? (
             <div className='bg-amber-50 rounded-lg p-2 text-center border border-amber-100' title={`${statsCalc.topEmploye.count} extras • ${statsCalc.topEmploye.totalHeures.toFixed(1)}h`}>
               <div className='text-xl font-bold text-amber-600'>{statsCalc.topEmploye.totalMontant.toFixed(0)}€</div>
-              <div className='text-[9px] text-amber-600 uppercase font-medium truncate'>🏆 {statsCalc.topEmploye.employe?.prenom?.[0]}. {statsCalc.topEmploye.employe?.nom}</div>
+              <div className='text-[9px] text-amber-600 uppercase font-medium truncate flex items-center gap-0.5'><Trophy className='w-3 h-3' /> {statsCalc.topEmploye.employe?.prenom?.[0]}. {statsCalc.topEmploye.employe?.nom}</div>
               <div className='text-[9px] text-amber-500'>{statsCalc.topEmploye.count} extra{statsCalc.topEmploye.count > 1 ? 's' : ''} • {statsCalc.topEmploye.totalHeures.toFixed(1)}h</div>
             </div>
           ) : (
@@ -628,13 +633,13 @@ const PaiementCard = ({ paiement, onOpenDetail, onPayer, onAnnuler, isPriority, 
           {isAjustement ? (
             <>
               <AlertTriangle className='w-3.5 h-3.5' />
-              {isNegatif ? '⚠️ Trop-perçu à régulariser' : '📝 Ajustement suite modification'}
+              {isNegatif ? 'Trop-perçu à régulariser' : 'Ajustement suite modification'}
               {motifAjustement === 'modification_horaires' && ' (horaires)'}
             </>
           ) : isProgramme ? (
             <>
               <CalendarClock className='w-3.5 h-3.5' />
-              📅 Programmé - Shift pas encore effectué
+              Programmé - Shift pas encore effectué
             </>
           ) : (
             <>
@@ -795,8 +800,8 @@ const PaiementCard = ({ paiement, onOpenDetail, onPayer, onAnnuler, isPriority, 
 
         {/* Commentaire si présent - avec formatage ancien segment barré */}
         {commentaire && (
-          <div className='text-xs text-gray-500 italic bg-white rounded p-2 border border-gray-100'>
-            💬 {(() => {
+          <div className='text-xs text-gray-500 italic bg-white rounded p-2 border border-gray-100 flex items-start gap-1.5'>
+            <MessageCircle className='w-3.5 h-3.5 flex-shrink-0 mt-0.5' /> {(() => {
               // Parser "Segment extra ~~ancien~~ nouveau" pour afficher ancien barré
               const regex = /~~([^~]+)~~/g;
               if (commentaire.includes('~~')) {
@@ -1019,8 +1024,8 @@ const PaiementDetailModal = ({ paiement, onClose, onPayer, onAnnuler, loading, a
             <div className='bg-white rounded-lg overflow-hidden border border-blue-100'>
               <div className='grid grid-cols-3 text-[10px] text-gray-400 uppercase font-medium border-b border-blue-50'>
                 <div className='p-2'></div>
-                <div className='p-2 text-center'>📋 Prévu</div>
-                <div className='p-2 text-center'>✅ Réalisé</div>
+                <div className='p-2 text-center flex items-center justify-center gap-1'><ClipboardList className='w-3 h-3' /> Prévu</div>
+                <div className='p-2 text-center flex items-center justify-center gap-1'><CheckCircle className='w-3 h-3' /> Réalisé</div>
               </div>
               <div className='grid grid-cols-3 text-sm border-b border-blue-50'>
                 <div className='p-2 text-gray-500 text-xs'>Arrivée</div>
@@ -1081,8 +1086,8 @@ const PaiementDetailModal = ({ paiement, onClose, onPayer, onAnnuler, loading, a
           {statut === 'paye' && payeLe && (
             <div className='p-3 bg-emerald-50 rounded-xl border border-emerald-100'>
               <div className='text-xs text-emerald-600 font-medium mb-1'>Paiement effectué</div>
-              <div className='text-sm text-gray-700'>
-                Le {formatDate(payeLe)} • {methodePaiement === 'especes' ? '💵 Espèces' : methodePaiement === 'virement' ? '🏦 Virement' : methodePaiement}
+              <div className='text-sm text-gray-700 flex items-center gap-1'>
+                Le {formatDate(payeLe)} • {methodePaiement === 'especes' ? <><Banknote className='w-4 h-4' /> Espèces</> : methodePaiement === 'virement' ? <><Building2 className='w-4 h-4' /> Virement</> : methodePaiement}
               </div>
               {payeur && (
                 <div className='text-xs text-emerald-500 mt-1'>

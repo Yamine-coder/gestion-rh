@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const brand = '#cf292c';
@@ -13,26 +13,40 @@ export function useNotificationHighlight(sectionId) {
   const navigate = useNavigate();
   
   const state = location.state || {};
-  const isHighlighted = state.fromNotification && state.highlightSection === sectionId;
+  const shouldHighlight = state.fromNotification && state.highlightSection === sectionId;
   
-  // Fonction pour nettoyer le state après l'animation
+  // État local pour maintenir le highlight pendant l'animation même après nettoyage du state
+  const [isHighlighted, setIsHighlighted] = useState(false);
+  const [highlightIdState, setHighlightIdState] = useState(null);
+  
+  // Fonction pour nettoyer le highlight manuellement
   const clearHighlight = useCallback(() => {
-    if (isHighlighted) {
-      // Remplacer le state sans le highlight après un délai
-      setTimeout(() => {
-        navigate(location.pathname, { replace: true, state: {} });
-      }, 3000); // 3 secondes d'animation
-    }
-  }, [isHighlighted, navigate, location.pathname]);
+    setIsHighlighted(false);
+    setHighlightIdState(null);
+  }, []);
   
-  // Auto-clear après montage si highlighted
+  // Quand on arrive avec un state de notification, nettoyer IMMÉDIATEMENT le state URL
+  // mais garder l'animation visible localement pendant 3 secondes
   useEffect(() => {
-    if (isHighlighted) {
-      clearHighlight();
+    if (shouldHighlight) {
+      // Activer le highlight local
+      setIsHighlighted(true);
+      setHighlightIdState(state.highlightId);
+      
+      // Nettoyer le state URL IMMÉDIATEMENT pour éviter les boucles de navigation
+      navigate(location.pathname, { replace: true, state: {} });
+      
+      // Désactiver le highlight après 3 secondes
+      const timer = setTimeout(() => {
+        setIsHighlighted(false);
+        setHighlightIdState(null);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
     }
-  }, [isHighlighted, clearHighlight]);
+  }, [shouldHighlight, navigate, location.pathname, state.highlightId]);
   
-  return { isHighlighted, highlightId: state.highlightId, clearHighlight };
+  return { isHighlighted, highlightId: highlightIdState, clearHighlight };
 }
 
 /**

@@ -85,7 +85,10 @@ const creerEmploye = async (req, res) => {
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { email } });
+    // ✅ Normaliser l'email en minuscules pour cohérence avec le login
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return res.status(400).json({ error: "Cet email est déjà utilisé." });
     }
@@ -96,7 +99,7 @@ const creerEmploye = async (req, res) => {
 
     const nouvelEmploye = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail, // ✅ Utilise l'email normalisé
         password: hashedPassword,
         nom,
         prenom,
@@ -156,7 +159,7 @@ const supprimerEmploye = async (req, res) => {
     const employe = await prisma.user.findUnique({
       where: { id: employeId },
       include: {
-        _count: { select: { conges: true, pointages: true, plannings: true, shifts: true } }
+        _count: { select: { conges: true, pointages: true, shifts: true } }
       }
     });
 
@@ -192,10 +195,100 @@ const supprimerEmploye = async (req, res) => {
     console.log(`Suppression employé ID ${employeId}. Relations:`, employe._count);
 
     await prisma.$transaction(async (tx) => {
-      if (employe._count.conges) await tx.conge.deleteMany({ where: { userId: employeId } });
-      if (employe._count.pointages) await tx.pointage.deleteMany({ where: { userId: employeId } });
-      if (employe._count.plannings) await tx.planning.deleteMany({ where: { userId: employeId } });
-      if (employe._count.shifts) await tx.shift.deleteMany({ where: { employeId } });
+      // 1. Supprimer les notifications
+      await tx.notifications.deleteMany({ where: { employe_id: employeId } });
+      
+      // 2. Supprimer l'historique des modifications
+      await tx.historique_modifications.deleteMany({ where: { employe_id: employeId } });
+      
+      // 3. Supprimer les demandes de modification (employe_id a onDelete: Cascade, mais on nettoie aussi valide_par)
+      await tx.demandes_modification.deleteMany({ where: { employe_id: employeId } });
+      await tx.demandes_modification.updateMany({ 
+        where: { valide_par: employeId }, 
+        data: { valide_par: null } 
+      });
+      
+      // 4. Supprimer le score employé
+      await tx.employeScore.deleteMany({ where: { employeId } });
+      
+      // 5. Supprimer les paiements extra (en tant qu'employé)
+      await tx.paiementExtra.deleteMany({ where: { employeId } });
+      // Mettre à null les références creePar/payePar si c'est cet employé
+      await tx.paiementExtra.updateMany({ where: { creePar: employeId }, data: { creePar: 1 } }); // Fallback admin ID 1
+      await tx.paiementExtra.updateMany({ where: { payePar: employeId }, data: { payePar: null } });
+      
+      // 6. Supprimer les extra payment logs
+      await tx.extraPaymentLog.deleteMany({ where: { employeId } });
+      await tx.extraPaymentLog.deleteMany({ where: { changedByUserId: employeId } });
+      
+      // 7. Supprimer les password resets
+      await tx.passwordReset.deleteMany({ where: { userId: employeId } });
+      
+      // 8. Traiter les anomalies (en tant qu'employé ou traiteur)
+      // D'abord supprimer les audits et corrections liés aux anomalies de cet employé
+      const anomaliesEmploye = await tx.anomalie.findMany({ where: { employeId }, select: { id: true } });
+      const anomalieIds = anomaliesEmploye.map(a => a.id);
+      if (anomalieIds.length > 0) {
+        await tx.anomalieAudit.deleteMany({ where: { anomalieId: { in: anomalieIds } } });
+        await tx.shiftCorrection.deleteMany({ where: { anomalieId: { in: anomalieIds } } });
+        await tx.paiementExtra.deleteMany({ where: { anomalieId: { in: anomalieIds } } });
+      }
+      await tx.anomalie.deleteMany({ where: { employeId } });
+      // Mettre à null le traiteur si c'est cet employé
+      await tx.anomalie.updateMany({ where: { traitePar: employeId }, data: { traitePar: null } });
+      
+      // 9. Supprimer les shifts et leurs corrections
+      const shiftsEmploye = await tx.shift.findMany({ where: { employeId }, select: { id: true } });
+      const shiftIds = shiftsEmploye.map(s => s.id);
+      if (shiftIds.length > 0) {
+        await tx.shiftCorrection.deleteMany({ where: { shiftId: { in: shiftIds } } });
+        await tx.extraPaymentLog.deleteMany({ where: { shiftId: { in: shiftIds } } });
+        await tx.paiementExtra.deleteMany({ where: { shiftId: { in: shiftIds } } });
+        // Supprimer les demandes de remplacement liées aux shifts
+        await tx.demandeRemplacement.deleteMany({ where: { shiftId: { in: shiftIds } } });
+      }
+      await tx.shift.deleteMany({ where: { employeId } });
+      
+      // 10. Supprimer les demandes de remplacement (comme absent, remplaçant ou valideur)
+      // D'abord supprimer les candidatures de cet employé
+      await tx.candidatureRemplacement.deleteMany({ where: { employeId: employeId } });
+      // Puis supprimer les candidatures sur les demandes où cet employé est absent (via cascade normalement, mais on s'assure)
+      const demandesAbsent = await tx.demandeRemplacement.findMany({ where: { employeAbsentId: employeId }, select: { id: true } });
+      if (demandesAbsent.length > 0) {
+        await tx.candidatureRemplacement.deleteMany({ where: { demandeRemplacementId: { in: demandesAbsent.map(d => d.id) } } });
+      }
+      await tx.demandeRemplacement.deleteMany({ where: { employeAbsentId: employeId } });
+      await tx.demandeRemplacement.deleteMany({ where: { employeRemplacantId: employeId } });
+      await tx.demandeRemplacement.updateMany({ where: { validePar: employeId }, data: { validePar: null } });
+      
+      // 11. Supprimer les justificatifs Navigo
+      await tx.justificatifNavigo.deleteMany({ where: { userId: employeId } });
+      await tx.justificatifNavigo.updateMany({ where: { validePar: employeId }, data: { validePar: null } });
+      
+      // 12. Supprimer les congés
+      await tx.conge.deleteMany({ where: { userId: employeId } });
+      
+      // 13. Supprimer les pointages
+      await tx.pointage.deleteMany({ where: { userId: employeId } });
+      
+      // 14. Supprimer les audits d'anomalies créés par cet employé
+      await tx.anomalieAudit.deleteMany({ where: { userId: employeId } });
+      
+      // 15. Mettre à jour les ShiftCorrection où cet employé est auteur/approbateur
+      await tx.shiftCorrection.updateMany({ where: { auteurId: employeId }, data: { auteurId: 1 } });
+      await tx.shiftCorrection.updateMany({ where: { approuvePar: employeId }, data: { approuvePar: null } });
+      
+      // 16. Supprimer les tables SQL legacy (non gérées par Prisma)
+      await tx.$executeRaw`DELETE FROM employe_points WHERE employe_id = ${employeId}`;
+      await tx.$executeRaw`DELETE FROM employe_points WHERE created_by = ${employeId}`;
+      await tx.$executeRaw`DELETE FROM employee_scores WHERE employee_id = ${employeId}`;
+      await tx.$executeRaw`DELETE FROM peer_feedbacks WHERE to_employee_id = ${employeId}`;
+      await tx.$executeRaw`DELETE FROM peer_feedbacks WHERE from_employee_id = ${employeId}`;
+      await tx.$executeRaw`UPDATE peer_feedbacks SET validated_by = NULL WHERE validated_by = ${employeId}`;
+      await tx.$executeRaw`DELETE FROM score_history WHERE employee_id = ${employeId}`;
+      await tx.$executeRaw`UPDATE score_history SET created_by = 1 WHERE created_by = ${employeId}`;
+      
+      // 17. Finalement supprimer l'utilisateur
       await tx.user.delete({ where: { id: employeId } });
     });
 

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import { toLocalDateString } from '../utils/parisTimeUtils';
+import { getCreneauFromSegments, getCreneauStyle } from '../utils/creneauUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const brand = '#cf292c';
@@ -23,6 +24,7 @@ const formatDate = (date) => {
   });
 };
 
+// Fallback pour les anciens types stockés en BDD
 const getShiftTypeStyle = (type) => {
   switch (type?.toLowerCase()) {
     case 'matin':
@@ -40,6 +42,20 @@ const getShiftTypeStyle = (type) => {
     default:
       return { bg: 'bg-gray-100', text: 'text-gray-700', icon: '📋' };
   }
+};
+
+// Nouveau système : calcule le créneau depuis les segments
+const getStyleFromSegments = (segments, fallbackType) => {
+  const creneau = getCreneauFromSegments(segments);
+  if (creneau) {
+    const style = getCreneauStyle(creneau);
+    return {
+      ...style,
+      bg: `bg-[${style.colorHex}20]`,
+      text: `text-[${style.colorHex}]`,
+    };
+  }
+  return getShiftTypeStyle(fallbackType);
 };
 
 const getWeekDates = (date) => {

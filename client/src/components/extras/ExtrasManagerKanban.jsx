@@ -32,6 +32,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import axios from 'axios';
+import { useToast } from '../ui/Toast';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -48,6 +49,7 @@ function ExtrasManagerKanban({ embedded = false, onRefresh }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [filterEmploye, setFilterEmploye] = useState('');
+  const toast = useToast();
   
   // Nouveaux états UX
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -721,7 +723,7 @@ function ExtrasManagerKanban({ embedded = false, onRefresh }) {
               fetchPaiements(); // Refresh pour voir les nouvelles heures
             } catch (err) {
               console.error('Erreur ajustement heures:', err);
-              alert('Erreur lors de l\'ajustement des heures');
+              toast.error('Erreur', 'Erreur lors de l\'ajustement des heures');
             }
           }}
           onAnnulerExtra={handleAnnuler}

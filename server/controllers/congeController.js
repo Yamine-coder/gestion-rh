@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const scoringService = require('../services/scoringService');
 
 // @desc Créer une nouvelle demande de congé
 const demanderConge = async (req, res) => {
@@ -107,6 +108,18 @@ const demanderConge = async (req, res) => {
       console.error('Erreur création notification nouvelle demande:', notifError);
     }
 
+    // 📊 SCORING: Vérifier si demande dans les délais
+    try {
+      await scoringService.onCongeDepose({
+        id: nouveauConge.id,
+        employe_id: userId,
+        date_debut: debut,
+        created_at: new Date().toISOString()
+      });
+    } catch (scoringError) {
+      console.error('Erreur scoring congé (non bloquante):', scoringError.message);
+    }
+
     res.status(201).json(nouveauConge);
   } catch (error) {
     console.error("Erreur création congé :", error);
@@ -184,6 +197,7 @@ const mettreAJourStatutConge = async (req, res) => {
 
     // 🔔 CRÉATION DE NOTIFICATION SI APPROUVÉ
     if (statut === 'approuvé' && congeAvant.statut !== 'approuvé') {
+      // Notification pour l'employé concerné
       await prisma.notifications.create({
         data: {
           employe_id: conge.userId,
@@ -193,6 +207,63 @@ const mettreAJourStatutConge = async (req, res) => {
         }
       });
       console.log(`🔔 Notification créée pour l'employé ${conge.userId} - congé approuvé`);
+
+      // 🆕 Notification pour l'équipe (collègues de la même catégorie)
+      try {
+        const employeAbsent = await prisma.user.findUnique({
+          where: { id: conge.userId },
+          select: { id: true, nom: true, prenom: true, categorie: true }
+        });
+
+        if (employeAbsent) {
+          // Récupérer les collègues de la même équipe (catégorie)
+          const whereCollegues = {
+            statut: 'actif',
+            role: 'employee',
+            id: { not: conge.userId } // Exclure l'employé absent
+          };
+          
+          // Filtrer par catégorie si l'employé en a une
+          if (employeAbsent.categorie) {
+            whereCollegues.categorie = employeAbsent.categorie;
+          }
+
+          const collegues = await prisma.user.findMany({
+            where: whereCollegues,
+            select: { id: true }
+          });
+
+          if (collegues.length > 0) {
+            const nomComplet = `${employeAbsent.prenom} ${employeAbsent.nom}`;
+            const dateDebut = new Date(conge.dateDebut).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+            const dateFin = new Date(conge.dateFin).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+            const isSingleDay = conge.dateDebut.toDateString() === conge.dateFin.toDateString();
+            const periodeText = isSingleDay ? `le ${dateDebut}` : `du ${dateDebut} au ${dateFin}`;
+
+            await prisma.notifications.createMany({
+              data: collegues.map(collegue => ({
+                employe_id: collegue.id,
+                type: 'absence_equipe',
+                titre: '📅 Absence équipe',
+                message: JSON.stringify({
+                  text: `${nomComplet} sera absent(e) ${periodeText} (${conge.type})`,
+                  congeId: conge.id,
+                  employeNom: nomComplet,
+                  employeId: employeAbsent.id,
+                  type: conge.type,
+                  dateDebut: conge.dateDebut,
+                  dateFin: conge.dateFin
+                }),
+                lue: false
+              }))
+            });
+            console.log(`📅 Notification d'absence envoyée à ${collegues.length} collègue(s) de l'équipe ${employeAbsent.categorie || 'tous'}`);
+          }
+        }
+      } catch (notifEquipeError) {
+        console.error('Erreur notification équipe:', notifEquipeError);
+        // Ne pas bloquer si la notif équipe échoue
+      }
     }
 
     // 🔔 CRÉATION DE NOTIFICATION SI REFUSÉ

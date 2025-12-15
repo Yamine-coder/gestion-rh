@@ -1,8 +1,8 @@
 import { NavLink } from "react-router-dom";
-import { HomeIcon, ClockIcon, CalendarIcon, UserIcon, QrCodeIcon, BellIcon, BoltIcon } from "@heroicons/react/24/outline";
+import { HomeIcon, ClockIcon, CalendarIcon, UserIcon, QrCodeIcon, BellIcon, BoltIcon, HandThumbUpIcon } from "@heroicons/react/24/outline";
 import { useState, useContext } from "react";
 import { QRCodeCanvas } from 'qrcode.react';
-import { X } from "lucide-react";
+import { X, QrCode, Smartphone, Sun, Ruler } from "lucide-react";
 import { ThemeContext } from '../context/ThemeContext';
 import NotificationsModal from './NotificationsModal';
 import { useNotifications } from '../hooks/useNotifications';
@@ -12,7 +12,7 @@ const NAV_ITEMS = (pendingLeaves, hasNotifications) => [
   { key: 'home', to: '/home', label: 'Accueil', icon: HomeIcon },
   { key: 'pointage', to: '/pointage', label: 'Pointage', icon: ClockIcon },
   { key: 'scan', to: '/pointage', label: 'Mon QR', icon: QrCodeIcon, cta: true },
-  { key: 'mes-conges', to: '/mes-conges', label: 'Congés', icon: CalendarIcon, badge: pendingLeaves ? (pendingLeaves > 9 ? '9+' : String(pendingLeaves)) : null },
+  { key: 'conges', to: '/mes-conges', label: 'Congés', icon: CalendarIcon, badge: pendingLeaves },
   { key: 'profil', to: '/employee/profil', label: 'Profil', icon: UserIcon, dot: hasNotifications },
 ];
 
@@ -192,105 +192,190 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
         loading={loadingNotifs}
       />
 
-      {/* Mobile: Bottom Navigation Bar */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200/60 dark:border-slate-800/60 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.4)] px-4 pt-2 pb-[calc(env(safe-area-inset-bottom,0)+10px)] sm:px-6" role="navigation" aria-label="Navigation principale">
-        <div className="mx-auto w-full max-w-4xl grid grid-cols-5 items-end gap-1 sm:gap-2">
-          {items.map(item => item.cta ? (
-            <button key={item.key} onClick={openQuickQR} aria-label={item.label} className="relative -mt-6 justify-self-center group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-1 rounded-2xl">
-              <div className="relative grid place-items-center h-14 w-14 rounded-2xl bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 text-white shadow-lg shadow-primary-600/25 dark:shadow-primary-900/40 ring-3 ring-white dark:ring-slate-900 transition-all duration-200 ease-out group-hover:shadow-xl group-hover:shadow-primary-600/30 group-active:scale-95 sm:h-16 sm:w-16">
-                <item.icon className="h-7 w-7 sm:h-8 sm:w-8 transition-transform duration-200" />
-              </div>
-              <span className="mt-1 block text-[10px] text-center text-primary-600 dark:text-primary-400 sm:text-[11px]">{item.label}</span>
-            </button>
-          ) : (
-            <NavLink key={item.key} to={item.to} className={({ isActive }) => [base, isActive ? active : idle].join(' ')}>
-              {({ isActive }) => (
-                <>
-                  {isActive && <ActiveMark />}
-                  <div className={iconWrap(isActive)}>
-                    <item.icon className={`h-5 w-5 sm:h-6 sm:w-6 transition-all duration-200 ease-out`} />
-                  </div>
-                  <span className="text-[10px] sm:text-[11px] truncate">{item.label}</span>
-                  {item.badge && (
-                    <div className="absolute -top-0.5 right-1"><Badge>{item.badge}</Badge></div>
-                  )}
-                  {item.dot && !item.badge && (
-                    <NotificationDot />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
+      {/* Mobile: Bottom Navigation Bar - Design incurvé premium */}
+      <nav 
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50" 
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        role="navigation" 
+        aria-label="Navigation principale"
+      >
+        {/* Container principal - hauteur réduite */}
+        <div className="relative h-[56px]">
+          
+          {/* FAB Central - Bouton flottant compact */}
+          <button 
+            onClick={openQuickQR}
+            aria-label="Mon QR Code"
+            className="absolute left-1/2 -translate-x-1/2 -top-5 z-10 group"
+          >
+            <div 
+              className="w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 ease-out group-active:scale-95"
+              style={{
+                backgroundColor: '#dc2626',
+                boxShadow: '0 2px 12px rgba(220, 38, 38, 0.35), 0 0 0 3px white'
+              }}
+            >
+              {/* QR Code Icon */}
+              <svg className="w-7 h-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 11h2v2H3v-2zm8-6h2v4h-2V5zm-2 6h4v4h-2v-2H9v-2zm6 0h2v2h2v-2h2v2h-2v2h2v4h-2v2h-2v-2h-4v2h-2v-4h4v-2h2v-2h-2v-2zm4 8v-4h-2v4h2zM15 3h6v6h-6V3zm2 2v2h2V5h-2zM3 3h6v6H3V3zm2 2v2h2V5H5zM3 15h6v6H3v-6zm2 2v2h2v-2H5z"/>
+              </svg>
+            </div>
+          </button>
+
+          {/* SVG Background avec découpe incurvée */}
+          <svg 
+            className="absolute inset-0 w-full h-full" 
+            viewBox="0 0 375 56" 
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="none"
+          >
+            <path 
+              d="M0 20C0 8.954 8.954 0 20 0H145C150 0 154 1.5 157 4.5C164 11.5 173 20 187.5 20C202 20 211 11.5 218 4.5C221 1.5 225 0 230 0H355C366.046 0 375 8.954 375 20V56H0V20Z"
+              fill="#dc2626"
+            />
+          </svg>
+
+          {/* Navigation Items - compact */}
+          <div className="relative h-full px-4">
+            <div className="mx-auto h-full grid grid-cols-5 items-center">
+              
+              {/* Accueil */}
+              <NavLink 
+                to="/home"
+                className={({ isActive }) => `flex items-center justify-center h-full ${isActive ? 'text-white' : 'text-white/60'}`}
+              >
+                {({ isActive }) => (
+                  <HomeIcon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.2 : 1.5} />
+                )}
+              </NavLink>
+              
+              {/* Pointage */}
+              <NavLink 
+                to="/pointage"
+                className={({ isActive }) => `flex items-center justify-center h-full ${isActive ? 'text-white' : 'text-white/60'}`}
+              >
+                {({ isActive }) => (
+                  <svg className="h-[22px] w-[22px]" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? 0 : 1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+              </NavLink>
+              
+              {/* Espace vide pour le FAB */}
+              <div />
+              
+              {/* Congés */}
+              <NavLink 
+                to="/mes-conges"
+                className={({ isActive }) => `relative flex items-center justify-center h-full ${isActive ? 'text-white' : 'text-white/60'}`}
+              >
+                {({ isActive }) => (
+                  <>
+                    <CalendarIcon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.2 : 1.5} />
+                    {pendingLeaves > 0 && (
+                      <span className="absolute top-2 right-2 min-w-[16px] h-4 px-1 rounded-full bg-white text-red-600 text-[9px] leading-4 text-center font-bold">
+                        {pendingLeaves}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+              
+              {/* Profil */}
+              <NavLink 
+                to="/employee/profil"
+                className={({ isActive }) => `relative flex items-center justify-center h-full ${isActive ? 'text-white' : 'text-white/60'}`}
+              >
+                {({ isActive }) => (
+                  <>
+                    <svg className="h-[22px] w-[22px]" fill={isActive ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={isActive ? 0 : 1.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                    </svg>
+                    {hasNotifications && (
+                      <span className="absolute top-2 right-3 h-2 w-2 rounded-full bg-white" />
+                    )}
+                  </>
+                )}
+              </NavLink>
+              
+            </div>
+          </div>
         </div>
       </nav>
 
-      {/* Modal QR Code Fullscreen - Compact et aéré, avec safe-area pour iOS */}
+      {/* Modal QR Code - Minimaliste et moderne */}
       {showQuickQR && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-3 lg:p-4" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4rem)' }}>
-          <div className="relative bg-white dark:bg-slate-800 rounded-xl lg:rounded-2xl shadow-2xl w-full max-w-[90vw] lg:max-w-md max-h-full overflow-auto transition-all duration-300">
-            <button
-              onClick={closeQuickQR}
-              className="absolute top-2 right-2 lg:top-3 lg:right-3 w-8 h-8 lg:w-9 lg:h-9 rounded-full bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 flex items-center justify-center transition-all duration-200 hover:scale-110 z-10"
-              aria-label="Fermer"
-            >
-              <X className="w-4 h-4 text-gray-600 dark:text-slate-300" />
-            </button>
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-xl" 
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4rem)' }}
+          onClick={closeQuickQR}
+        >
+          <style>{`
+            @keyframes modalIn {
+              0% { opacity: 0; transform: translateY(10px); }
+              100% { opacity: 1; transform: translateY(0); }
+            }
+          `}</style>
+
+          <div 
+            className="relative bg-white dark:bg-zinc-900 rounded-2xl w-full max-w-[340px] sm:max-w-[360px] overflow-hidden shadow-2xl"
+            style={{ animation: 'modalIn 0.2s ease-out' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Accent de marque subtil en haut */}
+            <div className="h-1 bg-red-500" />
             
-            <div className="p-4 lg:p-6 text-center">
-              {/* Header compact */}
-              <div className="flex items-center justify-center gap-2 mb-3 lg:mb-4">
-                <div className="w-10 h-10 lg:w-12 lg:h-12 bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 rounded-lg flex items-center justify-center shadow-md shadow-primary-500/30">
-                  <QrCodeIcon className="w-5 h-5 lg:w-6 lg:h-6 text-white" />
+            <div className="p-5 sm:p-6">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2.5">
+                  <QrCode className="w-5 h-5 text-red-500" strokeWidth={2} />
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">Mon QR Code</h3>
                 </div>
-                <div className="text-left">
-                  <h3 className="text-base lg:text-xl font-bold text-gray-900 dark:text-slate-100 leading-tight">Mon QR Code</h3>
-                  <p className="text-xs text-gray-500 dark:text-slate-400">Présentez-le à la badgeuse</p>
+                <button
+                  onClick={closeQuickQR}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                  aria-label="Fermer"
+                >
+                  <X className="w-4 h-4" strokeWidth={2} />
+                </button>
+              </div>
+              
+              {/* QR Code - Full width */}
+              <div className="bg-gray-50 dark:bg-zinc-800 p-3 sm:p-4 rounded-xl aspect-square flex items-center justify-center">
+                <QRCodeCanvas 
+                  value={localStorage.getItem('token') || ''} 
+                  size={280}
+                  className="w-full h-full max-w-full"
+                  level="H"
+                  includeMargin={false}
+                  bgColor="#fafafa"
+                  fgColor="#18181b"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </div>
+              
+              {/* Tips minimalistes avec icônes Lucide */}
+              <div className="mt-4 flex items-center justify-center gap-4 sm:gap-5 text-[11px] text-gray-400 dark:text-gray-500">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>Stable</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Sun className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>Éclairé</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  <span>15-30cm</span>
                 </div>
               </div>
               
-              {/* QR Code compact */}
-              <div className="relative group mb-3 lg:mb-4">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary-400/15 to-primary-600/15 rounded-xl blur-lg transition-all duration-300 opacity-50" />
-                <div className="relative bg-white p-3 lg:p-4 rounded-lg shadow-lg border border-gray-100 dark:border-slate-700">
-                  <QRCodeCanvas 
-                    value={localStorage.getItem('token') || ''} 
-                    size={window.innerWidth >= 1024 ? 240 : 200}
-                    className="mx-auto"
-                    level="H"
-                    includeMargin={true}
-                  />
-                </div>
-              </div>
-              
-              {/* Instructions compactes */}
-              <div className="space-y-2 lg:space-y-3">
-                <div className="flex items-center gap-2 p-2.5 lg:p-3 bg-gradient-to-r from-blue-50 to-blue-100/50 dark:from-blue-900/20 dark:to-blue-800/10 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <BoltIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                  <p className="text-xs lg:text-sm font-medium text-blue-800 dark:text-blue-200 text-left">
-                    Présentez ce code à la badgeuse pour pointer
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-3 gap-2 text-[10px] lg:text-xs text-gray-600 dark:text-slate-400">
-                  <div className="flex flex-col items-center gap-1 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-                    <span className="text-sm lg:text-base">📱</span>
-                    <span className="text-center leading-tight">Téléphone stable</span>
-                  </div>
-                  <div className="flex flex-col items-center gap-1 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-                    <span className="text-sm lg:text-base">💡</span>
-                    <span className="text-center leading-tight">Bon éclairage</span>
-                  </div>
-                  <div className="flex flex-col items-center gap-1 p-2 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-                    <span className="text-sm lg:text-base">📏</span>
-                    <span className="text-center leading-tight">15-30cm</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Bouton compact */}
+              {/* Bouton fermer */}
               <button
                 onClick={closeQuickQR}
-                className="mt-3 lg:mt-4 w-full bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-700 dark:to-slate-600 hover:from-gray-200 hover:to-gray-300 dark:hover:from-slate-600 dark:hover:to-slate-500 text-gray-900 dark:text-slate-100 font-semibold py-2 lg:py-2.5 px-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md text-xs lg:text-sm"
+                className="mt-4 w-full py-3 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors active:scale-[0.98]"
               >
                 Fermer
               </button>

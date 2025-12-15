@@ -1,81 +1,65 @@
 // server/index.js
-console.log('🔰 [ENTRY] index.js chargé');
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-console.log('🟡 [BOOT] Requiring shiftRoutes...');
-const shiftRoutes = require("./routes/shiftRoutes");
-console.log('🟢 [BOOT] shiftRoutes loaded');
 
 // Import des routes
-console.log('🟡 [BOOT] Requiring authRoutes...');
+const shiftRoutes = require("./routes/shiftRoutes");
 const authRoutes = require('./routes/authRoutes');
-console.log('🟢 [BOOT] authRoutes loaded');
-console.log('🟡 [BOOT] Requiring userRoutes...');
 const userRoutes = require('./routes/userRoutes');
-console.log('🟢 [BOOT] userRoutes loaded');
-console.log('🟡 [BOOT] Requiring pointageRoutes...');
 const pointageRoutes = require('./routes/pointageRoutes');
-console.log('🟢 [BOOT] pointageRoutes loaded');
-console.log('🟡 [BOOT] Requiring congeRoutes...');
 const congeRoutes = require('./routes/congeRoutes');
-console.log('🟢 [BOOT] congeRoutes loaded');
-console.log('🟡 [BOOT] Requiring adminRoutes...');
 const adminRoutes = require('./routes/adminRoutes');
-console.log('🟢 [BOOT] adminRoutes loaded');
-console.log('🟡 [BOOT] Requiring comparisonRoutes...');
 const comparisonRoutes = require('./routes/comparisonRoutes');
-console.log('🟢 [BOOT] comparisonRoutes loaded');
-console.log('🟡 [BOOT] Requiring rapportRoutes...');
 const rapportRoutes = require('./routes/rapportRoutes');
-console.log('🟢 [BOOT] rapportRoutes loaded');
-console.log('🟡 [BOOT] Requiring statsRoutes...');
 const statsRoutes = require('./routes/statsRoutes');
-console.log('🟢 [BOOT] statsRoutes loaded');
-console.log('🟡 [BOOT] Requiring anomaliesRoutes...');
 const anomaliesRoutes = require('./routes/anomaliesRoutes');
-console.log('🟢 [BOOT] anomaliesRoutes loaded');
-console.log('🟡 [BOOT] Requiring navigoRoutes...');
 const navigoRoutes = require('./routes/navigoRoutes');
-console.log('🟢 [BOOT] navigoRoutes loaded');
-console.log('🟡 [BOOT] Requiring modificationsRoutes...');
 const modificationsRoutes = require('./routes/modificationsRoutes');
-console.log('🟢 [BOOT] modificationsRoutes loaded');
-console.log('🟡 [BOOT] Requiring profilRoutes...');
 const profilRoutes = require('./routes/profilRoutes');
-console.log('🟢 [BOOT] profilRoutes loaded');
-console.log('🟡 [BOOT] Requiring documentsRoutes...');
 const documentsRoutes = require('./routes/documentsRoutes');
-console.log('🟢 [BOOT] documentsRoutes loaded');
-console.log('🟡 [BOOT] Requiring notificationsRoutes...');
 const notificationsRoutes = require('./routes/notificationsRoutes');
-console.log('🟢 [BOOT] notificationsRoutes loaded');
-console.log('🟡 [BOOT] Requiring paiementExtrasRoutes...');
 const paiementExtrasRoutes = require('./routes/paiementExtrasRoutes');
-console.log('🟢 [BOOT] paiementExtrasRoutes loaded');
-console.log('🟡 [BOOT] Requiring alertesRoutes...');
 const alertesRoutes = require('./routes/alertesRoutes');
-console.log('🟢 [BOOT] alertesRoutes loaded');
-console.log('🟡 [BOOT] Requiring remplacementRoutes...');
 const remplacementRoutes = require('./routes/remplacementRoutes');
-console.log('🟢 [BOOT] remplacementRoutes loaded');
-console.log('🟡 [BOOT] Requiring consignesRoutes...');
 const consignesRoutes = require('./routes/consignesRoutes');
-console.log('🟢 [BOOT] consignesRoutes loaded');
-console.log('🟡 [BOOT] Requiring fichesPosteRoutes...');
 const fichesPosteRoutes = require('./routes/fichesPosteRoutes');
-console.log('🟢 [BOOT] fichesPosteRoutes loaded');
+const scoringRoutes = require('./routes/scoring');
+const externalApisRoutes = require('./routes/externalApisRoutes');
 
 // Import du scheduler d'anomalies temps réel
 const anomalyScheduler = require('./services/anomalyScheduler');
-console.log('🟢 [BOOT] anomalyScheduler loaded');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Configuration CORS pour production
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Autoriser les requêtes sans origin (apps mobiles, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      console.log('⚠️ CORS bloqué pour origin:', origin);
+      callback(null, true); // En prod, on peut être plus strict
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
 // Middlewares globaux
-app.use(cors());
+app.use(cors(corsOptions));
 // Augmenter la limite pour les créations en masse de shifts
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
@@ -105,6 +89,8 @@ app.use("/api/alertes", alertesRoutes); // Alertes temps réel retards/absences
 app.use("/api/remplacements", remplacementRoutes); // Système de remplacement entre employés
 app.use("/api/consignes", consignesRoutes); // Consignes du jour + stats ponctualité
 app.use("/api/fiches-poste", fichesPosteRoutes); // Fiches de poste PDF par catégorie
+app.use("/api/scoring", scoringRoutes); // Système de scoring/points employés
+app.use("/api/external", externalApisRoutes); // APIs externes (météo, matchs, fériés)
 
 // Global Express error handler (placed before health/debug for catching async next(err))
 app.use((err, req, res, next) => {

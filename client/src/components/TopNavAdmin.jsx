@@ -21,8 +21,9 @@ import {
   Trash2,
   AlertTriangle,
   Banknote,
+  Trophy,
 } from "lucide-react";
-import logo from "../assets/logo.jpg";
+import logo from "../assets/onboarding/logo.png";
 import { useNotifications } from "../hooks/useNotifications";
 import { useNavigoNotification } from "../hooks/useNavigoNotification";
 
@@ -143,12 +144,12 @@ export default function TopNavAdmin({
       description: "Rapports d'heures"
     },
     { 
-      key: "stats", 
-      label: "Statistiques", 
+      key: "performance", 
+      label: "Performance", 
       icon: TrendingUp, 
-      short: "Stats",
+      short: "Perf",
       priority: "low",
-      description: "Analytics RH"
+      description: "Stats et évaluations"
     },
     // Anomalies retirées - maintenant intégrées dans le Planning
   ];

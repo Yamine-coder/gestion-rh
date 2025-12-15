@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useContext, useCallback } from 'react';
 import axios from 'axios';
 import { format } from 'date-fns';
-import { Clock, History, Timer, ArrowRight, QrCode, Scan, CheckCircle2, AlertTriangle, ChevronRight, CheckCircle, Calendar, TrendingUp, TrendingDown, Minus, Zap, Coffee, Bell, Activity, ChevronDown, LogIn, LogOut } from 'lucide-react';
+import { Clock, History, Timer, ArrowRight, QrCode, Scan, CheckCircle2, AlertTriangle, ChevronRight, CheckCircle, Calendar, TrendingUp, TrendingDown, Minus, Zap, Coffee, Bell, Activity, ChevronDown, LogIn, LogOut, Moon } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import BottomNav from "../components/BottomNav";
 import { ThemeContext } from '../context/ThemeContext';
@@ -24,6 +24,7 @@ const Pointage = () => {
   const { isHighlighted: isHistoriqueHighlighted } = useNotificationHighlight('historique-pointages');
   const { isHighlighted: isAnomaliesHighlighted } = useNotificationHighlight('anomalies-section');
   const { isHighlighted: isPointageActionsHighlighted } = useNotificationHighlight('pointage-actions');
+  const { isHighlighted: isHeuresHighlighted } = useNotificationHighlight('heures-section');
   
   // État pour les anomalies officielles
   const [mesAnomalies, setMesAnomalies] = useState([]);
@@ -179,7 +180,7 @@ const Pointage = () => {
     // Fetch des anomalies officielles pour la journée de travail
     const fetchMesAnomalies = async () => {
       try {
-        // Utiliser la journée de travail (06h-06h)
+        // Utiliser la même logique de journée de travail que les pointages
         const now = new Date();
         const workDayDate = new Date(now);
         if (now.getHours() < 6) {
@@ -200,8 +201,15 @@ const Pointage = () => {
           const data = await response.json();
           
           if (data.success) {
-            // Filtrer pour n'avoir que les anomalies non-obsolètes
-            const anomaliesActives = (data.anomalies || []).filter(a => a.statut !== 'obsolete');
+            // Filtrer pour n'avoir que les anomalies non-obsolètes ET du jour exact
+            // (l'API élargit la recherche pour le timezone, on refiltre ici)
+            const anomaliesActives = (data.anomalies || []).filter(a => {
+              if (a.statut === 'obsolete') return false;
+              // Vérifier que la date de l'anomalie correspond au jour demandé
+              const anomalieDate = new Date(a.date).toISOString().slice(0, 10);
+              return anomalieDate === workDay;
+            });
+            console.log(`📋 Anomalies filtrées pour ${workDay}:`, anomaliesActives.length);
             setMesAnomalies(anomaliesActives);
           }
         }
@@ -475,7 +483,7 @@ const Pointage = () => {
         if (scenario.isShiftFinished) {
           // Shift terminé
           if (percentJournee >= 100) {
-            statusMessage = 'Journée terminée ✓';
+            statusMessage = 'Journée terminée';
             statusColor = 'text-green-600 dark:text-green-400';
           } else {
             statusMessage = 'Journée terminée - heures manquantes';
@@ -619,8 +627,9 @@ const Pointage = () => {
 
     let retard = null;
     let departAnticipe = null;
+    let arriveeEnAvance = null;
 
-    // === DÉTECTION RETARD ===
+    // === DÉTECTION RETARD / ARRIVÉE EN AVANCE ===
     // Première arrivée
     const premiereArrivee = timelineData.find(e => e.isArrivee);
     if (premiereArrivee && planStart) {
@@ -640,6 +649,16 @@ const Pointage = () => {
           heureReelle: premiereArrivee.timeStr,
           label: 'Retard',
           type: 'retard'
+        };
+      }
+      // Arrivée très en avance si > 30 minutes avant l'heure prévue
+      else if (ecartMinutes < -30) {
+        arriveeEnAvance = {
+          ecartMinutes: Math.abs(ecartMinutes),
+          heurePrevue: planStart,
+          heureReelle: premiereArrivee.timeStr,
+          label: 'Arrivée en avance',
+          type: 'hors_plage_in'
         };
       }
     }
@@ -668,7 +687,7 @@ const Pointage = () => {
       }
     }
 
-    return { retard, departAnticipe };
+    return { retard, departAnticipe, arriveeEnAvance };
   }, [timelineData, plannedShift]);
 
   // ========== ALERTE POINTAGE MANQUANT (absence/retard non pointé) ==========
@@ -816,7 +835,10 @@ const Pointage = () => {
         )}
         
         {/* SECTION ACTION / HORLOGE */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm">
+        <div 
+          id="pointage-actions"
+          className={`bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm scroll-mt-highlight transition-all duration-500 ${isPointageActionsHighlighted ? 'ring-2 ring-[#cf292c] animate-pulse' : ''}`}
+        >
           <div className="p-5 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -828,7 +850,7 @@ const Pointage = () => {
                     <h1 className="text-lg lg:text-xl font-semibold text-gray-900 dark:text-white">Pointage</h1>
                     {workDayInfo.isNightShift && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] lg:text-xs font-semibold bg-[#cf292c] text-white rounded-full shadow-sm">
-                        <span className="hidden sm:inline">🌙</span>
+                        <Moon className="w-3 h-3 hidden sm:inline" />
                         <span>Nuit</span>
                       </span>
                     )}
@@ -882,8 +904,12 @@ const Pointage = () => {
           </div>
         </div>
 
-        {/* TEMPS TRAVAILLÉ */}
-        <div className={`bg-white dark:bg-slate-800 rounded-xl border shadow-sm overflow-hidden ${
+        {/* TEMPS TRAVAILLÉ / HEURES */}
+        <div 
+          id="heures-section"
+          className={`bg-white dark:bg-slate-800 rounded-xl border shadow-sm overflow-hidden scroll-mt-highlight transition-all duration-500 ${
+          isHeuresHighlighted ? 'ring-2 ring-[#cf292c] animate-pulse' : ''
+        } ${
           workingHoursSystem.scenario.type === 'extra_only' 
             ? 'border-amber-200 dark:border-amber-700' 
             : 'border-gray-200 dark:border-slate-700'
@@ -1022,8 +1048,8 @@ const Pointage = () => {
                     <span className="text-[10px] text-gray-400 dark:text-slate-500 flex-shrink-0">0h</span>
                     
                     {/* Objectif centré */}
-                    <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-                      {workingHoursSystem.target.toFixed(0)}h ✓
+                    <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex-shrink-0 flex items-center gap-0.5">
+                      {workingHoursSystem.target.toFixed(0)}h <CheckCircle className="w-3 h-3" />
                     </span>
                     
                     {/* Badge dépassement */}
@@ -1250,7 +1276,7 @@ const Pointage = () => {
                 const anomaliesGerees = mesAnomalies.filter(a => !['pause_non_prise', 'depassement_amplitude'].includes(a.type));
                 if (anomaliesLoading) return null;
                 if (anomaliesGerees.length > 0) return null;
-                if (detectedEcarts.retard || detectedEcarts.departAnticipe) return null;
+                if (detectedEcarts.retard || detectedEcarts.departAnticipe || detectedEcarts.arriveeEnAvance) return null;
                 if (sortedHistorique.length === 0) return null;
                 
                 return (
@@ -1266,9 +1292,9 @@ const Pointage = () => {
                 const anomaliesGerees = mesAnomalies.filter(a => !['pause_non_prise', 'depassement_amplitude'].includes(a.type));
                 if (anomaliesLoading) return null;
                 if (anomaliesGerees.length > 0) return null;
-                if (!detectedEcarts.retard && !detectedEcarts.departAnticipe) return null;
+                if (!detectedEcarts.retard && !detectedEcarts.departAnticipe && !detectedEcarts.arriveeEnAvance) return null;
                 
-                const nbEcarts = [detectedEcarts.retard, detectedEcarts.departAnticipe].filter(Boolean).length;
+                const nbEcarts = [detectedEcarts.retard, detectedEcarts.departAnticipe, detectedEcarts.arriveeEnAvance].filter(Boolean).length;
                 return (
                   <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-amber-500 rounded-lg flex-shrink-0">
                     <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
@@ -1415,6 +1441,12 @@ const Pointage = () => {
                     const isArriveeType = a.type.includes('retard') || a.type === 'missing_in' || a.type === 'hors_plage_in';
                     const isDepartType = a.type.includes('depart') || a.type === 'missing_out' || a.type.includes('heures_sup') || a.type === 'hors_plage_out_critique';
                     const isPauseType = a.type === 'pause_excessive' || a.type === 'pause_non_prise';
+                    const isHorsPlanningType = a.type === 'pointage_hors_planning' || a.type === 'pointage_sans_shift' || a.type === 'pointage_pendant_conge';
+                    
+                    // Anomalie hors planning → afficher sur la première arrivée
+                    if (isHorsPlanningType && entry.isFirst && entry.isArrivee) {
+                      return true;
+                    }
                     
                     // Match arrivée avec anomalies d'arrivée
                     if (entry.isArrivee && isArriveeType) {
@@ -1444,6 +1476,10 @@ const Pointage = () => {
                     // Retard sur première arrivée
                     if (entry.isFirst && entry.isArrivee && detectedEcarts.retard) {
                       ecartDetecte = detectedEcarts.retard;
+                    }
+                    // Arrivée très en avance sur première arrivée
+                    if (entry.isFirst && entry.isArrivee && detectedEcarts.arriveeEnAvance) {
+                      ecartDetecte = detectedEcarts.arriveeEnAvance;
                     }
                     // Départ anticipé sur dernier départ
                     if (entry.isLast && !entry.isArrivee && detectedEcarts.departAnticipe) {
@@ -1662,7 +1698,7 @@ const Pointage = () => {
               const anomaliesGerees = mesAnomalies.filter(a => !['pause_non_prise', 'depassement_amplitude'].includes(a.type));
               if (timelineData.length === 0) return null;
               if (anomaliesGerees.length > 0) return null;
-              if (!detectedEcarts.retard && !detectedEcarts.departAnticipe) return null;
+              if (!detectedEcarts.retard && !detectedEcarts.departAnticipe && !detectedEcarts.arriveeEnAvance) return null;
               
               return (
                 <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-700">
@@ -1683,6 +1719,16 @@ const Pointage = () => {
                               </span>
                               <span className="font-semibold text-amber-800 dark:text-amber-300">
                                 +{detectedEcarts.retard.ecartMinutes} min (prévu {detectedEcarts.retard.heurePrevue})
+                              </span>
+                            </div>
+                          )}
+                          {detectedEcarts.arriveeEnAvance && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-amber-700 dark:text-amber-400">
+                                Arrivée très en avance
+                              </span>
+                              <span className="font-semibold text-amber-800 dark:text-amber-300">
+                                -{detectedEcarts.arriveeEnAvance.ecartMinutes} min (prévu {detectedEcarts.arriveeEnAvance.heurePrevue})
                               </span>
                             </div>
                           )}

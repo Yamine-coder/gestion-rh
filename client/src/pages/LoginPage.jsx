@@ -2,7 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock } from "lucide-react"; // Icônes pour les champs
-import logo from "../assets/logo.jpg"; // Assurez-vous que le chemin est correct
+import logo from "../assets/onboarding/logo.png";
 import { setToken } from "../utils/tokenManager";
 
 function LoginPage() {
@@ -28,14 +28,16 @@ function LoginPage() {
         password,
       });
 
-      const { token, role, firstLogin } = res.data;
+      const { token, userId, role, firstLogin } = res.data;
 
       console.log('🔍 LOGIN DEBUG:');
+      console.log('- userId reçu:', userId);
       console.log('- role reçu du serveur:', role);
       console.log('- firstLogin:', firstLogin);
 
       setToken(token); // Utiliser setToken avec timestamp au lieu de localStorage.setItem direct
       localStorage.setItem("role", role);
+      if (userId) localStorage.setItem("userId", userId.toString());
       
       // Vérification immédiate après stockage
       const storedRole = localStorage.getItem("role");
@@ -90,8 +92,8 @@ function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center px-4">
       <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full">
         {/* Logo */}
-        <div className="flex justify-center mb-6">
-          <img src={logo} alt="Logo Chez Antoine" className="h-20" />
+        <div className="flex justify-center mb-8">
+          <img src={logo} alt="Logo Chez Antoine" className="h-28 w-auto object-contain" />
         </div>
         
         {!showForgotPassword ? (

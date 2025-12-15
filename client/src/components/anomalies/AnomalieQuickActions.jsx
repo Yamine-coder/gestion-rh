@@ -1,6 +1,7 @@
 // client/src/components/anomalies/AnomalieQuickActions.jsx
 import React, { useState, useCallback } from 'react';
 import { Check, X } from 'lucide-react';
+import { useToast } from '../ui/Toast';
 
 // Configuration API centralisée
 const API_URL = 'http://localhost:5000';
@@ -120,6 +121,7 @@ export function QuickAnomalieActions({
   const { processQuickAnomalie, isProcessing } = useQuickAnomalieProcessor();
   const [showRefuseInput, setShowRefuseInput] = useState(false);
   const [refuseMotif, setRefuseMotif] = useState('');
+  const toast = useToast();
   
   // Créer un ID unique pour le tracking du processing
   const tempId = `temp_${employeId}_${date}_${ecart.type}`;
@@ -147,9 +149,9 @@ export function QuickAnomalieActions({
       console.log('✅ Anomalie validée:', result);
     } catch (error) {
       console.error('❌ Erreur validation:', error);
-      alert('Erreur lors de la validation');
+      toast.error('Erreur', 'Erreur lors de la validation');
     }
-  }, [processQuickAnomalie, ecart, employeId, date, onSuccess, tempId]);
+  }, [processQuickAnomalie, ecart, employeId, date, onSuccess, tempId, toast]);
 
   const handleRefuse = useCallback(async (e) => {
     e.preventDefault();
@@ -161,7 +163,11 @@ export function QuickAnomalieActions({
     }
 
     if (!refuseMotif.trim()) {
-      alert('Le motif de refus est obligatoire');
+      toast.alert({
+        type: 'warning',
+        title: 'Motif requis',
+        message: 'Le motif de refus est obligatoire'
+      });
       return;
     }
 
@@ -183,9 +189,9 @@ export function QuickAnomalieActions({
       console.log('✅ Anomalie refusée:', result);
     } catch (error) {
       console.error('❌ Erreur refus:', error);
-      alert('Erreur lors du refus');
+      toast.error('Erreur', 'Erreur lors du refus');
     }
-  }, [processQuickAnomalie, ecart, employeId, date, onSuccess, showRefuseInput, refuseMotif, tempId]);
+  }, [processQuickAnomalie, ecart, employeId, date, onSuccess, showRefuseInput, refuseMotif, tempId, toast]);
 
   const handleCancelRefuse = useCallback((e) => {
     e.preventDefault();

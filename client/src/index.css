@@ -452,3 +452,128 @@ html, body {
 .scroll-mt-highlight {
   scroll-margin-top: 6rem;
 }
+
+/* ========================================
+   ANIMATIONS LEVEL UP - Style Jeu Vidéo
+   Pour les transitions de rang dans ScoreWidget
+   ======================================== */
+
+/* Particules qui explosent du centre */
+@keyframes particle-explode {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    transform: translate(
+      calc(-50% + (var(--random-x, 0) * 150px - 75px)),
+      calc(-50% + (var(--random-y, 0) * 150px - 75px))
+    ) scale(0);
+    opacity: 0;
+  }
+}
+
+.animate-particle-explode {
+  animation: particle-explode 1.5s ease-out forwards;
+}
+
+/* Effet de flottement pour le badge */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-8px) rotate(2deg);
+  }
+  75% {
+    transform: translateY(-4px) rotate(-2deg);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Fade in doux */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+/* Effet de glow pulsant */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(251, 191, 36, 0.8), 0 0 60px rgba(251, 191, 36, 0.4);
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Gradient radial pour le fond */
+.bg-gradient-radial {
+  background: radial-gradient(circle at center, var(--tw-gradient-stops));
+}
+
+/* Texte brillant animé */
+@keyframes shine {
+  0% {
+    background-position: -100% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.animate-shine {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.8) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shine 2s linear infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Scale bounce pour l'apparition */
+@keyframes scale-bounce-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  75% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-bounce-in {
+  animation: scale-bounce-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}

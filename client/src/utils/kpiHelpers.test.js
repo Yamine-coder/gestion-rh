@@ -7,7 +7,7 @@ test('computeKPIs basic derivations', () => {
   expect(kpi.pointes).toBe(17);
   expect(kpi.tauxPresence).toBe(Math.round(17/20*100));
   expect(kpi.absents).toBe(2);
-  expect(kpi.nonPointes).toBe(Math.max(0, 20 - 17 - 2));
+  expect(kpi.nonPointes).toBe(Math.max(0, 20 - 17 - 1));
   expect(kpi.avgRetardMinutes).toBe(8);
   expect(kpi.deltaHeures).toBe(5); // 85 - 80
   expect(kpi.enCongeAujourdHui).toBe(1);

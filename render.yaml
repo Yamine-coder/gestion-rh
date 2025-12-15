@@ -1,0 +1,17 @@
+# render.yaml - Configuration pour Render.com
+services:
+  - type: web
+    name: gestion-rh-api
+    env: node
+    rootDir: server
+    buildCommand: npm install && npx prisma generate
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # À configurer manuellement
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false # À configurer après déploiement Vercel

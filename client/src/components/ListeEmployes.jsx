@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
-import { Search, RefreshCw, Upload, Download, FileText, AlertCircle, Check, X, Clock, User, Mail, Phone, MapPin, CreditCard, FileEdit, Train, ChevronLeft, ChevronRight, Users, UserPlus, Shield } from "lucide-react";
+import { Search, RefreshCw, Upload, Download, FileText, AlertCircle, Check, X, Clock, User, Mail, Phone, MapPin, CreditCard, FileEdit, Train, ChevronLeft, ChevronRight, Users, UserPlus, Shield, Circle, Pause, CheckCircle, AlertTriangle, FileSignature, Scale, Calendar, SearchIcon, RotateCcw, Ban, Heart, ClipboardList } from "lucide-react";
 import { toast } from "react-toastify";
 import { getCategorieEmploye, getCategoriesEmploye, CATEGORIES_EMPLOYES, CATEGORIES_ADMIN } from "../utils/categoriesConfig";
 import ConfirmModal from "./ConfirmModal";
 import NavigoEmployeTab from "./NavigoEmployeTab";
 import { getCurrentDateString, toLocalDateString } from "../utils/parisTimeUtils";
 import "./animations.css"; // Import des animations partagées
+
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || '${API_BASE}';
 
 // Fonction de formatage automatique du téléphone
 const formatTelephone = (value) => {
@@ -111,7 +114,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   const fetchEmployes = async () => {
     setIsRefreshing(true);
     try {
-      const res = await axios.get("http://localhost:5000/admin/employes", {
+      const res = await axios.get("${API_BASE}/admin/employes", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setEmployes(res.data);
@@ -127,7 +130,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   const fetchDemandesModification = async () => {
     setLoadingDemandes(true);
     try {
-      const res = await axios.get("http://localhost:5000/api/modifications/demandes-en-attente", {
+      const res = await axios.get("${API_BASE}/api/modifications/demandes-en-attente", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setDemandesModification(res.data);
@@ -142,7 +145,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   const handleTraiterDemande = async (demandeId, statut, commentaire = '') => {
     setTraitementEnCours(demandeId);
     try {
-      await axios.put(`http://localhost:5000/api/modifications/traiter-demande/${demandeId}`, {
+      await axios.put(`${API_BASE}/api/modifications/traiter-demande/${demandeId}`, {
         statut,
         commentaire
       }, {
@@ -283,7 +286,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
           // Supprimer un par un (ou créer endpoint bulk sur backend)
           await Promise.all(
             selectedIds.map(id =>
-              axios.delete(`http://localhost:5000/admin/employes/${id}`, {
+              axios.delete(`${API_BASE}/admin/employes/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
               })
             )
@@ -333,7 +336,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
           const results = await Promise.allSettled(
             selectedIds.map(id =>
               axios.put(
-                `http://localhost:5000/admin/employes/${id}`,
+                `${API_BASE}/admin/employes/${id}`,
                 { statut: newStatus },
                 { headers: { Authorization: `Bearer ${token}` } }
               )
@@ -396,7 +399,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
 
           try {
             await axios.post(
-              'http://localhost:5000/admin/employes',
+              '${API_BASE}/admin/employes',
               {
                 prenom: prenom || '',
                 nom: nom || '',
@@ -477,8 +480,8 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
       // Retirer le highlight après 3 secondes
       setTimeout(() => setHighlightDemandes(false), 3000);
       
-      // Nettoyer le state pour éviter de refaire l'action au refresh
-      window.history.replaceState({}, document.title);
+      // Nettoyer le state pour éviter les boucles de redirection
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [location.state]);
 
@@ -533,7 +536,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
           delete dataToSend.selectedCategories; // Ne pas envoyer le champ frontend
           
           const response = await axios.put(
-            `http://localhost:5000/admin/employes/${editingEmploye.id}`,
+            `${API_BASE}/admin/employes/${editingEmploye.id}`,
             dataToSend,
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -574,7 +577,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
       onConfirm: async () => {
         try {
           const response = await axios.put(
-            `http://localhost:5000/admin/employes/${employe.id}`,
+            `${API_BASE}/admin/employes/${employe.id}`,
             { statut: nouveauStatut },
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -625,7 +628,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
         setIsSaving(true);
         try {
           const response = await axios.put(
-            `http://localhost:5000/admin/employes/${departEmploye.id}/depart`,
+            `${API_BASE}/admin/employes/${departEmploye.id}/depart`,
             departForm,
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -666,7 +669,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
           
           const token = localStorage.getItem("token");
           const response = await axios.put(
-            `http://localhost:5000/admin/employes/${employe.id}/annuler-depart`,
+            `${API_BASE}/admin/employes/${employe.id}/annuler-depart`,
             {},
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -715,7 +718,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
       onConfirm: async () => {
         setConfirmModal({ ...confirmModal, isOpen: false });
         try {
-          await axios.delete(`http://localhost:5000/admin/employes/${id}`, {
+          await axios.delete(`${API_BASE}/admin/employes/${id}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           fetchEmployes();
@@ -1491,16 +1494,16 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                     
                     {/* Badge Statut (basé sur dateSortie ET statut du compte) */}
                     {e.dateSortie ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-100 text-red-700">
-                        🔴 Parti
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-red-100 text-red-700">
+                        <Circle className="w-3 h-3 fill-red-500 text-red-500" /> Parti
                       </span>
                     ) : e.statut === 'inactif' ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-orange-100 text-orange-700">
-                        ⏸️ Compte désactivé
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-orange-100 text-orange-700">
+                        <Pause className="w-3 h-3" /> Compte désactivé
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-700">
-                        ✅ Actif
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-700">
+                        <CheckCircle className="w-3 h-3" /> Actif
                       </span>
                     )}
                   </div>
@@ -2351,8 +2354,8 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-xs text-amber-800">
-                  ⚠️ Cette action modifiera le statut de l'employé en "parti" et conservera ses données pour les statistiques RH.
+                <p className="text-xs text-amber-800 flex items-start gap-1.5">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> Cette action modifiera le statut de l'employé en "parti" et conservera ses données pour les statistiques RH.
                 </p>
               </div>
             </div>
@@ -2465,15 +2468,15 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                 <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-900">
                   {viewDepartEmploye.motifDepart ? (
                     <span className="inline-flex items-center gap-2">
-                      {viewDepartEmploye.motifDepart === 'demission' && '📝 Démission'}
-                      {viewDepartEmploye.motifDepart === 'licenciement' && '⚖️ Licenciement'}
-                      {viewDepartEmploye.motifDepart === 'fin_cdd' && '📅 Fin de CDD'}
-                      {viewDepartEmploye.motifDepart === 'fin_periode_essai' && '🔍 Fin période d\'essai'}
-                      {viewDepartEmploye.motifDepart === 'retraite' && '👴 Retraite'}
-                      {viewDepartEmploye.motifDepart === 'mutation' && '🔄 Mutation'}
-                      {viewDepartEmploye.motifDepart === 'abandon_poste' && '❌ Abandon de poste'}
-                      {viewDepartEmploye.motifDepart === 'deces' && '🕊️ Décès'}
-                      {viewDepartEmploye.motifDepart === 'autre' && '📋 Autre'}
+                      {viewDepartEmploye.motifDepart === 'demission' && <><FileSignature className="w-4 h-4" /> Démission</>}
+                      {viewDepartEmploye.motifDepart === 'licenciement' && <><Scale className="w-4 h-4" /> Licenciement</>}
+                      {viewDepartEmploye.motifDepart === 'fin_cdd' && <><Calendar className="w-4 h-4" /> Fin de CDD</>}
+                      {viewDepartEmploye.motifDepart === 'fin_periode_essai' && <><SearchIcon className="w-4 h-4" /> Fin période d'essai</>}
+                      {viewDepartEmploye.motifDepart === 'retraite' && <><User className="w-4 h-4" /> Retraite</>}
+                      {viewDepartEmploye.motifDepart === 'mutation' && <><RotateCcw className="w-4 h-4" /> Mutation</>}
+                      {viewDepartEmploye.motifDepart === 'abandon_poste' && <><Ban className="w-4 h-4" /> Abandon de poste</>}
+                      {viewDepartEmploye.motifDepart === 'deces' && <><Heart className="w-4 h-4" /> Décès</>}
+                      {viewDepartEmploye.motifDepart === 'autre' && <><ClipboardList className="w-4 h-4" /> Autre</>}
                     </span>
                   ) : (
                     <span className="text-gray-400 italic">Non renseigné</span>

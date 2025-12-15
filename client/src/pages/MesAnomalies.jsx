@@ -1,6 +1,6 @@
 // client/src/pages/MesAnomalies.jsx
 import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ArrowLeftIcon, 
   ExclamationTriangleIcon, 
@@ -22,6 +22,7 @@ import {
 import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 import BottomNav from '../components/BottomNav';
 import { ThemeContext } from '../context/ThemeContext';
+import useNotificationHighlight from '../hooks/useNotificationHighlight';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const brand = '#cf292c';
@@ -235,12 +236,26 @@ const ChipFilter = ({ options, value, onChange }) => {
 
 export default function MesAnomalies() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme } = useContext(ThemeContext);
+  const { isHighlighted: isAnomaliesListHighlighted, highlightId } = useNotificationHighlight('anomalies-list');
   const [anomalies, setAnomalies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtreStatut, setFiltreStatut] = useState('');
   const [periode, setPeriode] = useState('mois'); // semaine, mois, trimestre
+
+  // Gérer la navigation depuis les notifications
+  useEffect(() => {
+    if (location.state?.fromNotification) {
+      setTimeout(() => {
+        const section = document.getElementById('anomalies-list');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+      // Nettoyer le state pour éviter les boucles de redirection
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [location.state]);
 
   const fetchMesAnomalies = useCallback(async () => {
     setLoading(true);
@@ -479,7 +494,12 @@ export default function MesAnomalies() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div 
+              id="anomalies-list"
+              className={`space-y-4 scroll-mt-highlight transition-all duration-300 ${
+                isAnomaliesListHighlighted ? 'ring-2 ring-[#cf292c] rounded-xl p-2 -m-2' : ''
+              }`}
+            >
               {/* Titre section */}
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">

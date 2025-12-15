@@ -1,12 +1,19 @@
-import { useEffect, useState, useMemo, useCallback, useContext } from 'react';
+import { useEffect, useState, useMemo, useCallback, useContext, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Clock, Calendar, FileText, User, ChevronRight, Timer, AlertCircle, Sun, Moon, Coffee, Users, ChevronLeft, Briefcase, Hand, Check, X, UserX, CalendarOff, PlayCircle, PauseCircle, TrendingUp, Zap, Award, Flame, Megaphone, CalendarDays, GraduationCap, Stethoscope, AlertTriangle, Target, Plane, Trophy, CheckCircle2, CalendarCheck, UserPlus, ChevronDown, ChevronUp, UserCheck } from 'lucide-react';
+import { Clock, Calendar, FileText, User, ChevronRight, Timer, AlertCircle, Sun, Moon, Coffee, Users, ChevronLeft, Briefcase, Hand, Check, X, UserX, CalendarOff, PlayCircle, PauseCircle, TrendingUp, Zap, Award, Flame, Megaphone, CalendarDays, GraduationCap, Stethoscope, AlertTriangle, Target, Plane, Trophy, CheckCircle2, CalendarCheck, UserPlus, ChevronDown, ChevronUp, UserCheck, ThumbsUp, Star, Medal, Gem, BarChart3, Lock, MessageCircle, Search, CheckCircle, Handshake, Home, Sparkles } from 'lucide-react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import BottomNav from '../components/BottomNav';
+import ScoreWidget from '../components/ScoreWidget';
+import { BadgesPreview, BADGES, BadgesList } from '../components/BadgesSystem';
+import { getNiveau, NIVEAUX } from '../services/scoringService';
 import { ThemeContext } from '../context/ThemeContext';
 import useNotificationHighlight from '../hooks/useNotificationHighlight';
 import { isShiftInPast, isShiftStarted, isShiftStartingWithin, createLocalDateTime, toLocalDateString } from '../utils/parisTimeUtils';
+import { getCreneauFromSegments, getCreneauStyle, isWorkShift, isCongeShift } from '../utils/creneauUtils';
+import MobileOnboarding, { useOnboarding } from '../components/onboarding/MobileOnboarding';
+import SplashScreen, { useSplashScreen } from '../components/onboarding/SplashScreen';
+import InstallPWABanner from '../components/InstallPWABanner';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -119,9 +126,16 @@ function HomeEmploye() {
   const { theme } = useContext(ThemeContext); // eslint-disable-line no-unused-vars
   const location = useLocation();
   
+  // Hook onboarding pour les nouveaux utilisateurs
+  const { showOnboarding, completeOnboarding } = useOnboarding();
+  
+  // Hook splash screen
+  const { showSplash, completeSplash } = useSplashScreen();
+  
   // Hooks pour le highlight des sections depuis les notifications
   const { isHighlighted: isPlanningHighlighted } = useNotificationHighlight('planning-section');
   const { isHighlighted: isConsignesHighlighted, highlightId: highlightedConsigneId } = useNotificationHighlight('consignes-section');
+  const { isHighlighted: isRemplacementsHighlighted } = useNotificationHighlight('remplacements-section');
   
   const [prenom, setPrenom] = useState('Employé');
   const [nom, setNom] = useState('');
@@ -137,8 +151,12 @@ function HomeEmploye() {
   const [myShifts, setMyShifts] = useState([]);
   const [loadingShifts, setLoadingShifts] = useState(true);
   const [teamShifts, setTeamShifts] = useState([]);
+  const [teamConges, setTeamConges] = useState([]);
   const [planningWeekOffset, setPlanningWeekOffset] = useState(0);
   const [planningView, setPlanningView] = useState('perso'); // 'perso' | 'equipe' | 'remplacements'
+  const [selectedTeamDayIdx, setSelectedTeamDayIdx] = useState(null); // Pour la vue équipe mobile
+  const [selectedMyDayIdx, setSelectedMyDayIdx] = useState(null); // Pour la vue mes shifts mobile
+  const [selectedWidgetDay, setSelectedWidgetDay] = useState(null); // Jour sélectionné dans le widget planning (null = aujourd'hui)
   
   // Remplacements
   const [remplacementsDisponibles, setRemplacementsDisponibles] = useState([]);
@@ -166,7 +184,7 @@ function HomeEmploye() {
   // Anomalies du jour (simplifié)
   const [todayAnomalies, setTodayAnomalies] = useState([]);
   
-  // ═══ NOUVEAUX WIDGETS ═══
+  // ═══ NOUVEAUX WIDGETS •••
   // Consignes du jour
   const [consignes, setConsignes] = useState([]);
   const [loadingConsignes, setLoadingConsignes] = useState(true);
@@ -176,6 +194,18 @@ function HomeEmploye() {
   const [statsPonctualite, setStatsPonctualite] = useState(null);
   const [loadingPonctualite, setLoadingPonctualite] = useState(true);
   
+  // Score et badges pour les KPIs gamifiés
+  const [scoreData, setScoreData] = useState(null);
+  const [loadingScore, setLoadingScore] = useState(true);
+  const [showScoreModal, setShowScoreModal] = useState(false);
+  const [showBadgesModal, setShowBadgesModal] = useState(false);
+  
+  // Feedbacks peer-to-peer
+  const [feedbacksRecus, setFeedbacksRecus] = useState([]);
+  const [feedbacksEnvoyes, setFeedbacksEnvoyes] = useState([]);
+  const [feedbacksRestants, setFeedbacksRestants] = useState(2);
+  const [loadingFeedbacks, setLoadingFeedbacks] = useState(true);
+  
   // Anomalies employé
   const [mesAnomalies, setMesAnomalies] = useState([]);
   const [loadingAnomalies, setLoadingAnomalies] = useState(true);
@@ -183,6 +213,102 @@ function HomeEmploye() {
   // Événements à venir (congés, remplacements, formations...)
   const [evenementsAVenir, setEvenementsAVenir] = useState([]);
   const [loadingEvenements, setLoadingEvenements] = useState(true);
+  const [filtreEvenements, setFiltreEvenements] = useState('all'); // all, conge, formation, visite_medicale
+  const [showMiniCalendar, setShowMiniCalendar] = useState(false);
+
+  // ═══ ANIMATION LEVEL UP - Style Jeu Vidéo ═══
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [levelUpOldNiveau, setLevelUpOldNiveau] = useState(null);
+  const [levelUpNewNiveau, setLevelUpNewNiveau] = useState(null);
+  const [levelUpPhase, setLevelUpPhase] = useState(0);
+  const previousScoreRef = useRef(null);
+
+  // Configuration des niveaux pour l'animation
+  const NIVEAUX_CONFIG = [
+    { min: -Infinity, max: 0, label: 'À surveiller', icon: AlertTriangle, iconColor: 'text-red-500', bgColor: 'from-red-500 to-red-600', btnColor: 'from-red-500 to-red-600 hover:from-red-600 hover:to-red-700' },
+    { min: 0, max: 100, label: 'Bronze', icon: Medal, iconColor: 'text-amber-600', bgColor: 'from-amber-500 to-orange-500', btnColor: 'from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600' },
+    { min: 100, max: 300, label: 'Argent', icon: Medal, iconColor: 'text-gray-400', bgColor: 'from-slate-400 to-gray-500', btnColor: 'from-slate-400 to-gray-500 hover:from-slate-500 hover:to-gray-600' },
+    { min: 300, max: 500, label: 'Or', icon: Medal, iconColor: 'text-yellow-500', bgColor: 'from-yellow-400 to-amber-500', btnColor: 'from-yellow-400 to-amber-500 hover:from-yellow-500 hover:to-amber-600' },
+    { min: 500, max: Infinity, label: 'Diamant', icon: Gem, iconColor: 'text-cyan-500', bgColor: 'from-cyan-400 to-blue-500', btnColor: 'from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600' }
+  ];
+
+  const getNiveauIndex = (points) => {
+    if (points < 0) return 0; // "À surveiller"
+    return NIVEAUX_CONFIG.findIndex(n => points >= n.min && points < n.max);
+  };
+
+  // Déclencher l'animation Level Up
+  const triggerLevelUpAnimation = (oldNiv, newNiv) => {
+    setLevelUpOldNiveau(oldNiv);
+    setLevelUpNewNiveau(newNiv);
+    setShowLevelUp(true);
+    setLevelUpPhase(1);
+    
+    // Phase 1: Ancien rang visible (1.5s)
+    setTimeout(() => setLevelUpPhase(2), 1500);
+    
+    // Phase 2: Transition LEVEL UP (1.8s)
+    setTimeout(() => setLevelUpPhase(3), 3300);
+    
+    // Phase 3: Nouveau rang apparaît avec blur (0.8s)
+    setTimeout(() => setLevelUpPhase(4), 4100);
+    
+    // Phase 4: Affichage final - attend le clic utilisateur
+  };
+
+  // Fonctions de test exposées sur window pour toutes les transitions
+  useEffect(() => {
+    // À surveiller → Bronze
+    window.testLevelUp0 = () => {
+      triggerLevelUpAnimation(NIVEAUX_CONFIG[0], NIVEAUX_CONFIG[1]);
+    };
+    // Bronze → Argent
+    window.testLevelUp = () => {
+      triggerLevelUpAnimation(NIVEAUX_CONFIG[1], NIVEAUX_CONFIG[2]);
+    };
+    // Argent → Or
+    window.testLevelUp2 = () => {
+      triggerLevelUpAnimation(NIVEAUX_CONFIG[2], NIVEAUX_CONFIG[3]);
+    };
+    // Or → Diamant
+    window.testLevelUp3 = () => {
+      triggerLevelUpAnimation(NIVEAUX_CONFIG[3], NIVEAUX_CONFIG[4]);
+    };
+    return () => { 
+      delete window.testLevelUp0;
+      delete window.testLevelUp; 
+      delete window.testLevelUp2; 
+      delete window.testLevelUp3; 
+    };
+  }, [scoreData]);
+
+  // Détecter le changement de niveau
+  useEffect(() => {
+    if (scoreData?.score) {
+      const currentPoints = scoreData.score.total_points || scoreData.score.score_total || 0;
+      const storedPoints = localStorage.getItem('lastScorePoints_home');
+      
+      console.log('🎮 [LEVEL] currentPoints:', currentPoints, 'storedPoints:', storedPoints);
+      
+      if (storedPoints !== null) {
+        const lastPoints = parseInt(storedPoints, 10);
+        const oldIdx = getNiveauIndex(lastPoints);
+        const newIdx = getNiveauIndex(currentPoints);
+        
+        console.log('🎮 [LEVEL] oldIdx:', oldIdx, 'newIdx:', newIdx, 'oldLevel:', NIVEAUX_CONFIG[oldIdx]?.label, 'newLevel:', NIVEAUX_CONFIG[newIdx]?.label);
+        
+        // Si le niveau a changé (monté)
+        if (newIdx > oldIdx && newIdx >= 0) {
+          console.log('🎮 [LEVEL] LEVEL UP DETECTED! Triggering animation...');
+          triggerLevelUpAnimation(NIVEAUX_CONFIG[oldIdx], NIVEAUX_CONFIG[newIdx]);
+        }
+      }
+      
+      // Sauvegarder les points actuels
+      localStorage.setItem('lastScorePoints_home', currentPoints.toString());
+      previousScoreRef.current = currentPoints;
+    }
+  }, [scoreData]);
 
   // Récupération prénom
   useEffect(() => {
@@ -290,6 +416,7 @@ function HomeEmploye() {
       // L'API équipe renvoie { employes, shifts, conges, categorie }
       const teamData = teamRes.data;
       setTeamShifts(Array.isArray(teamData) ? teamData : (teamData?.shifts || []));
+      setTeamConges(teamData?.conges || []);
     } catch (err) {
       console.error('Erreur chargement shifts:', err);
     } finally {
@@ -345,6 +472,19 @@ function HomeEmploye() {
     }
   }, [planningView, fetchRemplacements]);
 
+  // Gérer la navigation depuis les notifications vers remplacements
+  useEffect(() => {
+    if (location.state?.fromNotification && location.state?.highlightSection === 'remplacements-section') {
+      setPlanningView('remplacements');
+      setTimeout(() => {
+        const section = document.getElementById('remplacements-section');
+        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+      // Nettoyer le state pour éviter les boucles de redirection
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [location.state]);
+
   // ═══════════════════════════════════════════════════════════════════════════
   // NOUVEAUX WIDGETS - Fetch des données
   // ═══════════════════════════════════════════════════════════════════════════
@@ -378,6 +518,45 @@ function HomeEmploye() {
       console.error('Erreur chargement ponctualité:', err);
     } finally {
       setLoadingPonctualite(false);
+    }
+  }, [token]);
+
+  // Charger le score et les badges
+  const fetchScore = useCallback(async () => {
+    if (!token) return;
+    setLoadingScore(true);
+    try {
+      const res = await axios.get(`${API_BASE}/api/scoring/mon-score`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setScoreData(res.data?.data || null);
+    } catch (err) {
+      console.error('Erreur chargement score:', err);
+    } finally {
+      setLoadingScore(false);
+    }
+  }, [token]);
+
+  // Charger les feedbacks reçus et envoyés
+  const fetchFeedbacks = useCallback(async () => {
+    if (!token) return;
+    setLoadingFeedbacks(true);
+    try {
+      const [recusRes, envoyesRes] = await Promise.all([
+        axios.get(`${API_BASE}/api/scoring/peer-feedback/mes-recus`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`${API_BASE}/api/scoring/peer-feedback/mes-envois`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+      setFeedbacksRecus(recusRes.data?.data || []);
+      setFeedbacksEnvoyes(envoyesRes.data?.data || []);
+      setFeedbacksRestants(envoyesRes.data?.remaining ?? 2);
+    } catch (err) {
+      console.error('Erreur chargement feedbacks:', err);
+    } finally {
+      setLoadingFeedbacks(false);
     }
   }, [token]);
 
@@ -422,9 +601,11 @@ function HomeEmploye() {
     fetchPonctualite();
     fetchAnomalies();
     fetchEvenements();
-  }, [fetchConsignes, fetchPonctualite, fetchAnomalies, fetchEvenements]);
+    fetchScore();
+    fetchFeedbacks();
+  }, [fetchConsignes, fetchPonctualite, fetchAnomalies, fetchEvenements, fetchScore, fetchFeedbacks]);
 
-  // Candidater à un remplacement (avec confirmation)
+  // Candidater í  un remplacement (avec confirmation)
   const [pendingCandidatureId, setPendingCandidatureId] = useState(null);
   
   const handleCandidater = (demandeId, demande) => {
@@ -463,7 +644,7 @@ function HomeEmploye() {
     setConfirmModal({
       show: true,
       title: 'Confirmer la candidature',
-      message: `Voulez-vous candidater pour ce remplacement ?${displayDate ? `\n\n📅 ${displayDate}` : ''}${heureStr ? `\n⏰ ${heureStr}` : ''}`,
+      message: `Voulez-vous candidater pour ce remplacement ?${displayDate ? `\n\n📅 ${displayDate}` : ''}${heureStr ? `\n° ${heureStr}` : ''}`,
       type: 'info',
       onConfirm: () => confirmCandidater(demandeId)
     });
@@ -548,7 +729,7 @@ function HomeEmploye() {
     // Récupérer l'heure de début du shift
     const shiftStartTime = shift.segments?.[0]?.start || shift.heureDebut || '09:00';
     
-    // ═══ PROTECTIONS INTELLIGENTES (utilisant parisTimeUtils) ═══
+    // ═══ PROTECTIONS INTELLIGENTES (utilisant parisTimeUtils) •••
     
     // 1. Shift passé (date entièrement passée)
     if (isShiftInPast(shift.date)) {
@@ -597,7 +778,7 @@ function HomeEmploye() {
       return;
     }
     
-    // ═══ Tout est OK, ouvrir le modal ═══
+    // ═══ Tout est OK, ouvrir le modal •••
     setSelectedShiftForDemande(shift);
     setDemandeMotif('');
     setDemandePriorite('normale');
@@ -741,8 +922,52 @@ function HomeEmploye() {
     }
   }, [highlightedConsigneId, consignes]);
 
+  // Calculer si les données principales sont chargées
+  const isDataLoading = loadingStats || loadingShifts || loadingScore;
+
+  // Afficher le splash screen au démarrage (pendant le chargement des données)
+  if (showSplash) {
+    return <SplashScreen onComplete={completeSplash} isLoading={isDataLoading} minDuration={1500} />;
+  }
+
+  // Afficher l'onboarding pour les nouveaux utilisateurs
+  if (showOnboarding) {
+    return <MobileOnboarding onComplete={completeOnboarding} userName={prenom} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-navbar lg:pb-8 lg:pt-14 flex flex-col transition-colors pt-header">
+      
+      {/* ══════════════════════════════════════════════════════════════════
+          ANIMATION LEVEL UP - Style Jeu Vidéo
+      ══════════════════════════════════════════════════════════════════ */}
+      {showLevelUp && (
+        <LevelUpAnimation 
+          oldNiveau={levelUpOldNiveau}
+          newNiveau={levelUpNewNiveau}
+          phase={levelUpPhase}
+          onClose={() => {
+            setShowLevelUp(false);
+            setLevelUpPhase(0);
+          }}
+        />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          BOUTON TEST LEVEL UP (à supprimer en prod)
+      ══════════════════════════════════════════════════════════════════ */}
+      <button
+        onClick={() => triggerLevelUpAnimation(NIVEAUX_CONFIG[0], NIVEAUX_CONFIG[1])}
+        className="fixed bottom-24 right-4 z-50 bg-red-600 text-white px-3 py-2 rounded-full shadow-lg text-xs font-bold hover:bg-red-700"
+      >
+        🚨 Test À surveiller → Bronze
+      </button>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          BANNIÈRE INSTALLATION PWA
+      ══════════════════════════════════════════════════════════════════ */}
+      <InstallPWABanner autoShow={true} delay={10000} position="bottom" />
+
       {/* ══════════════════════════════════════════════════════════════════
           HEADER SOBRE & MODERNE
       ══════════════════════════════════════════════════════════════════ */}
@@ -767,47 +992,74 @@ function HomeEmploye() {
         </div>
       </div>
       
-      {/* Cards de statut - Style épuré */}
+      {/* Cards de gamification - Score | Ponctualité | Badges | Feedback */}
       <div className="px-4 -mt-5">
-        <div className="grid grid-cols-3 gap-2.5" aria-live="polite">
-          {/* Card 1: Statut pointage */}
-          <Link 
-            to="/pointage" 
-            className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700"
+        <div className="grid grid-cols-4 gap-2" aria-live="polite">
+          {/* Card 1: Score & Niveau */}
+          <button 
+            onClick={() => setShowScoreModal(true)}
+            className="bg-white dark:bg-gray-800 rounded-xl p-2.5 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow text-left"
           >
             <div className="flex flex-col items-center text-center">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-1.5 ${
-                pointageStatus.status === 'working' 
-                  ? 'bg-emerald-100 dark:bg-emerald-900/30' 
-                  : pointageStatus.status === 'ended'
-                    ? 'bg-blue-100 dark:bg-blue-900/30'
-                    : 'bg-gray-100 dark:bg-gray-700'
-              }`}>
-                {pointageStatus.status === 'working' ? (
-                  <PlayCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                ) : pointageStatus.status === 'ended' ? (
-                  <PauseCircle className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                ) : (
-                  <Clock className="w-4 h-4 text-gray-400" />
-                )}
-              </div>
-              <div className="text-[9px] text-gray-400 uppercase font-medium tracking-wide">Statut</div>
-              <div className={`text-[11px] font-semibold mt-0.5 truncate w-full ${
-                pointageStatus.status === 'working' 
-                  ? 'text-emerald-600 dark:text-emerald-400' 
-                  : pointageStatus.status === 'ended'
-                    ? 'text-blue-600 dark:text-blue-400'
-                    : 'text-gray-500 dark:text-gray-400'
-              }`}>
-                {pointageStatus.label}
-              </div>
+              {loadingScore ? (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 animate-pulse mb-1" />
+                  <div className="h-2 w-6 rounded bg-gray-200 dark:bg-gray-600 animate-pulse" />
+                </>
+              ) : (
+                <>
+                  {(() => {
+                    const totalPts = scoreData?.score?.total_points || scoreData?.score?.score_total || 0;
+                    const isNeg = totalPts < 0;
+                    const niveau = getNiveau(totalPts);
+                    
+                    // Couleurs du badge selon le score
+                    let badgeBg = 'bg-gradient-to-br from-amber-100 to-yellow-100 dark:from-amber-900/30 dark:to-yellow-900/30';
+                    let textColor = 'text-amber-600 dark:text-amber-400';
+                    let icon = <Medal className="w-4 h-4 text-amber-600" />;
+                    
+                    if (isNeg) {
+                      badgeBg = 'bg-gradient-to-br from-red-100 to-red-200 dark:from-red-900/30 dark:to-red-800/30';
+                      textColor = 'text-red-600 dark:text-red-400';
+                      icon = <AlertTriangle className="w-4 h-4 text-red-500" />;
+                    } else if (niveau.label === 'Diamant') {
+                      badgeBg = 'bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30';
+                      textColor = 'text-cyan-600 dark:text-cyan-400';
+                      icon = <Gem className="w-4 h-4 text-cyan-500" />;
+                    } else if (niveau.label === 'Or') {
+                      badgeBg = 'bg-gradient-to-br from-yellow-100 to-amber-100 dark:from-yellow-900/30 dark:to-amber-900/30';
+                      textColor = 'text-yellow-600 dark:text-yellow-400';
+                      icon = <Medal className="w-4 h-4 text-yellow-500" />;
+                    } else if (niveau.label === 'Argent') {
+                      badgeBg = 'bg-gradient-to-br from-slate-100 to-gray-200 dark:from-slate-800/30 dark:to-gray-700/30';
+                      textColor = 'text-gray-500 dark:text-gray-400';
+                      icon = <Medal className="w-4 h-4 text-gray-400" />;
+                    }
+                    
+                    return (
+                      <>
+                        <div className={`w-8 h-8 rounded-full ${badgeBg} flex items-center justify-center mb-1 ${isNeg ? 'animate-pulse' : ''}`}>
+                          {icon}
+                        </div>
+                        <div className="text-[8px] text-gray-400 uppercase font-medium">Score</div>
+                        <div className={`text-[10px] font-bold ${textColor}`}>
+                          {totalPts}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </>
+              )}
             </div>
-          </Link>
+          </button>
           
           {/* Card 2: Ponctualité */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700">
+          <Link 
+            to="/pointage"
+            className="bg-white dark:bg-gray-800 rounded-xl p-2.5 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow"
+          >
             <div className="flex flex-col items-center text-center">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-1.5 ${
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-1 ${
                 statsPonctualite?.ponctualiteMois >= 95 
                   ? 'bg-emerald-100 dark:bg-emerald-900/30' 
                   : 'bg-amber-100 dark:bg-amber-900/30'
@@ -818,913 +1070,468 @@ function HomeEmploye() {
                     : 'text-amber-600 dark:text-amber-400'
                 }`} />
               </div>
-              <div className="text-[9px] text-gray-400 uppercase font-medium tracking-wide">Ponctualité</div>
+              <div className="text-[8px] text-gray-400 uppercase font-medium">Ponctualité</div>
               {loadingPonctualite ? (
-                <div className="h-3.5 w-8 rounded bg-gray-200 dark:bg-gray-600 animate-pulse mt-1" />
+                <div className="h-3 w-6 rounded bg-gray-200 dark:bg-gray-600 animate-pulse" />
               ) : (
-                <div className={`text-[11px] font-semibold mt-0.5 ${
+                <div className={`text-[10px] font-semibold ${
                   statsPonctualite?.ponctualiteMois >= 95 
                     ? 'text-emerald-600 dark:text-emerald-400' 
                     : 'text-amber-600 dark:text-amber-400'
                 }`}>
-                  {statsPonctualite?.ponctualiteMois ?? '—'}%
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {/* Card 3: Anomalies */}
-          <Link 
-            to="/mes-anomalies" 
-            className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700 relative"
-          >
-            {mesAnomalies.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-red-500">
-                {mesAnomalies.length > 9 ? '9+' : mesAnomalies.length}
-              </span>
-            )}
-            <div className="flex flex-col items-center text-center">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center mb-1.5 ${
-                mesAnomalies.length > 0 
-                  ? 'bg-amber-100 dark:bg-amber-900/30' 
-                  : 'bg-emerald-100 dark:bg-emerald-900/30'
-              }`}>
-                <AlertTriangle className={`w-4 h-4 ${
-                  mesAnomalies.length > 0 
-                    ? 'text-amber-600 dark:text-amber-400' 
-                    : 'text-emerald-600 dark:text-emerald-400'
-                }`} />
-              </div>
-              <div className="text-[9px] text-gray-400 uppercase font-medium tracking-wide">Anomalies</div>
-              {loadingAnomalies ? (
-                <div className="h-3.5 w-10 rounded bg-gray-200 dark:bg-gray-600 animate-pulse mt-1" />
-              ) : (
-                <div className={`text-xs font-bold mt-0.5 ${
-                  mesAnomalies.length > 0 
-                    ? 'text-amber-600 dark:text-amber-400' 
-                    : 'text-emerald-600 dark:text-emerald-400'
-                }`}>
-                  {mesAnomalies.length > 0 ? `${mesAnomalies.length} à voir` : 'Aucune'}
+                  {statsPonctualite?.ponctualiteMois ?? '--'}%
                 </div>
               )}
             </div>
           </Link>
+          
+          {/* Card 3: Badges */}
+          <button 
+            onClick={() => setShowBadgesModal(true)}
+            className="bg-white dark:bg-gray-800 rounded-xl p-2.5 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow text-left"
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-100 to-rose-100 dark:from-red-900/30 dark:to-rose-900/30 flex items-center justify-center mb-1">
+                <Award className="w-4 h-4 text-red-500 dark:text-red-400" />
+              </div>
+              <div className="text-[8px] text-gray-400 uppercase font-medium">Badges</div>
+              <div className="text-[10px] font-semibold text-red-500 dark:text-red-400">
+                {scoreData?.stats ? BADGES.filter(b => b.condition(scoreData.stats)).length : 0}/{BADGES.length}
+              </div>
+            </div>
+          </button>
+          
+          {/* Card 4: Feedback */}
+          <Link 
+            to="/feedback"
+            className="bg-white dark:bg-gray-800 rounded-xl p-2.5 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow relative"
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 dark:from-pink-900/30 dark:to-rose-900/30 flex items-center justify-center mb-1 relative">
+                <ThumbsUp className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                {feedbacksRestants > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-green-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                    {feedbacksRestants}
+                  </span>
+                )}
+              </div>
+              <div className="text-[8px] text-gray-400 uppercase font-medium">Feedback</div>
+              <div className="text-[10px] font-semibold text-pink-600 dark:text-pink-400">
+                {feedbacksRecus.filter(f => f.statut === 'approved' || f.status === 'approved').length} reçu{feedbacksRecus.filter(f => f.statut === 'approved' || f.status === 'approved').length > 1 ? 's' : ''}
+              </div>
+            </div>
+          </Link>
         </div>
+        
+        {/* Barre de progression vers prochain niveau */}
+        {!loadingScore && scoreData?.score && (() => {
+          const totalPoints = scoreData.score.total_points || scoreData.score.score_total || 0;
+          const isNegative = totalPoints < 0;
+          const niveaux = [
+            { min: 0, max: 100, label: 'Bronze', icon: <Medal className="w-4 h-4 text-amber-600" /> },
+            { min: 100, max: 300, label: 'Argent', icon: <Medal className="w-4 h-4 text-gray-400" /> },
+            { min: 300, max: 500, label: 'Or', icon: <Medal className="w-4 h-4 text-yellow-500" /> },
+            { min: 500, max: Infinity, label: 'Diamant', icon: <Gem className="w-4 h-4 text-cyan-500" /> }
+          ];
+          
+          // Gestion des scores négatifs
+          if (isNegative) {
+            const pointsToZero = Math.abs(totalPoints);
+            // Progression: plus on approche de 0, plus la barre se remplit (vers la droite = Bronze)
+            // Ex: -100pts = 0%, -50pts = 50%, -10pts = 90%, 0pts = 100%
+            const maxNegative = 100; // On considère -100 comme le pire cas
+            const negativeProgress = Math.max(0, Math.min(100, ((maxNegative - pointsToZero) / maxNegative) * 100));
+            
+            return (
+              <div className="mt-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2.5 shadow-sm border border-red-200 dark:border-red-800">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center relative">
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                    <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-[7px] text-red-400 font-medium whitespace-nowrap">Alerte</span>
+                  </div>
+                  <div className="flex-1 h-2.5 bg-gradient-to-r from-red-200 via-red-100 to-amber-100 dark:from-red-900/50 dark:via-red-800/30 dark:to-amber-900/30 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-red-500 via-orange-400 to-amber-400 rounded-full transition-all duration-700 ease-out"
+                      style={{ width: `${negativeProgress}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center relative">
+                    <Medal className="w-4 h-4 text-amber-600" />
+                    <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-[7px] text-amber-500 font-medium">Bronze</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-red-500 dark:text-red-400 text-center mt-4">
+                  Gagnez <span className="font-semibold text-red-600 dark:text-red-400">{pointsToZero} pts</span> pour atteindre Bronze
+                </p>
+              </div>
+            );
+          }
+          
+          const currentIdx = niveaux.findIndex(n => totalPoints >= n.min && totalPoints < n.max);
+          const current = niveaux[Math.max(0, currentIdx === -1 ? niveaux.length - 1 : currentIdx)];
+          const next = currentIdx < niveaux.length - 1 ? niveaux[currentIdx + 1] : null;
+          const progress = current.max === Infinity ? 100 : Math.min(100, ((totalPoints - current.min) / (current.max - current.min)) * 100);
+          
+          return next ? (
+            <div className="mt-2.5 bg-white dark:bg-gray-800 rounded-xl px-3 py-2.5 shadow-sm border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center">
+                  {current.icon}
+                </div>
+                <div className="flex-1 h-2.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 to-yellow-400 rounded-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="flex items-center">
+                  {next.icon}
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1.5">
+                Plus que <span className="font-semibold text-amber-600 dark:text-amber-400">{next.min - totalPoints} pts</span> pour {next.label}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-2.5 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 rounded-xl px-3 py-2.5 border border-cyan-200 dark:border-cyan-800/50">
+              <p className="text-xs text-center text-cyan-700 dark:text-cyan-300 flex items-center justify-center gap-1.5">
+                <Gem className="w-4 h-4 text-cyan-500" />
+                <span className="font-medium">Niveau max ! Tu es une légende</span>
+                <Gem className="w-4 h-4 text-cyan-500" />
+              </p>
+            </div>
+          );
+        })()}
+        
+        {/* Widget Score Personnel - masqué car intégré dans la jauge KPI */}
+        {/* <ScoreWidget className="mt-4" /> */}
+        
+        {/* Preview Badges - masqué car intégré dans KPI */}
+        {/* <BadgesPreview className="mt-3" /> */}
       </div>
       
       {/* ═══════════════════════════════════════════════════════════════════════════
-          SECTION PLANNING PRINCIPALE (intégrée directement)
+          WIDGET PLANNING - Design épuré cohérent avec la charte de l'app
       ═══════════════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 px-4 mt-6">
+      <div className="px-3 sm:px-4 mt-4 sm:mt-6">
         <section className="mb-5">
-          {/* Header Planning avec navigation semaine */}
           <div 
             id="planning-section"
-            className={`bg-white dark:bg-gray-800 rounded-2xl shadow-lg shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-gray-700 overflow-hidden scroll-mt-highlight transition-all duration-300 ${
+            className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden scroll-mt-highlight transition-all duration-300 ${
               isPlanningHighlighted ? 'ring-2 ring-[#cf292c]' : ''
             }`}
           >
+            {/* Header */}
             <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                   <div 
-                    className="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style={{ background: `linear-gradient(135deg, ${brand}20 0%, ${brand}10 100%)` }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: `${brand}10` }}
                   >
-                    <Calendar className="w-5 h-5" style={{color: brand}} />
+                    <Calendar className="w-4 h-4" style={{color: brand}} />
                   </div>
-                  <div>
-                    <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">Mon Planning</h2>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {getWeekDates.start.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} - {getWeekDates.end.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                    </p>
-                  </div>
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Mon Planning</h2>
                 </div>
-                <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-xl p-1">
-                  <button 
-                    onClick={() => setPlanningWeekOffset(w => w - 1)}
-                    className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-600 transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  </button>
-                  <button 
-                    onClick={() => setPlanningWeekOffset(0)}
-                    disabled={planningWeekOffset === 0}
-                    className="px-2.5 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-600 rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Auj.
-                  </button>
-                  <button 
-                    onClick={() => setPlanningWeekOffset(w => w + 1)}
-                    className="p-1.5 rounded-md hover:bg-white dark:hover:bg-gray-600 transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  </button>
-                </div>
-              </div>
-              
-              {/* Onglets Planning - Style moderne segmented control */}
-              <div className="flex gap-1 mt-4 bg-gray-100 dark:bg-gray-700 rounded-xl p-1">
-                <button
-                  onClick={() => setPlanningView('perso')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-                    planningView === 'perso' 
-                      ? 'text-white shadow-sm' 
-                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100'
-                  }`}
-                  style={planningView === 'perso' ? { backgroundColor: brand } : {}}
+                <Link 
+                  to="/planning"
+                  className="flex items-center gap-1 text-xs font-medium transition-all hover:opacity-70"
+                  style={{ color: brand }}
                 >
-                  <User className="w-3.5 h-3.5" />
-                  <span>Mes shifts</span>
-                </button>
-                <button
-                  onClick={() => setPlanningView('equipe')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all duration-200 ${
-                    planningView === 'equipe' 
-                      ? 'text-white shadow-sm' 
-                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100'
-                  }`}
-                  style={planningView === 'equipe' ? { backgroundColor: brand } : {}}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Équipe</span>
-                </button>
-                <button
-                  onClick={() => setPlanningView('remplacements')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all duration-200 relative ${
-                    planningView === 'remplacements' 
-                      ? 'text-white shadow-sm' 
-                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100'
-                  }`}
-                  style={planningView === 'remplacements' ? { backgroundColor: brand } : {}}
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Rempl.</span>
-                  {remplacementsDisponibles.length > 0 && planningView !== 'remplacements' && (
-                    <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-bold shadow-sm">
-                      {remplacementsDisponibles.length}
-                    </span>
-                  )}
-                </button>
+                  <span>Voir tout</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             </div>
-            
-            {/* ═══ PLANNING COMPACT - Timeline horizontale ═══ */}
-            <div className="p-3 sm:p-4">
-              {loadingShifts && planningView !== 'remplacements' ? (
-                <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto pb-2 sm:overflow-visible snap-x snap-mandatory sm:snap-none">
-                  {[1,2,3,4,5,6,7].map(i => (
-                    <div key={i} className="flex-shrink-0 w-[68px] sm:w-auto aspect-[3/4] bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse snap-start" />
-                  ))}
+
+            {/* Contenu */}
+            <div className="p-3">
+              {loadingShifts ? (
+                <div className="space-y-2">
+                  <div className="h-16 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
+                  <div className="h-12 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
                 </div>
-              ) : planningView === 'perso' ? (
-                /* ═══ VUE MES SHIFTS - Scroll horizontal mobile, grille desktop ═══ */
-                <div>
-                  {/* Scroll horizontal mobile / Grille 7 cols desktop */}
-                  <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto pb-2 sm:overflow-visible snap-x snap-mandatory sm:snap-none">
-                    {(() => {
-                      // Générer les 7 jours de la semaine
-                      const days = [];
-                      const start = new Date(getWeekDates.start);
-                      for (let i = 0; i < 7; i++) {
-                        const day = new Date(start);
-                        day.setDate(start.getDate() + i);
-                        days.push(day);
-                      }
-                      
-                      return days.map((day, idx) => {
-                        const dayStr = toLocalDateString(day);
-                        const dayShifts = myShifts.filter(s => {
-                          const sd = toLocalDateString(s.date);
-                          return sd === dayStr;
-                        });
-                        const isToday = day.toDateString() === new Date().toDateString();
-                        const isPast = day < new Date(new Date().setHours(0,0,0,0));
-                        const hasShift = dayShifts.length > 0;
-                        const shift = dayShifts[0]; // Premier shift du jour
-                        const isEnConge = shift?.estEnConge;
-                        const remplacementStatut = shift?.remplacementStatut;
-                        const isRemplacement = shift?.isRemplacement || shift?.motif?.toLowerCase()?.includes('remplacement de');
-                        const style = shift ? getTypeStyle(shift.type) : null;
-                        const canRequestReplacement = hasShift && !isPast && !remplacementStatut && !isEnConge && !isRemplacement;
-                        const hasRemplacementInfo = remplacementStatut && ['en_attente', 'acceptee', 'validee'].includes(remplacementStatut);
-                        const isClickable = canRequestReplacement || hasRemplacementInfo || isRemplacement;
-                        const horaires = shift ? getShiftHoraires(shift) : null;
-                        const [heureDebut, heureFin] = horaires ? horaires.split(' - ') : [null, null];
-                        
-                        // Handler de clic selon le contexte
-                        const handleShiftClick = () => {
-                          if (canRequestReplacement) {
-                            handleOpenDemandeModal(shift);
-                          } else if (hasRemplacementInfo || isRemplacement) {
-                            setSelectedShiftDetails(shift);
-                            setShowShiftDetailsModal(true);
-                          }
-                        };
-                        
-                        return (
-                          <div 
-                            key={idx}
-                            onClick={handleShiftClick}
-                            className={`flex-shrink-0 w-[68px] sm:w-auto snap-start relative rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-200 border-2 ${
-                              isEnConge
-                                ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700'
-                                : isRemplacement
-                                  ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-400 dark:border-purple-600'
-                                  : isToday 
-                                    ? 'bg-white dark:bg-gray-800 shadow-md' 
-                                    : hasShift
-                                      ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-                                      : 'bg-gray-50 dark:bg-gray-800/50 border-dashed border-gray-200 dark:border-gray-700'
-                            } ${isPast && !isToday ? 'opacity-50' : ''} ${isClickable ? 'cursor-pointer hover:shadow-md active:scale-[0.98]' : ''}`}
-                            style={isToday && !isRemplacement ? { borderColor: brand } : (remplacementStatut === 'validee' ? { borderColor: '#10b981' } : {})}
-                          >
-                            {/* En-tête jour */}
-                            <div className={`text-center py-1 sm:py-1.5 ${
-                              isToday 
-                                ? 'text-white' 
-                                : 'bg-gray-50 dark:bg-gray-700/50'
-                            }`}
-                            style={isToday ? { backgroundColor: brand } : {}}
-                            >
-                              {/* Badge Aujourd'hui - visible seulement desktop */}
-                              {isToday && (
-                                <div className="hidden sm:block text-[8px] uppercase font-bold tracking-wider text-white/80 mb-0.5">
-                                  Aujourd'hui
-                                </div>
-                              )}
-                              <div className={`text-[9px] sm:text-[10px] uppercase font-bold tracking-wide ${
-                                isToday ? 'text-white/90' : 'text-gray-400 dark:text-gray-500'
-                              }`}>
-                                {day.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '').slice(0, 3)}
-                              </div>
-                              <div className={`text-base sm:text-lg font-bold ${
-                                isToday ? 'text-white' : 'text-gray-800 dark:text-gray-200'
-                              }`}>
-                                {day.getDate()}
-                              </div>
-                            </div>
-                            
-                            {/* Contenu */}
-                            <div className="p-1.5 sm:p-2 min-h-[48px] sm:min-h-[52px] flex flex-col items-center justify-center">
-                              {hasShift ? (
-                                <>
-                                  {isEnConge ? (
-                                    <div className="text-center">
-                                      <Plane className="w-4 h-4 sm:w-5 sm:h-5 mx-auto text-emerald-500" />
-                                      <p className="text-[8px] sm:text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">Congé</p>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      {/* Badge Remplacement - Bien positionné */}
-                                      {isRemplacement && (
-                                        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10">
-                                          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center shadow-lg ring-2 ring-white dark:ring-gray-800">
-                                            <ArrowPathIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
-                                          </div>
-                                        </div>
-                                      )}
-                                      
-                                      {/* Type badge */}
-                                      <div className={`inline-flex items-center gap-0.5 sm:gap-1 px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] font-bold uppercase tracking-wide ${
-                                        isRemplacement ? 'bg-purple-100 text-purple-700' : (style?.bg || 'bg-gray-100')
-                                      } ${isRemplacement ? '' : (style?.text || 'text-gray-600')}`}>
-                                        <span className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full ${
-                                          isRemplacement ? 'bg-purple-500' :
-                                          shift.type === 'matin' ? 'bg-amber-500' : 
-                                          shift.type === 'soir' ? 'bg-indigo-500' : 
-                                          'bg-orange-500'
-                                        }`}></span>
-                                        {isRemplacement ? 'R' : (shift.type?.slice(0,4) || 'Work')}
-                                      </div>
-                                      
-                                      {/* Horaires */}
-                                      <div className="text-xs sm:text-sm font-mono font-bold mt-0.5 sm:mt-1 text-gray-900 dark:text-gray-100">
-                                        {heureDebut}
-                                      </div>
-                                      <div className="text-[9px] sm:text-[10px] text-gray-400 dark:text-gray-500">
-                                        → {heureFin}
-                                      </div>
-                                      
-                                      {/* Statut remplacement - Libellés explicites */}
-                                      {remplacementStatut === 'en_attente' && (
-                                        <div className="mt-0.5 sm:mt-1 flex flex-col items-center">
-                                          <span className="text-[7px] sm:text-[8px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold flex items-center gap-0.5">
-                                            <Users className="w-2.5 h-2.5" /> Recherche
-                                          </span>
-                                        </div>
-                                      )}
-                                      {remplacementStatut === 'acceptee' && (
-                                        <div className="mt-0.5 sm:mt-1 flex flex-col items-center">
-                                          <span className="text-[7px] sm:text-[8px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold flex items-center gap-0.5">
-                                            <Clock className="w-2.5 h-2.5" /> À valider
-                                          </span>
-                                        </div>
-                                      )}
-                                      {remplacementStatut === 'validee' && (
-                                        <div className="mt-0.5 sm:mt-1 flex flex-col items-center">
-                                          <span className="text-[7px] sm:text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
-                                            <CheckCircle2 className="w-2.5 h-2.5" /> Confirmé
-                                          </span>
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                </>
-                              ) : (
-                                <div className="text-center">
-                                  <div className="text-gray-300 dark:text-gray-600 text-base sm:text-lg">—</div>
-                                  <p className="text-[8px] sm:text-[9px] text-gray-400 dark:text-gray-500">Repos</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                  
-                  {/* Légende rapide et stats */}
-                  <div className="mt-3 flex items-center justify-between text-[9px] sm:text-[10px] text-gray-500 dark:text-gray-400">
-                    <div className="flex items-center gap-2 sm:gap-3">
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-400"></span> Matin
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-indigo-400"></span> Soir
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-orange-400"></span> Coupure
-                      </span>
-                    </div>
-                    <span className="font-medium">
-                      {myShifts.length} shift{myShifts.length > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  
-                  {/* Shift du jour en focus (si existe) - masqué sur mobile */}
+              ) : (
+                <>
                   {(() => {
-                    const todayShift = myShifts.find(s => new Date(s.date).toDateString() === new Date().toDateString());
-                    if (!todayShift) return null;
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    const todayStr = toLocalDateString(today);
                     
-                    const style = getTypeStyle(todayShift.type);
-                    const TypeIcon = style.icon;
-                    const isRemplacement = todayShift?.isRemplacement || todayShift?.motif?.toLowerCase()?.includes('remplacement de');
-                    const canRequest = !todayShift.estEnConge && !todayShift.remplacementStatut && !isRemplacement;
+                    // Calculer les dates de la semaine
+                    const getWeekDatesArray = () => {
+                      const d = new Date(today);
+                      const day = d.getDay();
+                      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                      const monday = new Date(d.setDate(diff));
+                      monday.setHours(0,0,0,0);
+                      return Array.from({ length: 7 }, (_, i) => {
+                        const date = new Date(monday);
+                        date.setDate(monday.getDate() + i);
+                        return date;
+                      });
+                    };
                     
+                    const weekDates = getWeekDatesArray();
+                    const joursSemaine = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+                    
+                    // Stats
+                    const weekShifts = myShifts.filter(s => {
+                      const sDate = toLocalDateString(s.date);
+                      return weekDates.some(d => toLocalDateString(d) === sDate);
+                    });
+                    
+                    const joursTravailes = weekShifts.filter(s => !s.estEnConge && s.type !== 'absence').length;
+                    
+                    const totalMinutes = weekShifts
+                      .filter(s => !s.estEnConge && s.type !== 'absence')
+                      .reduce((acc, s) => {
+                        const segments = s.segments || [];
+                        return acc + segments.reduce((sum, seg) => {
+                          if (seg.type?.toLowerCase() === 'pause') return sum;
+                          const start = seg.start || seg.debut;
+                          const end = seg.end || seg.fin;
+                          if (!start || !end) return sum;
+                          const [sH, sM] = start.split(':').map(Number);
+                          const [eH, eM] = end.split(':').map(Number);
+                          let dur = (eH * 60 + eM) - (sH * 60 + sM);
+                          if (dur < 0) dur += 24 * 60;
+                          return sum + dur;
+                        }, 0);
+                      }, 0);
+                    const heuresTotal = Math.floor(totalMinutes / 60);
+                    const minutesReste = totalMinutes % 60;
+
+                    // Jour sélectionné (null = aujourd'hui)
+                    const selectedDateStr = selectedWidgetDay || todayStr;
+                    const selectedDate = weekDates.find(d => toLocalDateString(d) === selectedDateStr) || today;
+                    const isSelectedToday = selectedDateStr === todayStr;
+                    
+                    // Shift du jour sélectionné
+                    const shiftSelectionne = myShifts
+                      .filter(s => {
+                        const sDate = toLocalDateString(s.date);
+                        return sDate === selectedDateStr && !s.estEnConge && s.type !== 'absence';
+                      })[0];
+
                     return (
-                      <div className={`hidden sm:block mt-4 p-3 rounded-2xl border ${
-                        isRemplacement 
-                          ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700' 
-                          : 'bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600'
-                      }`}>
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center ${
-                            isRemplacement ? 'bg-purple-100 dark:bg-purple-800' : style.bg
-                          } border border-gray-100 dark:border-gray-600`}>
-                            {isRemplacement ? (
-                              <span className="text-lg">🔄</span>
-                            ) : (
-                              <TypeIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${style.text}`} />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-[9px] sm:text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500">Aujourd'hui</span>
-                              <span className="flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full opacity-75" style={{backgroundColor: isRemplacement ? '#a855f7' : brand}}></span>
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{backgroundColor: isRemplacement ? '#a855f7' : brand}}></span>
-                              </span>
-                              {isRemplacement && (
-                                <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-purple-200 text-purple-700">REMPLACEMENT</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 tracking-tight">{getShiftHoraires(todayShift)}</span>
-                              <span className={`text-[10px] sm:text-xs font-medium ${isRemplacement ? 'text-purple-700 bg-purple-100' : style.text + ' ' + style.bg} capitalize px-1.5 sm:px-2 py-0.5 rounded-full`}>
-                                {isRemplacement ? 'Remplacement' : todayShift.type}
-                              </span>
-                            </div>
-                            {isRemplacement && todayShift.motif && (
-                              <p className="text-[10px] text-purple-600 mt-1 truncate">{todayShift.motif}</p>
-                            )}
-                          </div>
-                          {canRequest && (
-                            <button
-                              onClick={() => handleOpenDemandeModal(todayShift)}
-                              className="p-2 sm:p-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 transition-all active:scale-95 flex-shrink-0"
-                              title="Demander un remplacement"
-                            >
-                              <Hand className="w-4 h-4 text-gray-500" />
-                            </button>
-                          )}
-                          {isRemplacement && (
-                            <div className="p-2 sm:p-2.5 rounded-xl bg-purple-100 dark:bg-purple-800 flex-shrink-0" title="Ce shift ne peut pas être re-remplacé">
-                              <span className="text-purple-600 dark:text-purple-300 text-xs">🔒</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              ) : planningView === 'equipe' ? (
-                /* ═══ VUE ÉQUIPE - Scroll horizontal mobile, grille desktop ═══ */
-                teamShifts.length === 0 ? (
-                  <div className="text-center py-6 text-gray-500 dark:text-gray-400">
-                    <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">Aucun collègue cette semaine</p>
-                  </div>
-                ) : (
-                  <div>
-                    {/* Scroll horizontal mobile / Grille 7 cols desktop */}
-                    <div className="flex sm:grid sm:grid-cols-7 gap-2 overflow-x-auto pb-2 sm:overflow-visible snap-x snap-mandatory sm:snap-none pl-1 pr-1 sm:px-0 -mx-1 sm:mx-0">
-                      {(() => {
-                        // Générer les 7 jours de la semaine
-                        const days = [];
-                        const start = new Date(getWeekDates.start);
-                        for (let i = 0; i < 7; i++) {
-                          const day = new Date(start);
-                          day.setDate(start.getDate() + i);
-                          days.push(day);
-                        }
-                        
-                        // Grouper les shifts par jour
-                        const shiftsByDay = teamShifts.reduce((acc, shift) => {
-                          const dateKey = toLocalDateString(shift.date);
-                          if (!acc[dateKey]) acc[dateKey] = [];
-                          acc[dateKey].push(shift);
-                          return acc;
-                        }, {});
-                        
-                        return days.map((day, idx) => {
-                          const dayStr = toLocalDateString(day);
-                          const dayShifts = shiftsByDay[dayStr] || [];
-                          const isToday = day.toDateString() === new Date().toDateString();
-                          const isPast = day < new Date(new Date().setHours(0,0,0,0));
-                          const hasShifts = dayShifts.length > 0;
-                          
-                          // Trier les shifts par heure
-                          const sortedShifts = dayShifts.sort((a, b) => 
-                            (a.segments?.[0]?.start || '').localeCompare(b.segments?.[0]?.start || '')
-                          );
-                          
-                          return (
-                            <div 
-                              key={idx}
-                              className={`flex-shrink-0 w-[100px] sm:w-auto snap-start rounded-xl sm:rounded-2xl overflow-hidden transition-all duration-200 ${
-                                isToday 
-                                  ? 'bg-white dark:bg-gray-800 ring-2 shadow-lg' 
-                                  : hasShifts
-                                    ? 'bg-white dark:bg-gray-800 ring-1 ring-gray-200 dark:ring-gray-700'
-                                    : 'bg-gray-50 dark:bg-gray-800/50 ring-1 ring-dashed ring-gray-200 dark:ring-gray-700'
-                              } ${isPast && !isToday ? 'opacity-50' : ''}`}
-                              style={isToday ? { '--tw-ring-color': brand } : {}}
-                            >
-                              {/* En-tête jour */}
-                              <div className={`text-center py-1 sm:py-1.5 ${
-                                isToday 
-                                  ? 'text-white' 
-                                  : 'bg-gray-50 dark:bg-gray-700/50'
-                              }`}
-                              style={isToday ? { backgroundColor: brand } : {}}
+                      <>
+                        {/* Mini calendrier semaine cliquable */}
+                        <div className="grid grid-cols-7 gap-1 mb-3">
+                          {weekDates.map((date, idx) => {
+                            const dateStr = toLocalDateString(date);
+                            const isToday = dateStr === todayStr;
+                            const isSelected = dateStr === selectedDateStr;
+                            const isPast = date < today && !isToday;
+                            const shift = myShifts.find(s => toLocalDateString(s.date) === dateStr);
+                            const hasShift = !!shift && !shift.estEnConge && shift.type !== 'absence';
+                            const isConge = shift?.estEnConge || shift?.type === 'absence';
+                            
+                            return (
+                              <button 
+                                key={idx}
+                                onClick={() => setSelectedWidgetDay(isToday ? null : dateStr)}
+                                className={`flex flex-col items-center py-1.5 rounded-lg transition-all cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                                  isSelected 
+                                    ? 'ring-2 ring-offset-1' 
+                                    : isPast ? 'opacity-50' : ''
+                                }`}
+                                style={isSelected ? { 
+                                  backgroundColor: `${brand}10`,
+                                  '--tw-ring-color': brand
+                                } : {}}
                               >
-                                {isToday && (
-                                  <div className="hidden sm:block text-[8px] uppercase font-bold tracking-wider text-white/80 mb-0.5">
-                                    Aujourd'hui
-                                  </div>
-                                )}
-                                <div className={`text-[9px] sm:text-[10px] uppercase font-bold tracking-wide ${
-                                  isToday ? 'text-white/90' : 'text-gray-400 dark:text-gray-500'
-                                }`}>
-                                  {day.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '').slice(0, 3)}
-                                </div>
-                                <div className={`text-base sm:text-lg font-bold ${
-                                  isToday ? 'text-white' : 'text-gray-800 dark:text-gray-200'
-                                }`}>
-                                  {day.getDate()}
-                                </div>
-                              </div>
-                              
-                              {/* Liste des collègues */}
-                              <div className="p-1 sm:p-1.5 min-h-[70px] sm:min-h-[80px] max-h-[120px] sm:max-h-[150px] overflow-y-auto">
-                                {hasShifts ? (
-                                  <div className="space-y-0.5 sm:space-y-1">
-                                    {sortedShifts.slice(0, 4).map((shift, shiftIdx) => {
-                                      const isEnConge = shift.estEnConge;
-                                      const isRemplacement = shift.isRemplacement || shift.motif?.toLowerCase()?.includes('remplacement de');
-                                      const initials = `${shift.employe?.prenom?.[0] || ''}${shift.employe?.nom?.[0] || ''}`;
-                                      const horairesComplets = getShiftHoraires(shift); // "09:00 - 17:00"
-                                      const heureDebut = horairesComplets.split(' - ')[0];
-                                      
-                                      return (
-                                        <div 
-                                          key={shiftIdx} 
-                                          className={`flex items-center gap-1 sm:gap-1.5 p-0.5 sm:p-1 rounded-md sm:rounded-lg ${
-                                            isEnConge 
-                                              ? 'bg-amber-50 dark:bg-amber-900/20' 
-                                              : isRemplacement
-                                                ? 'bg-purple-50 dark:bg-purple-900/20 ring-1 ring-purple-200'
-                                                : 'bg-gray-50 dark:bg-gray-700/50'
-                                          }`}
-                                        >
-                                          {/* Avatar initiales */}
-                                          <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg flex items-center justify-center text-[8px] sm:text-[9px] font-bold flex-shrink-0 ${
-                                            isEnConge 
-                                              ? 'bg-amber-200 dark:bg-amber-800 text-amber-700 dark:text-amber-300' 
-                                              : isRemplacement
-                                                ? 'bg-gradient-to-br from-purple-400 to-purple-500 text-white'
-                                                : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
-                                          }`}>
-                                            {isEnConge ? (
-                                              <UserX className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                            ) : isRemplacement ? (
-                                              <ArrowPathIcon className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                            ) : (
-                                              initials
-                                            )}
-                                          </div>
-                                          
-                                          {/* Infos */}
-                                          <div className="flex-1 min-w-0">
-                                            <div className={`text-[9px] sm:text-[10px] font-semibold truncate flex items-center gap-1 ${
-                                              isEnConge 
-                                                ? 'text-amber-600 dark:text-amber-400 line-through' 
-                                                : isRemplacement
-                                                  ? 'text-purple-700 dark:text-purple-300'
-                                                  : 'text-gray-800 dark:text-gray-200'
-                                            }`}>
-                                              {shift.employe?.prenom}
-                                              {isRemplacement && (
-                                                <span className="text-[7px] sm:text-[8px] px-1 py-0.5 bg-purple-500 text-white rounded font-bold">R</span>
-                                              )}
-                                            </div>
-                                            <div className={`text-[8px] sm:text-[9px] font-mono ${
-                                              isEnConge 
-                                                ? 'text-amber-500 dark:text-amber-400' 
-                                                : isRemplacement
-                                                  ? 'text-purple-500 dark:text-purple-400'
-                                                  : 'text-gray-500 dark:text-gray-400'
-                                            }`}>
-                                              {/* Mobile: heure début seulement, Desktop: horaires complets */}
-                                              <span className="sm:hidden">{isEnConge ? 'Abs' : heureDebut}</span>
-                                              <span className="hidden sm:inline">{isEnConge ? 'Absent' : horairesComplets}</span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                    {/* Indicateur s'il y a plus de collègues */}
-                                    {sortedShifts.length > 4 && (
-                                      <div className="text-[8px] sm:text-[9px] text-center text-gray-400 dark:text-gray-500 font-medium">
-                                        +{sortedShifts.length - 4}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center h-full py-3">
-                                    <div className="text-gray-300 dark:text-gray-600 text-lg">—</div>
-                                    <p className="text-[9px] text-gray-400 dark:text-gray-500">Aucun</p>
-                                  </div>
-                                )}
-                              </div>
+                                <span className={`text-[9px] font-medium ${
+                                  isSelected ? '' : 'text-gray-400 dark:text-gray-500'
+                                }`} style={isSelected ? { color: brand } : {}}>
+                                  {joursSemaine[idx]}
+                                </span>
+                                <span className={`text-xs font-bold ${
+                                  isSelected ? '' : 'text-gray-700 dark:text-gray-300'
+                                }`} style={isSelected ? { color: brand } : {}}>
+                                  {date.getDate()}
+                                </span>
+                                <div className="mt-0.5 h-1.5 w-1.5 rounded-full" style={{
+                                  backgroundColor: hasShift 
+                                    ? brand 
+                                    : isConge ? '#10b981' : 'transparent'
+                                }}></div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Stats inline */}
+                        <div className="flex items-center justify-between px-2 py-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg mb-3">
+                          <div className="flex items-center gap-4">
+                            <div className="text-center">
+                              <span className="text-sm font-bold text-gray-900 dark:text-white">{heuresTotal}h{minutesReste > 0 ? String(minutesReste).padStart(2,'0') : ''}</span>
+                              <p className="text-[9px] text-gray-500">cette sem.</p>
                             </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                    
-                    {/* Résumé */}
-                    <div className="mt-3 flex items-center justify-between text-[9px] sm:text-[10px] text-gray-500 dark:text-gray-400 px-1 sm:px-0">
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <span className="flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-gray-300 dark:bg-gray-600"></span> Présent
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-amber-400"></span> Absent
-                        </span>
-                      </div>
-                      <span className="font-medium">
-                        {(() => {
-                          const uniqueCollegues = [...new Set(teamShifts.map(s => s.employe?.id))].length;
-                          return `${uniqueCollegues} collègue${uniqueCollegues > 1 ? 's' : ''}`;
-                        })()}
-                      </span>
-                    </div>
-                  </div>
-                )
-              ) : null}
-              
-              {/* Vue Remplacements */}
-              {planningView === 'remplacements' && (
-                <div className="space-y-4">
-                  {loadingRemplacements ? (
-                    <div className="space-y-3">
-                      {[1,2,3].map(i => (
-                        <div key={i} className="h-16 bg-gray-100 dark:bg-gray-700 rounded-lg animate-pulse" />
-                      ))}
-                    </div>
-                  ) : (
-                    <>
-                      {/* Demandes disponibles pour candidater */}
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
-                          <Hand className="w-3.5 h-3.5" />
-                          Shifts à pourvoir ({remplacementsDisponibles.length})
-                        </h4>
-                        {remplacementsDisponibles.length === 0 ? (
-                          <div className="text-center py-6 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                            <UserPlus className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                            <p className="text-xs">Aucun remplacement disponible</p>
+                            <div className="w-px h-6 bg-gray-200 dark:bg-gray-600"></div>
+                            <div className="text-center">
+                              <span className="text-sm font-bold" style={{ color: brand }}>{joursTravailes}</span>
+                              <p className="text-[9px] text-gray-500">jours</p>
+                            </div>
                           </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {remplacementsDisponibles.slice(0, 5).map(demande => {
-                              const shiftDate = demande.shift?.date ? new Date(demande.shift.date) : null;
-                              const style = getTypeStyle(demande.shift?.type);
-                              const TypeIcon = style.icon;
+                          {/* Créneau du shift sélectionné (calculé dynamiquement) */}
+                          {shiftSelectionne && (() => {
+                            // Calculer le créneau depuis les segments
+                            const creneau = getCreneauFromSegments(shiftSelectionne.segments);
+                            if (!creneau) return null;
+                            
+                            const style = getCreneauStyle(creneau);
+                            const CreneauIcon = style.Icon;
+                            
+                            return (
+                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ backgroundColor: `${style.colorHex}15` }}>
+                                <CreneauIcon className="w-3.5 h-3.5" style={{ color: style.colorHex }} />
+                                <span className="text-xs font-semibold" style={{ color: style.colorHex }}>
+                                  {style.label}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Shift du jour sélectionné card */}
+                        {shiftSelectionne ? (
+                          <Link to="/planning" className="block">
+                            {(() => {
+                              const creneau = getCreneauFromSegments(shiftSelectionne.segments);
+                              const style = creneau ? getCreneauStyle(creneau) : { Icon: Briefcase, colorHex: brand, label: 'Travail' };
+                              const CreneauIcon = style.Icon;
                               
                               return (
-                                <div key={demande.id} className={`p-3 rounded-lg border ${demande.memeCategorie ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/20' : 'border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'}`}>
-                                  <div className="flex items-start gap-3">
-                                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${style.bg}`}>
-                                      <TypeIcon className={`w-4 h-4 ${style.text}`} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                          {shiftDate ? shiftDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Date ?'}
+                                <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                  {/* Icône créneau */}
+                                  <div 
+                                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                                    style={{ backgroundColor: `${style.colorHex}15` }}
+                                  >
+                                    <CreneauIcon className="w-5 h-5" style={{ color: style.colorHex }} />
+                                  </div>
+                                  
+                                  {/* Infos */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        {(() => {
+                                          const segments = shiftSelectionne.segments?.filter(s => s.type?.toLowerCase() !== 'pause') || [];
+                                          if (segments.length === 0) return '--:-- → --:--';
+                                          
+                                          // Détecter si coupure (gap >= 2h entre segments)
+                                          let hasCoupure = false;
+                                          for (let i = 0; i < segments.length - 1; i++) {
+                                            const currentEnd = segments[i].end || segments[i].fin;
+                                            const nextStart = segments[i + 1].start || segments[i + 1].debut;
+                                            if (currentEnd && nextStart) {
+                                              const [endH, endM] = currentEnd.split(':').map(Number);
+                                              const [startH, startM] = nextStart.split(':').map(Number);
+                                              if ((startH * 60 + startM) - (endH * 60 + endM) >= 120) {
+                                                hasCoupure = true;
+                                                break;
+                                              }
+                                            }
+                                          }
+                                          
+                                          if (hasCoupure && segments.length > 1) {
+                                            // Afficher premier créneau seulement
+                                            const first = segments[0];
+                                            return `${(first.start || first.debut)?.slice(0,5)} → ${(first.end || first.fin)?.slice(0,5)}`;
+                                          } else {
+                                            const heureDebut = segments[0]?.start || segments[0]?.debut;
+                                            const heureFin = segments[segments.length - 1]?.end || segments[segments.length - 1]?.fin;
+                                            return `${heureDebut?.slice(0,5) || '--:--'} → ${heureFin?.slice(0,5) || '--:--'}`;
+                                          }
+                                        })()}
+                                      </span>
+                                      {/* Afficher autres créneaux si coupure */}
+                                      {(() => {
+                                        const segments = shiftSelectionne.segments?.filter(s => s.type?.toLowerCase() !== 'pause') || [];
+                                        if (segments.length <= 1) return null;
+                                        
+                                        let hasCoupure = false;
+                                        for (let i = 0; i < segments.length - 1; i++) {
+                                          const currentEnd = segments[i].end || segments[i].fin;
+                                          const nextStart = segments[i + 1].start || segments[i + 1].debut;
+                                          if (currentEnd && nextStart) {
+                                            const [endH, endM] = currentEnd.split(':').map(Number);
+                                            const [startH, startM] = nextStart.split(':').map(Number);
+                                            if ((startH * 60 + startM) - (endH * 60 + endM) >= 120) {
+                                              hasCoupure = true;
+                                              break;
+                                            }
+                                          }
+                                        }
+                                        
+                                        if (!hasCoupure) return null;
+                                        
+                                        return segments.slice(1).map((seg, i) => (
+                                          <span key={i} className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+                                            + {(seg.start || seg.debut)?.slice(0,5)} → {(seg.end || seg.fin)?.slice(0,5)}
+                                          </span>
+                                        ));
+                                      })()}
+                                      {isSelectedToday && (
+                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold text-white" style={{ backgroundColor: brand }}>
+                                          AUJOURD'HUI
                                         </span>
-                                        {demande.priorite === 'urgente' && (
-                                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 font-medium">
-                                            Urgent
-                                          </span>
-                                        )}
-                                        {demande.memeCategorie && (
-                                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/50 text-green-600 dark:text-green-400 font-medium">
-                                            Même catégorie
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                        <span className="capitalize">{demande.shift?.type || 'Shift'}</span>
-                                        <span className="mx-1">•</span>
-                                        <span>{demande.employeAbsent?.prenom} {demande.employeAbsent?.nom?.[0]}.</span>
-                                      </div>
-                                      {demande.motif && (
-                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">« {demande.motif} »</p>
                                       )}
                                     </div>
-                                    <button
-                                      onClick={() => handleCandidater(demande.id, demande)}
-                                      disabled={candidatingId === demande.id}
-                                      className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-50"
-                                      style={{ backgroundColor: brand }}
-                                    >
-                                      {candidatingId === demande.id ? '...' : 'Candidater'}
-                                    </button>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                                      {style.label} · {new Date(shiftSelectionne.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })}
+                                    </p>
                                   </div>
+                                  
+                                  <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 </div>
                               );
-                            })}
+                            })()}
+                          </Link>
+                        ) : (
+                          <div className="text-center py-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl">
+                            <CalendarOff className="w-6 h-6 mx-auto text-gray-300 dark:text-gray-600 mb-1" />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {isSelectedToday ? "Pas de shift aujourd'hui" : `Pas de shift le ${selectedDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })}`}
+                            </p>
                           </div>
                         )}
+                      </>
+                    );
+                  })()}
+
+                  {/* Bandeau remplacements */}
+                  {remplacementsDisponibles.length > 0 && (
+                    <Link 
+                      to="/planning?tab=remplacements"
+                      id="remplacements-section"
+                      className={`mt-3 flex items-center justify-between p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800/30 transition-all hover:bg-purple-100 dark:hover:bg-purple-900/30 ${
+                        isRemplacementsHighlighted ? 'ring-2 ring-[#cf292c]' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                          <UserPlus className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <span className="text-xs font-medium text-purple-900 dark:text-purple-100">
+                          {remplacementsDisponibles.length} remplacement{remplacementsDisponibles.length > 1 ? 's' : ''} dispo
+                        </span>
                       </div>
-
-                      {/* Mes candidatures en cours */}
-                      {mesCandidatures.length > 0 && (
-                        <div className="mt-4">
-                          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
-                            <Check className="w-3.5 h-3.5" />
-                            Mes candidatures ({mesCandidatures.length})
-                          </h4>
-                          <div className="space-y-2">
-                            {mesCandidatures.map(candidature => {
-                              const demande = candidature.demandeRemplacement;
-                              const shiftDate = demande?.shift?.date ? new Date(demande.shift.date) : null;
-                              const style = getTypeStyle(demande?.shift?.type);
-                              const isAccepted = candidature.statut === 'acceptee';
-                              const isRefused = candidature.statut === 'refusee';
-                              
-                              // Handler pour voir les détails
-                              const handleViewDetails = () => {
-                                const shiftDetails = {
-                                  ...demande?.shift,
-                                  remplacementStatut: demande?.statut,
-                                  candidatureStatut: candidature.statut,
-                                  employeAbsent: demande?.employeAbsent,
-                                  isMyCandidate: true
-                                };
-                                setSelectedShiftDetails(shiftDetails);
-                                setShowShiftDetailsModal(true);
-                              };
-                              
-                              return (
-                                <div 
-                                  key={candidature.id} 
-                                  onClick={handleViewDetails}
-                                  className={`p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md active:scale-[0.99] ${
-                                    isAccepted
-                                      ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/20'
-                                      : isRefused
-                                        ? 'border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 opacity-60'
-                                        : 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                                      isAccepted
-                                        ? 'bg-emerald-100 dark:bg-emerald-900/40'
-                                        : isRefused
-                                          ? 'bg-gray-100 dark:bg-gray-700'
-                                          : style.bg
-                                    }`}>
-                                      {isAccepted ? (
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                      ) : isRefused ? (
-                                        <X className="w-5 h-5 text-gray-400" />
-                                      ) : (
-                                        <Clock className={`w-5 h-5 ${style.text}`} />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                          {shiftDate ? shiftDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Date ?'}
-                                        </span>
-                                      </div>
-                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                                        <span>Remplacement de</span>
-                                        <span className="font-medium text-gray-700 dark:text-gray-300">
-                                          {demande?.employeAbsent?.prenom || '?'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {isAccepted ? (
-                                        <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                          <CheckCircle2 className="w-3 h-3" /> Confirmé
-                                        </span>
-                                      ) : isRefused ? (
-                                        <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 font-semibold">
-                                          Refusé
-                                        </span>
-                                      ) : (
-                                        <>
-                                          <span className="text-[10px] px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
-                                            <span className="animate-pulse">●</span> En cours
-                                          </span>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); handleAnnulerCandidature(candidature.id); }}
-                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                            title="Retirer ma candidature"
-                                          >
-                                            <X className="w-4 h-4" />
-                                          </button>
-                                        </>
-                                      )}
-                                      <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Mes demandes de remplacement */}
-                      {mesDemandes.length > 0 && (
-                        <div className="mt-4">
-                          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            Mes demandes ({mesDemandes.length})
-                          </h4>
-                          <div className="space-y-2">
-                            {mesDemandes.map(demande => {
-                              const shiftDate = demande.shift?.date ? new Date(demande.shift.date) : null;
-                              const nbCandidats = demande.candidatures?.length || 0;
-                              const statut = demande.statut || 'en_attente';
-                              const isPending = statut === 'en_attente' || statut === 'pending';
-                              const isAccepted = statut === 'acceptee' || statut === 'accepted';
-                              const isValidated = statut === 'validee' || statut === 'validated';
-                              const isPourvu = isAccepted || isValidated || demande.employeRemplacant;
-                              
-                              // Handler pour ouvrir les détails
-                              const handleViewDetails = () => {
-                                // Construire un objet shift-like pour le modal
-                                const shiftDetails = {
-                                  ...demande.shift,
-                                  remplacementStatut: demande.statut,
-                                  remplacant: demande.employeRemplacant,
-                                  demandeId: demande.id,
-                                  nbCandidats: nbCandidats,
-                                  motifDemande: demande.motif,
-                                  priorite: demande.priorite
-                                };
-                                setSelectedShiftDetails(shiftDetails);
-                                setShowShiftDetailsModal(true);
-                              };
-                              
-                              return (
-                                <div 
-                                  key={demande.id} 
-                                  onClick={handleViewDetails}
-                                  className={`p-3 rounded-xl border cursor-pointer transition-all hover:shadow-md active:scale-[0.99] ${
-                                    isValidated
-                                      ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/20'
-                                      : isAccepted
-                                        ? 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20'
-                                        : 'border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                                      isValidated
-                                        ? 'bg-emerald-100 dark:bg-emerald-900/40'
-                                        : isAccepted 
-                                          ? 'bg-blue-100 dark:bg-blue-900/40'
-                                          : 'bg-amber-100 dark:bg-amber-900/40'
-                                    }`}>
-                                      {isValidated ? (
-                                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                      ) : isAccepted ? (
-                                        <UserCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                                      ) : (
-                                        <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                          {shiftDate ? shiftDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Date ?'}
-                                        </span>
-                                        {demande.priorite === 'urgente' && (
-                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold uppercase">Urgent</span>
-                                        )}
-                                      </div>
-                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                        {isPourvu && demande.employeRemplacant ? (
-                                          <span className="flex items-center gap-1">
-                                            <span>Remplacé par</span>
-                                            <span className="font-medium text-gray-700 dark:text-gray-300">
-                                              {demande.employeRemplacant.prenom} {demande.employeRemplacant.nom?.[0]}.
-                                            </span>
-                                          </span>
-                                        ) : (
-                                          <span>{nbCandidats} candidat{nbCandidats > 1 ? 's' : ''}</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {isValidated ? (
-                                        <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                                          <CheckCircle2 className="w-3 h-3" /> Confirmé
-                                        </span>
-                                      ) : isAccepted ? (
-                                        <span className="text-[10px] px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-semibold flex items-center gap-1">
-                                          <Clock className="w-3 h-3" /> À valider
-                                        </span>
-                                      ) : (
-                                        <>
-                                          <span className="text-[10px] px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
-                                            <Users className="w-3 h-3" /> Recherche
-                                          </span>
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); handleAnnulerDemande(demande.id); }}
-                                            disabled={annulationDemandeId === demande.id}
-                                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
-                                            title="Annuler la demande"
-                                          >
-                                            {annulationDemandeId === demande.id ? (
-                                              <ArrowPathIcon className="w-4 h-4 animate-spin" />
-                                            ) : (
-                                              <X className="w-4 h-4" />
-                                            )}
-                                          </button>
-                                        </>
-                                      )}
-                                      <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </>
+                      <ChevronRight className="w-4 h-4 text-purple-400" />
+                    </Link>
                   )}
-                </div>
+                </>
               )}
             </div>
           </div>
         </section>
+      </div>
 
-        {/* ═══════════════════════════════════════════════════════════════════════════
-            WIDGETS INFORMATIFS - Split Layout: Infos du jour / À venir
-        ═══════════════════════════════════════════════════════════════════════════ */}
-        
+      {/* ══════════════════════════════════════════════════════════════════════════
+          WIDGETS INFORMATIFS - Split Layout: Infos du jour / À venir
+       */}
+      <div className="px-3 sm:px-4 mt-4 sm:mt-6">
         <section className="mb-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             
@@ -1801,105 +1608,125 @@ function HomeEmploye() {
               </div>
             </div>
 
-            {/* Widget: À venir - Design sobre */}
+            {/* Widget: À venir - Design épuré */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              {/* Header sobre */}
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-purple-50 dark:bg-purple-900/30">
-                  <CalendarCheck className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              {/* Header */}
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-8 h-8 rounded-lg flex items-center justify-center" 
+                    style={{ backgroundColor: `${brand}10` }}
+                  >
+                    <CalendarCheck className="w-4 h-4" style={{ color: brand }} />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex-1">À venir</span>
+                  {evenementsAVenir.length > 0 && (
+                    <span 
+                      className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                      style={{ backgroundColor: `${brand}15`, color: brand }}
+                    >
+                      {evenementsAVenir.length}
+                    </span>
+                  )}
                 </div>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex-1">À venir</h3>
-                {evenementsAVenir.length > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-medium">
-                    {evenementsAVenir.length}
-                  </span>
-                )}
               </div>
+              
+              {/* Contenu */}
               <div className="p-3">
                 {loadingEvenements ? (
                   <div className="space-y-2">
-                    <div className="h-12 bg-gray-100 dark:bg-gray-700 rounded-lg animate-pulse" />
+                    {[1, 2].map(i => (
+                      <div key={i} className="flex items-center gap-3 animate-pulse">
+                        <div className="w-9 h-9 bg-gray-100 dark:bg-gray-700 rounded-lg" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-3 w-20 bg-gray-100 dark:bg-gray-700 rounded" />
+                          <div className="h-2.5 w-14 bg-gray-100 dark:bg-gray-700 rounded" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : evenementsAVenir.length === 0 ? (
-                  <div className="text-center py-6">
-                    <div className="w-12 h-12 mx-auto rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center mb-2">
-                      <CalendarCheck className="w-6 h-6 text-purple-400 opacity-40" />
+                  <div className="text-center py-5">
+                    <div 
+                      className="w-11 h-11 mx-auto rounded-lg flex items-center justify-center mb-2"
+                      style={{ backgroundColor: `${brand}08` }}
+                    >
+                      <CalendarCheck className="w-5 h-5" style={{ color: brand, opacity: 0.4 }} />
                     </div>
-                    <p className="text-sm text-gray-400 dark:text-gray-500">Rien de prévu</p>
+                    <p className="text-xs text-gray-400">Rien de prévu</p>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {evenementsAVenir.slice(0, 4).map((evt, idx) => {
-                      // Icône et couleur selon le type
-                      const getEventStyle = (type) => {
-                        switch(type) {
-                          case 'conge':
-                            return { icon: Plane, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800' };
-                          case 'remplacement':
-                            return { icon: UserCheck, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800' };
-                          case 'formation':
-                            return { icon: GraduationCap, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-800' };
-                          case 'visite_medicale':
-                            return { icon: Stethoscope, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/20', border: 'border-rose-200 dark:border-rose-800' };
-                          case 'shift_special':
-                            return { icon: CalendarDays, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800' };
-                          default:
-                            return { icon: Calendar, color: 'text-gray-600 dark:text-gray-400', bg: 'bg-gray-50 dark:bg-gray-700', border: 'border-gray-200 dark:border-gray-700' };
-                        }
-                      };
-                      const style = getEventStyle(evt.type);
-                      const EventIcon = style.icon;
-                      
-                      // Formatage date
-                      const evtDate = new Date(evt.date);
-                      const dateFormatted = evtDate.toLocaleDateString('fr-FR', { 
-                        weekday: 'short', 
-                        day: 'numeric', 
-                        month: 'short' 
-                      });
-                      
-                      return (
-                        <div 
-                          key={`${evt.type}-${evt.id || idx}`}
-                          className={`p-2.5 rounded-xl ${style.bg} border ${style.border} flex items-center gap-3`}
-                        >
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${style.bg}`}>
-                            <EventIcon className={`w-4 h-4 ${style.color}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-semibold ${style.color} truncate`}>
-                              {evt.label || evt.type}
-                            </p>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 capitalize">
-                              {dateFormatted}
-                              {evt.details && ` • ${evt.details}`}
-                            </p>
-                          </div>
-                          {evt.statut && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-                              evt.statut === 'approuve' || evt.statut === 'validee'
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                ) : (() => {
+                  const today = new Date();
+                  
+                  return (
+                    <div className="space-y-1">
+                      {evenementsAVenir.slice(0, 4).map((evt, idx) => {
+                        const getEventStyle = (type) => {
+                          switch(type) {
+                            case 'conge': return { icon: Plane, color: '#10b981', label: 'Congé' };
+                            case 'remplacement': return { icon: UserCheck, color: '#3b82f6', label: 'Remplacement' };
+                            case 'formation': return { icon: GraduationCap, color: '#8b5cf6', label: 'Formation' };
+                            case 'visite_medicale': return { icon: Stethoscope, color: '#f43f5e', label: 'Visite médicale' };
+                            case 'shift_special': return { icon: CalendarDays, color: '#f59e0b', label: 'Shift spécial' };
+                            default: return { icon: Calendar, color: '#6b7280', label: 'Événement' };
+                          }
+                        };
+                        const style = getEventStyle(evt.type);
+                        const EventIcon = style.icon;
+                        
+                        const evtDate = new Date(evt.date);
+                        const diffTime = evtDate.getTime() - today.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        const dateLabel = evtDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+                        
+                        return (
+                          <div 
+                            key={`${evt.type}-${evt.id || idx}`}
+                            className="flex items-center gap-3 p-2 rounded-lg"
+                          >
+                            {/* Icône */}
+                            <div 
+                              className="w-9 h-9 rounded-lg flex items-center justify-center"
+                              style={{ backgroundColor: `${style.color}12` }}
+                            >
+                              <EventIcon className="w-4 h-4" style={{ color: style.color }} />
+                            </div>
+                            
+                            {/* Contenu */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 leading-tight truncate">
+                                {evt.label || style.label}
+                              </p>
+                              <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight">
+                                {dateLabel}
+                              </p>
+                            </div>
+                            
+                            {/* Badge J-X */}
+                            <span className={`text-[10px] font-semibold ${
+                              diffDays <= 1 ? 'text-rose-500' : 
+                              diffDays <= 3 ? 'text-amber-500' : 
+                              'text-gray-400'
                             }`}>
-                              {evt.statut === 'approuve' || evt.statut === 'validee' ? '✓ Validé' : 'En attente'}
+                              J-{diffDays}
                             </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                    
-                    {/* Lien voir plus si plus de 4 événements */}
-                    {evenementsAVenir.length > 4 && (
+                          </div>
+                        );
+                      })}
+                      
+                      {/* Footer */}
                       <Link
                         to="/mes-conges"
-                        className="w-full py-2 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        className="flex items-center justify-center gap-1.5 w-full py-2 mt-1 rounded-lg text-xs font-medium"
+                        style={{ backgroundColor: `${brand}10`, color: brand }}
                       >
-                        Voir tout ({evenementsAVenir.length})
-                        <ChevronRight className="w-4 h-4" />
+                        <Calendar className="w-3.5 h-3.5" />
+                        Gérer
                       </Link>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             
@@ -1963,7 +1790,7 @@ function HomeEmploye() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Demande de remplacement</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {new Date(selectedShiftForDemande.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })} • {getShiftHoraires(selectedShiftForDemande)}
+                    {new Date(selectedShiftForDemande.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })} · {getShiftHoraires(selectedShiftForDemande)}
                   </p>
                 </div>
               </div>
@@ -2151,15 +1978,18 @@ function HomeEmploye() {
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Horaires</span>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full capitalize ${
-                      selectedShiftDetails.type === 'matin' 
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                        : selectedShiftDetails.type === 'soir'
-                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                          : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                    }`}>
-                      {selectedShiftDetails.type}
-                    </span>
+                    {(() => {
+                      const creneau = getCreneauFromSegments(selectedShiftDetails.segments);
+                      const style = creneau ? getCreneauStyle(creneau) : null;
+                      return style ? (
+                        <span 
+                          className="text-xs font-semibold px-2 py-1 rounded-full capitalize"
+                          style={{ backgroundColor: `${style.colorHex}20`, color: style.colorHex }}
+                        >
+                          {style.label}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="text-2xl font-bold text-gray-900 dark:text-white font-mono">
                     {getShiftHoraires(selectedShiftDetails)}
@@ -2201,7 +2031,7 @@ function HomeEmploye() {
                     </div>
                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
                       {selectedShiftDetails.candidatureStatut === 'acceptee'
-                        ? '✓ Votre candidature a été acceptée ! Vous devez effectuer ce shift.'
+                        ? ' Votre candidature a été acceptée ! Vous devez effectuer ce shift.'
                         : selectedShiftDetails.candidatureStatut === 'refusee'
                           ? 'Votre candidature n\'a pas été retenue.'
                           : 'Votre candidature est en attente de validation par le manager.'}
@@ -2395,7 +2225,601 @@ function HomeEmploye() {
         </div>
       )}
 
+      {/* Modal Score Détaillé */}
+      {showScoreModal && scoreData && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowScoreModal(false)}>
+          <div 
+            className="bg-white dark:bg-gray-800 w-full max-w-[360px] sm:max-w-md rounded-2xl shadow-2xl max-h-[85vh] overflow-hidden" 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header dynamique selon le niveau */}
+            {(() => {
+              const totalPoints = scoreData.score?.total_points || scoreData.score?.score_total || 0;
+              const niveau = getNiveau(totalPoints);
+              const isNegative = totalPoints < 0;
+              const headerStyles = {
+                'Diamant': 'from-cyan-500 via-blue-500 to-purple-600',
+                'Or': 'from-yellow-400 via-amber-500 to-orange-500',
+                'Argent': 'from-slate-400 via-gray-400 to-slate-500',
+                'Bronze': 'from-amber-500 via-orange-500 to-amber-600',
+                'Alerte': 'from-red-500 via-red-600 to-red-700'
+              };
+              const displayLabel = isNegative ? 'À surveiller' : niveau.label;
+              const headerStyle = isNegative ? headerStyles['Alerte'] : (headerStyles[niveau.label] || headerStyles['Bronze']);
+              
+              return (
+                <div className={`bg-gradient-to-r ${headerStyle} p-4 sm:p-5 text-white relative`}>
+                  <button 
+                    onClick={() => setShowScoreModal(false)}
+                    className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shadow-lg">
+                      {isNegative ? <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7" /> : niveau.label === 'Diamant' ? <Gem className="w-6 h-6 sm:w-7 sm:h-7" /> : <Medal className="w-6 h-6 sm:w-7 sm:h-7" />}
+                    </div>
+                    <div>
+                      <p className="text-white/80 text-[10px] sm:text-xs uppercase tracking-wider font-medium">Mon niveau</p>
+                      <h2 className="text-lg sm:text-xl font-bold">{displayLabel}</h2>
+                      <p className="text-xl sm:text-2xl font-black tabular-nums">
+                        {totalPoints} <span className="text-sm font-normal opacity-80">pts</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Contenu */}
+            <div className="p-3 sm:p-4 space-y-3 overflow-y-auto max-h-[calc(85vh-180px)]">
+              
+              {/* Progression vers prochain niveau */}
+              {(() => {
+                const totalPoints = scoreData.score?.total_points || scoreData.score?.score_total || 0;
+                const niveaux = [
+                  { min: 0, max: 100, label: 'Bronze', gradient: 'from-amber-500 to-orange-500', color: 'amber' },
+                  { min: 100, max: 300, label: 'Argent', gradient: 'from-slate-400 to-gray-500', color: 'gray' },
+                  { min: 300, max: 500, label: 'Or', gradient: 'from-yellow-400 to-amber-500', color: 'yellow' },
+                  { min: 500, max: Infinity, label: 'Diamant', gradient: 'from-cyan-400 to-blue-500', color: 'cyan' }
+                ];
+                
+                // Gestion des scores négatifs
+                const isNegative = totalPoints < 0;
+                const currentIdx = isNegative ? -1 : niveaux.findIndex(n => totalPoints >= n.min && totalPoints < n.max);
+                const safeIdx = currentIdx === -1 ? 0 : currentIdx; // Fallback to Bronze
+                const currentNiveau = niveaux[safeIdx];
+                const nextNiveau = isNegative ? niveaux[0] : niveaux[safeIdx + 1];
+                
+                // Calcul de progression
+                let progress = 0;
+                if (isNegative) {
+                  progress = 0;
+                } else if (currentNiveau.max === Infinity) {
+                  progress = 100;
+                } else {
+                  progress = Math.min(100, Math.max(0, ((totalPoints - currentNiveau.min) / (currentNiveau.max - currentNiveau.min)) * 100));
+                }
+                
+                // Affichage spécial pour score négatif
+                if (isNegative) {
+                  const pointsToZero = Math.abs(totalPoints);
+                  // Jauge inversée: plus on est négatif, moins la barre est remplie
+                  const negativeProgress = Math.max(0, Math.min(100, 100 - (pointsToZero / 100) * 100));
+                  
+                  return (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 sm:p-4">
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          À surveiller
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-red-500 font-medium">
+                          Score négatif
+                        </span>
+                      </div>
+                      
+                      {/* Jauge */}
+                      <div className="h-3 bg-red-100 dark:bg-red-900/50 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-700"
+                          style={{ width: `${negativeProgress}%` }}
+                        />
+                      </div>
+                      
+                      {/* Infos */}
+                      <div className="flex justify-between mt-2 text-[10px] sm:text-xs text-red-500">
+                        <span className="font-semibold">{totalPoints} pts</span>
+                        <span>Objectif: 0 pts</span>
+                      </div>
+                      
+                      {/* Message */}
+                      <p className="text-center text-[11px] sm:text-xs text-red-600 dark:text-red-400 mt-2">
+                        Gagnez <span className="font-bold">{pointsToZero}</span> pts pour revenir à 0
+                      </p>
+                    </div>
+                  );
+                }
+                
+                return (
+                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-3 sm:p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        Progression
+                      </span>
+                      {nextNiveau && (
+                        <span className="text-[10px] sm:text-xs text-gray-500">
+                          Prochain: <span className="font-semibold">{nextNiveau.label}</span>
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full bg-gradient-to-r ${currentNiveau.gradient} rounded-full transition-all duration-700`}
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    
+                    <div className="flex justify-between mt-2 text-[10px] sm:text-xs text-gray-500">
+                      <span>{currentNiveau.label} ({currentNiveau.min})</span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">{Math.round(progress)}%</span>
+                      <span>{currentNiveau.max === Infinity ? '∞' : currentNiveau.max} pts</span>
+                    </div>
+                    
+                    {nextNiveau ? (
+                      <p className="text-center text-[11px] sm:text-xs text-gray-500 mt-2">
+                        Plus que <span className="font-bold" style={{ color: brand }}>{Math.max(0, nextNiveau.min - totalPoints)}</span> pts pour <span className="font-semibold">{nextNiveau.label}</span>
+                      </p>
+                    ) : (
+                      <p className="text-center text-[11px] sm:text-xs text-cyan-600 dark:text-cyan-400 mt-2 flex items-center justify-center gap-1">
+                        <Gem className="w-3 h-3" />
+                        <span className="font-semibold">Niveau max atteint ! Tu es une légende</span>
+                        <Gem className="w-3 h-3" />
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Tous les niveaux - Affichage horizontal compact */}
+              <div className="flex gap-1.5 sm:gap-2">
+                {(() => {
+                  const totalPoints = scoreData.score?.total_points || scoreData.score?.score_total || 0;
+                  const niveaux = [
+                    { min: 0, label: 'Bronze', icon: Medal, gradient: 'from-amber-400 to-orange-500', bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-600' },
+                    { min: 100, label: 'Argent', icon: Medal, gradient: 'from-gray-300 to-slate-400', bg: 'bg-gray-100 dark:bg-gray-700', text: 'text-gray-500' },
+                    { min: 300, label: 'Or', icon: Medal, gradient: 'from-yellow-400 to-amber-500', bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-600' },
+                    { min: 500, label: 'Diamant', icon: Gem, gradient: 'from-cyan-400 to-blue-500', bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-600' }
+                  ];
+                  
+                  return niveaux.map((niv, idx) => {
+                    const isUnlocked = totalPoints >= niv.min;
+                    const Icon = niv.icon;
+                    return (
+                      <div 
+                        key={niv.label}
+                        className={`flex-1 p-2 sm:p-2.5 rounded-xl text-center transition-all ${
+                          isUnlocked 
+                            ? `${niv.bg} ring-1 ring-inset ring-black/5` 
+                            : 'bg-gray-100 dark:bg-gray-800 opacity-40'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 sm:w-9 sm:h-9 mx-auto rounded-lg flex items-center justify-center ${
+                          isUnlocked ? `bg-gradient-to-br ${niv.gradient}` : 'bg-gray-300 dark:bg-gray-600'
+                        }`}>
+                          {isUnlocked ? (
+                            <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                          ) : (
+                            <Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400" />
+                          )}
+                        </div>
+                        <p className={`text-[9px] sm:text-[10px] font-semibold mt-1.5 ${isUnlocked ? niv.text : 'text-gray-400'}`}>
+                          {niv.label}
+                        </p>
+                        <p className="text-[8px] sm:text-[9px] text-gray-400">{niv.min}+ pts</p>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Détail des points - Toutes les catégories */}
+              <div className="bg-gray-50 dark:bg-gray-900/30 rounded-xl p-3 space-y-1">
+                {[
+                  { key: 'pointage', icon: Clock, label: 'Ponctualité', value: scoreData.score?.pointage_points || 0, color: 'emerald' },
+                  { key: 'presence', icon: CalendarCheck, label: 'Assiduité', value: scoreData.score?.presence_points || 0, color: 'green' },
+                  { key: 'comportement', icon: Star, label: 'Comportement', value: scoreData.score?.comportement_points || 0, color: 'amber' },
+                  { key: 'remplacement', icon: Users, label: 'Entraide', value: scoreData.score?.remplacement_points || 0, color: 'blue' },
+                  { key: 'extra', icon: Zap, label: 'Extras', value: scoreData.score?.extra_points || 0, color: 'orange' },
+                  { key: 'conge', icon: Plane, label: 'Congés', value: scoreData.score?.conge_points || 0, color: 'cyan' },
+                  { key: 'anomalie', icon: AlertTriangle, label: 'Anomalies', value: scoreData.score?.anomalie_points || 0, color: 'red' },
+                  { key: 'feedback', icon: ThumbsUp, label: 'Feedbacks', value: scoreData.score?.feedback_points || 0, color: 'purple', hasGauge: true },
+                  { key: 'special', icon: Award, label: 'Bonus spéciaux', value: scoreData.score?.special_points || 0, color: 'pink' }
+                ].filter(item => item.value !== 0).map((item) => {
+                  const Icon = item.icon;
+                  const colorMap = {
+                    emerald: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', icon: 'text-emerald-500', valuePos: 'text-emerald-600 dark:text-emerald-400', valueNeg: 'text-red-500' },
+                    green: { bg: 'bg-green-50 dark:bg-green-900/20', icon: 'text-green-500', valuePos: 'text-green-600 dark:text-green-400', valueNeg: 'text-red-500' },
+                    amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', icon: 'text-amber-500', valuePos: 'text-amber-600 dark:text-amber-400', valueNeg: 'text-red-500' },
+                    blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', icon: 'text-blue-500', valuePos: 'text-blue-600 dark:text-blue-400', valueNeg: 'text-red-500' },
+                    orange: { bg: 'bg-orange-50 dark:bg-orange-900/20', icon: 'text-orange-500', valuePos: 'text-orange-600 dark:text-orange-400', valueNeg: 'text-red-500' },
+                    cyan: { bg: 'bg-cyan-50 dark:bg-cyan-900/20', icon: 'text-cyan-500', valuePos: 'text-cyan-600 dark:text-cyan-400', valueNeg: 'text-red-500' },
+                    red: { bg: 'bg-red-50 dark:bg-red-900/20', icon: 'text-red-500', valuePos: 'text-green-600 dark:text-green-400', valueNeg: 'text-red-500' },
+                    purple: { bg: 'bg-purple-50 dark:bg-purple-900/20', icon: 'text-purple-500', valuePos: 'text-purple-600 dark:text-purple-400', valueNeg: 'text-red-500' },
+                    pink: { bg: 'bg-pink-50 dark:bg-pink-900/20', icon: 'text-pink-500', valuePos: 'text-pink-600 dark:text-pink-400', valueNeg: 'text-red-500' }
+                  };
+                  const colors = colorMap[item.color];
+                  const isNegative = item.value < 0;
+                  return (
+                    <div key={item.key} className="flex items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                      <div className={`w-8 h-8 rounded-lg ${colors.bg} flex items-center justify-center`}>
+                        <Icon className={`w-4 h-4 ${colors.icon}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{item.label}</span>
+                          <span className={`text-sm font-semibold ${isNegative ? colors.valueNeg : colors.valuePos}`}>
+                            {isNegative ? '' : '+'}{item.value}
+                          </span>
+                        </div>
+                        {item.hasGauge && scoreData.plafondFeedback && (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex-1 h-1 bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-purple-500 rounded-full transition-all"
+                                style={{ width: `${Math.min(100, (scoreData.plafondFeedback.utilise / scoreData.plafondFeedback.plafond) * 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] text-gray-400">{scoreData.plafondFeedback.utilise}/{scoreData.plafondFeedback.plafond}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Feedbacks récents - Compact */}
+              {feedbacksRecus.filter(f => f.statut === 'approved' || f.status === 'approved').length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                  <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700">
+                    <h4 className="text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                      <MessageCircle className="w-3.5 h-3.5 text-pink-500" />
+                      Feedbacks reçus
+                    </h4>
+                  </div>
+                  <div className="p-2 sm:p-3 space-y-1.5">
+                    {feedbacksRecus
+                      .filter(f => f.statut === 'approved' || f.status === 'approved')
+                      .slice(0, 2)
+                      .map((feedback, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                          <div className="w-7 h-7 rounded-full bg-pink-50 dark:bg-pink-900/20 flex items-center justify-center flex-shrink-0">
+                            <User className="w-3.5 h-3.5 text-pink-500" />
+                          </div>
+                          <p className="flex-1 text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 truncate">
+                            "{feedback.message?.substring(0, 35)}..."
+                          </p>
+                          <span className="text-[10px] sm:text-xs font-bold text-emerald-500">+{feedback.points || 0}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer - Boutons sobres */}
+            <div className="p-3 sm:p-4 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex gap-2 sm:gap-3">
+              <Link 
+                to="/feedback"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 bg-[#cf292c] hover:bg-[#b82528] text-white text-xs sm:text-sm font-semibold rounded-xl transition-all active:scale-[0.98]"
+                onClick={() => setShowScoreModal(false)}
+              >
+                <ThumbsUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Feedback</span>
+              </Link>
+              <Link 
+                to="/mon-score"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 sm:py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all border-2 border-[#cf292c] text-[#cf292c] hover:bg-red-50 dark:hover:bg-red-900/20 active:scale-[0.98]"
+                onClick={() => setShowScoreModal(false)}
+              >
+                <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Historique</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Badges */}
+      {showBadgesModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowBadgesModal(false)}>
+          <div 
+            className="bg-white dark:bg-gray-800 w-full max-w-[360px] sm:max-w-md rounded-2xl shadow-2xl max-h-[85vh] overflow-hidden" 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header avec couleur brand */}
+            <div style={{ backgroundColor: brand }} className="p-4 sm:p-5 text-white relative">
+              <button 
+                onClick={() => setShowBadgesModal(false)}
+                className="absolute top-1/2 -translate-y-1/2 right-3 sm:right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shadow-lg">
+                  <Award className="w-6 h-6 sm:w-7 sm:h-7" />
+                </div>
+                <div>
+                  <p className="text-white/80 text-[10px] sm:text-xs uppercase tracking-wider font-medium">Récompenses</p>
+                  <h2 className="text-lg sm:text-xl font-bold">Mes badges</h2>
+                  <p className="text-xl sm:text-2xl font-black tabular-nums">
+                    {scoreData?.stats ? BADGES.filter(b => b.condition(scoreData.stats)).length : 0}
+                    <span className="text-sm font-normal opacity-80"> / {BADGES.length}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Contenu */}
+            <div className="p-3 sm:p-4 overflow-y-auto max-h-[calc(85vh-120px)]">
+              {scoreData?.stats ? (
+                <BadgesList stats={scoreData.stats} />
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Award className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Chargement des badges...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
+    </div>
+  );
+}
+
+// =====================================================
+// ANIMATION LEVEL UP - Style Jeu Vidéo
+// =====================================================
+
+function LevelUpAnimation({ oldNiveau, newNiveau, phase, onClose }) {
+  const [particles, setParticles] = useState([]);
+
+  // Générer les particules pour l'effet d'explosion
+  useEffect(() => {
+    if (phase === 2) {
+      const newParticles = [];
+      for (let i = 0; i < 50; i++) {
+        const angle = (i / 50) * Math.PI * 2;
+        const distance = 80 + Math.random() * 60;
+        newParticles.push({
+          id: i,
+          endX: Math.cos(angle) * distance,
+          endY: Math.sin(angle) * distance,
+          size: Math.random() * 8 + 4,
+          delay: Math.random() * 0.4,
+          duration: 1 + Math.random() * 0.5,
+          emoji: ['✨', '⭐', '💫', '🌟', '⚡', '✦'][Math.floor(Math.random() * 6)]
+        });
+      }
+      setParticles(newParticles);
+    }
+  }, [phase]);
+
+  if (!oldNiveau || !newNiveau) return null;
+
+  const OldIcon = oldNiveau.icon || Medal;
+  const NewIcon = newNiveau.icon || Medal;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.95) 100%)' }}
+    >
+      {/* Fond animé avec lueur */}
+      <div 
+        className={`absolute inset-0 transition-all duration-1000 ${phase >= 3 ? 'opacity-100' : 'opacity-0'}`}
+        style={{ 
+          background: phase >= 3 
+            ? `radial-gradient(circle at 50% 40%, ${newNiveau.label === 'Argent' ? 'rgba(148,163,184,0.3)' : newNiveau.label === 'Or' ? 'rgba(250,204,21,0.3)' : newNiveau.label === 'Diamant' ? 'rgba(34,211,238,0.3)' : 'rgba(251,146,60,0.3)'} 0%, transparent 60%)`
+            : 'transparent'
+        }}
+      />
+
+      {/* Container principal centré */}
+      <div className="relative flex flex-col items-center justify-center w-full h-full">
+        
+        {/* ═══════════════════════════════════════════════════════════
+            PHASE 1: ANCIEN RANG - Apparition élégante
+        ═══════════════════════════════════════════════════════════ */}
+        <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 ease-out ${
+          phase === 1 ? 'opacity-100 scale-100' : phase === 2 ? 'opacity-0 scale-75 -translate-y-20' : 'opacity-0 scale-0'
+        }`}>
+          {/* Aura */}
+          <div className={`absolute w-40 h-40 rounded-full bg-gradient-to-br ${oldNiveau.bgColor} blur-3xl opacity-30 animate-pulse`} />
+          
+          {/* Badge ancien rang */}
+          <div className={`relative w-32 h-32 rounded-full bg-gradient-to-br ${oldNiveau.bgColor} flex items-center justify-center shadow-2xl`}
+            style={{ 
+              boxShadow: `0 0 40px rgba(255,255,255,0.2), inset 0 -4px 20px rgba(0,0,0,0.3)`,
+              border: '3px solid rgba(255,255,255,0.3)'
+            }}
+          >
+            <OldIcon className="w-14 h-14 text-white drop-shadow-lg" />
+          </div>
+          
+          {/* Label */}
+          <p className="mt-5 text-xl font-bold text-white tracking-wide">{oldNiveau.label}</p>
+          <p className="mt-2 text-white/50 text-sm">Rang actuel</p>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════
+            PHASE 2: TRANSITION LEVEL UP - Explosion spectaculaire
+        ═══════════════════════════════════════════════════════════ */}
+        <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-500 ${
+          phase === 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
+        }`}>
+          {/* Particules explosives */}
+          {particles.map(p => (
+            <div
+              key={p.id}
+              className="absolute text-2xl pointer-events-none"
+              style={{
+                left: '50%',
+                top: '50%',
+                fontSize: `${p.size * 2.5}px`,
+                animation: phase === 2 ? `particle-fly ${p.duration}s ease-out ${p.delay}s forwards` : 'none',
+                '--end-x': `${p.endX}px`,
+                '--end-y': `${p.endY}px`,
+              }}
+            >
+              {p.emoji}
+            </div>
+          ))}
+
+          {/* Cercles d'énergie pulsants */}
+          <div className="absolute w-64 h-64 rounded-full border-2 border-yellow-400/60 animate-ping" style={{ animationDuration: '1s' }} />
+          <div className="absolute w-48 h-48 rounded-full border-2 border-amber-400/50 animate-ping" style={{ animationDuration: '1s', animationDelay: '0.2s' }} />
+          <div className="absolute w-32 h-32 rounded-full border-2 border-orange-400/40 animate-ping" style={{ animationDuration: '1s', animationDelay: '0.4s' }} />
+          
+          {/* Centre lumineux */}
+          <div className="absolute w-24 h-24 rounded-full bg-gradient-to-br from-white via-yellow-100 to-amber-200 blur-md animate-pulse" />
+          <div className="absolute w-16 h-16 rounded-full bg-white blur-sm animate-pulse" />
+          
+          {/* Texte LEVEL UP */}
+          <div className="relative flex flex-col items-center">
+            <span 
+              className="text-5xl font-black tracking-widest animate-bounce"
+              style={{ 
+                background: 'linear-gradient(135deg, #fef08a 0%, #fbbf24 50%, #f97316 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                filter: 'drop-shadow(0 0 20px rgba(251,191,36,0.8)) drop-shadow(0 0 40px rgba(251,191,36,0.4))'
+              }}
+            >
+              LEVEL UP!
+            </span>
+            <div className="flex items-center gap-2 mt-3">
+              <Sparkles className="w-6 h-6 text-yellow-300 animate-spin" style={{ animationDuration: '2s' }} />
+              <Star className="w-5 h-5 text-amber-300 animate-pulse" />
+              <Sparkles className="w-6 h-6 text-yellow-300 animate-spin" style={{ animationDuration: '2s', animationDirection: 'reverse' }} />
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════
+            PHASE 3-4: NOUVEAU RANG - Révélation premium
+        ═══════════════════════════════════════════════════════════ */}
+        <div className={`absolute inset-0 flex flex-col items-center justify-center transition-all duration-1000 ease-out ${
+          phase >= 3 ? 'opacity-100 scale-100' : 'opacity-0 scale-150'
+        } ${phase === 3 ? 'blur-sm' : 'blur-0'}`}>
+          
+          {/* Glow effect derrière le badge */}
+          <div className={`absolute w-52 h-52 rounded-full bg-gradient-to-br ${newNiveau.bgColor} blur-3xl opacity-50 animate-pulse`} />
+          
+          {/* Anneaux orbitaux */}
+          {phase >= 4 && (
+            <>
+              <div className="absolute w-52 h-52 rounded-full border border-white/10 animate-spin" style={{ animationDuration: '10s' }}>
+                <div className="absolute -top-1 left-1/2 w-2 h-2 rounded-full bg-white/40" />
+              </div>
+              <div className="absolute w-60 h-60 rounded-full border border-white/5 animate-spin" style={{ animationDuration: '15s', animationDirection: 'reverse' }}>
+                <div className="absolute -top-1 left-1/2 w-1.5 h-1.5 rounded-full bg-white/30" />
+              </div>
+            </>
+          )}
+          
+          {/* Badge principal */}
+          <div 
+            className={`relative w-36 h-36 rounded-full bg-gradient-to-br ${newNiveau.bgColor} flex items-center justify-center shadow-2xl ${phase >= 4 ? 'animate-float' : ''}`}
+            style={{ 
+              boxShadow: `0 0 60px rgba(255,255,255,0.3), 0 0 100px rgba(255,255,255,0.1), inset 0 -6px 30px rgba(0,0,0,0.3)`,
+              border: '4px solid rgba(255,255,255,0.4)'
+            }}
+          >
+            <NewIcon className="w-16 h-16 text-white drop-shadow-xl" />
+            
+            {/* Brillance sur le badge */}
+            <div className="absolute inset-0 rounded-full overflow-hidden">
+              <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-white/30 to-transparent rotate-45" />
+            </div>
+            
+            {/* Étoiles décoratives */}
+            {phase >= 4 && (
+              <>
+                <Sparkles className="absolute -top-4 -right-4 w-8 h-8 text-yellow-200 animate-pulse drop-shadow-lg" />
+                <Sparkles className="absolute -bottom-4 -left-4 w-7 h-7 text-white/70 animate-pulse drop-shadow-lg" style={{ animationDelay: '0.3s' }} />
+                <Star className="absolute top-0 -left-6 w-5 h-5 text-yellow-300/80 animate-pulse" style={{ animationDelay: '0.6s' }} />
+                <Star className="absolute bottom-0 -right-6 w-4 h-4 text-white/60 animate-pulse" style={{ animationDelay: '0.9s' }} />
+              </>
+            )}
+          </div>
+
+          {/* Labels */}
+          <div className="mt-8 text-center">
+            <p className="text-white/60 text-xs font-semibold tracking-[0.3em] uppercase mb-2">Nouveau Rang</p>
+            <h2 
+              className="text-4xl font-black text-white tracking-wider"
+              style={{ textShadow: '0 0 40px rgba(255,255,255,0.4)' }}
+            >
+              {newNiveau.label}
+            </h2>
+          </div>
+
+          {/* Message de félicitations */}
+          {phase >= 4 && (
+            <div 
+              className="mt-6 px-6 py-3 rounded-2xl flex items-center gap-3 animate-fade-in"
+              style={{ 
+                background: 'rgba(255,255,255,0.08)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.15)'
+              }}
+            >
+              <Trophy className="w-5 h-5 text-yellow-400" />
+              <p className="text-white/90 text-sm font-medium">
+                Félicitations ! Continuez comme ça !
+              </p>
+            </div>
+          )}
+
+          {/* Bouton Continuer */}
+          {phase >= 4 && (
+            <button
+              onClick={onClose}
+              className={`mt-8 px-12 py-4 bg-gradient-to-r ${newNiveau.btnColor} text-white font-bold rounded-2xl transition-all transform hover:scale-105 active:scale-95 animate-fade-in flex items-center gap-3`}
+              style={{ 
+                animationDelay: '0.2s',
+                boxShadow: '0 10px 40px rgba(0,0,0,0.4), 0 0 20px rgba(255,255,255,0.1)'
+              }}
+            >
+              <CheckCircle className="w-5 h-5" />
+              <span className="text-lg">Continuer</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* CSS pour l'animation des particules */}
+      <style>{`
+        @keyframes particle-fly {
+          0% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(calc(-50% + var(--end-x)), calc(-50% + var(--end-y))) scale(0);
+            opacity: 0;
+          }
+        }
+      `}</style>
     </div>
   );
 }

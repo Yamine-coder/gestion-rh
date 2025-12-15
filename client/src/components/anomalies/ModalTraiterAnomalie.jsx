@@ -1,12 +1,16 @@
 // client/src/components/anomalies/ModalTraiterAnomalie.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { X, AlertTriangle, CheckCircle, XCircle, MessageSquare, Banknote, Clock, TrendingDown, TrendingUp, AlertCircle, HelpCircle, Send, Eye, Users, Calendar, FileText } from 'lucide-react';
+import { X, AlertTriangle, CheckCircle, XCircle, MessageSquare, Banknote, Clock, TrendingDown, TrendingUp, AlertCircle, HelpCircle, Send, Eye, Users, Calendar, FileText, Zap } from 'lucide-react';
 import { useTraiterAnomalie } from '../../hooks/useAnomalies';
 import { anomaliesUtils } from '../../hooks/useAnomalies';
 import { toLocalDateString } from '../../utils/parisTimeUtils';
+import { useToast } from '../ui/Toast';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+// Couleur brand
+const BRAND_COLOR = '#cf292c';
 
 /**
  * Modale pour traiter une anomalie (valider, refuser, corriger)
@@ -44,6 +48,7 @@ export default function ModalTraiterAnomalie({
   });
 
   const { traiterAnomalie, loading, error } = useTraiterAnomalie();
+  const toast = useToast();
 
   // 🆕 Fonction pour récupérer le bilan journalier
   const fetchBilanJournalier = useCallback(async () => {
@@ -375,20 +380,32 @@ export default function ModalTraiterAnomalie({
     e.preventDefault();
     
     if (!action) {
-      alert('Veuillez sélectionner une action');
+      toast.alert({
+        type: 'warning',
+        title: 'Action requise',
+        message: 'Veuillez sélectionner une action à effectuer'
+      });
       return;
     }
 
     // Validation spécifique pour payer_extra
     if (action === 'payer_extra') {
       if (!heuresExtra || parseFloat(heuresExtra) <= 0) {
-        alert('Veuillez indiquer le nombre d\'heures à payer');
+        toast.alert({
+          type: 'warning',
+          title: 'Heures requises',
+          message: 'Veuillez indiquer le nombre d\'heures à payer'
+        });
         return;
       }
       
       // Vérifier si solde négatif - l'employé n'a pas fait d'extra net ce jour
       if (bilanJournalier && bilanJournalier.soldeNet < 0 && !confirmSoldeNegatif) {
-        alert('⚠️ Attention : Le solde journalier est négatif (plus de retards que d\'heures sup).\n\nCochez la case de confirmation si vous souhaitez quand même créer ce paiement.');
+        toast.alert({
+          type: 'warning',
+          title: 'Attention - Solde négatif',
+          message: 'Le solde journalier est négatif (plus de retards que d\'heures sup).\n\nCochez la case de confirmation si vous souhaitez quand même créer ce paiement.'
+        });
         return;
       }
     }
@@ -418,7 +435,11 @@ export default function ModalTraiterAnomalie({
       // Pour la correction, inclure les détails du shift
       if (action === 'corriger') {
         if (!shiftCorrection.raison.trim()) {
-          alert('Veuillez fournir une justification pour la correction');
+          toast.alert({
+            type: 'warning',
+            title: 'Justification requise',
+            message: 'Veuillez fournir une justification pour la correction'
+          });
           return;
         }
         options.shiftCorrection = {
@@ -438,7 +459,11 @@ export default function ModalTraiterAnomalie({
       if (action === 'convertir_extra') {
         const heures = heuresExtra || anomalie?.details?.heuresTravaillees || 0;
         if (!heures || parseFloat(heures) <= 0) {
-          alert('Veuillez indiquer le nombre d\'heures à convertir');
+          toast.alert({
+            type: 'warning',
+            title: 'Heures requises',
+            message: 'Veuillez indiquer le nombre d\'heures à convertir'
+          });
           return;
         }
         options.heuresExtra = parseFloat(heures);
@@ -462,68 +487,59 @@ export default function ModalTraiterAnomalie({
         'valider': 'validée',
         'refuser': 'refusée', 
         'corriger': 'corrigée',
-        'payer_extra': 'traitée - Paiement extra créé',
-        'reporter': 'reportée - En attente de vérification',
-        'convertir_extra': 'convertie en heures extra'
+        'payer_extra': 'traitée',
+        'reporter': 'reportée',
+        'convertir_extra': 'convertie'
       };
       const actionLabel = actionLabels[action] || action;
-      const emojis = { 'valider': '✅', 'refuser': '❌', 'corriger': '🔧', 'payer_extra': '💶', 'reporter': '⏳', 'convertir_extra': '🔄' };
-      const emoji = emojis[action] || '✓';
       
-      let message = `${emoji} Anomalie ${actionLabel} !\n\n`;
-      message += `Employé: ${anomalieMAJ.employe?.prenom} ${anomalieMAJ.employe?.nom}\n`;
-      message += `Nouveau statut: ${anomalieMAJ.statut}\n`;
+      // Messages spécifiques par action
+      let details = [];
+      details.push({ text: `Employé: ${anomalieMAJ.employe?.prenom} ${anomalieMAJ.employe?.nom}` });
+      details.push({ text: `Statut: ${anomalieMAJ.statut}` });
 
       // Message spécifique pour paiement extra
       if (action === 'payer_extra') {
-        message += `\n💰 Suivi de paiement créé : ${heuresExtra}h`;
-        message += `\n📋 Retrouvez ce paiement dans "Suivi Extras" pour le confirmer`;
+        details.push({ text: `Paiement créé : ${heuresExtra}h` });
+        details.push({ text: 'Retrouvez-le dans "Suivi Extras"' });
       }
 
       // Message spécifique pour report
       if (action === 'reporter') {
-        message += `\n📝 Note: "${questionEmploye || 'Vérification nécessaire'}"`;
+        details.push({ text: `Note: "${questionEmploye || 'Vérification nécessaire'}"` });
         if (notifierEmploye) {
-          message += `\n📧 Notification envoyée à l'employé`;
+          details.push({ text: 'Notification envoyée à l\'employé' });
         }
-        message += `\n\n⏰ Vous pourrez revenir sur cette anomalie plus tard`;
       }
 
-      // 🆕 Message spécifique pour conversion en extra
+      // Message spécifique pour conversion en extra
       if (action === 'convertir_extra') {
         const heures = heuresExtra || anomalie?.details?.heuresTravaillees || 0;
-        message += `\n🔄 Pointage hors planning converti en ${heures}h extra`;
-        message += `\n📅 Shift avec segment extra créé pour traçabilité`;
-        message += `\n💰 Paiement extra créé - retrouvez-le dans "Suivi Extras"`;
-        message += `\n\n⚠️ Ces heures n'apparaîtront pas dans les rapports officiels`;
+        details.push({ text: `Converti en ${heures}h extra` });
+        details.push({ text: 'Paiement créé dans "Suivi Extras"' });
       }
       
       // Ajouter les infos du workflow
       if (anomalieMAJ._impactScore !== undefined) {
-        message += `\nImpact score: ${anomalieMAJ._impactScore} points`;
-        if (action === 'refuser') {
-          message += ' (PÉNALITÉ DOUBLE)';
-        } else if (action === 'corriger') {
-          message += ' (AUCUNE PÉNALITÉ)';
-        }
+        let impactText = `Impact score: ${anomalieMAJ._impactScore} points`;
+        if (action === 'refuser') impactText += ' (pénalité double)';
+        else if (action === 'corriger') impactText += ' (aucune pénalité)';
+        details.push({ text: impactText });
       }
-      
-      if (anomalieMAJ._shiftModifie !== undefined) {
-        message += `\nShift modifié: ${anomalieMAJ._shiftModifie ? 'OUI ✓' : 'NON ✗'}`;
-      }
-      
-      if (anomalieMAJ._message) {
-        message += `\n\n${anomalieMAJ._message}`;
-      }
-      
-      alert(message);
+
+      toast.alert({
+        type: action === 'refuser' ? 'warning' : 'success',
+        title: `Anomalie ${actionLabel}`,
+        message: anomalieMAJ._message || `L'anomalie a été traitée avec succès`,
+        details
+      });
       
       onTraited?.(anomalieMAJ);
       onClose();
       
     } catch (error) {
       console.error('❌ Erreur traitement anomalie:', error);
-      alert(`❌ Erreur: ${error.message}`);
+      toast.error('Erreur', error.message);
       setShowConfirmation(false);
     }
   };
@@ -562,98 +578,100 @@ export default function ModalTraiterAnomalie({
   const canConvertToExtra = typesConvertiblesExtra.includes(anomalie?.type);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         
-        {/* En-tête */}
-        <div className="flex items-center justify-between p-6 border-b">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${graviteStyle.bg}`}>
-              <span className="text-lg">{graviteStyle.icon}</span>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Traiter l'anomalie
-              </h2>
-              <p className="text-sm text-gray-600">
-                {anomalie.employe?.prenom} {anomalie.employe?.nom} - {anomaliesUtils.formatDate(anomalie.date)}
-              </p>
+        {/* En-tête moderne */}
+        <div className="flex-shrink-0 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+          <div className="px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div 
+                  className="p-3 rounded-xl shadow-lg"
+                  style={{ backgroundColor: BRAND_COLOR }}
+                >
+                  <Zap className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Traiter l'anomalie
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    {anomalie.employe?.prenom} {anomalie.employe?.nom} • {anomaliesUtils.formatDate(anomalie.date)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-all"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <X className="h-6 w-6" />
-          </button>
         </div>
 
-        {/* Contenu */}
-        <div className="p-6">
+        {/* Contenu scrollable */}
+        <div className="flex-1 overflow-y-auto p-6">
           
-          {/* Détails de l'anomalie */}
-          <div className={`p-4 rounded-lg border mb-6 ${graviteStyle.bg} ${graviteStyle.border}`}>
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${statutStyle.bg} ${statutStyle.color}`}>
+          {/* Carte anomalie */}
+          <div className={`p-5 rounded-xl border-2 mb-6 ${graviteStyle.bg} ${graviteStyle.border}`}>
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${statutStyle.bg} ${statutStyle.color}`}>
+                  <span className="w-2 h-2 rounded-full bg-current opacity-60"></span>
                   {statutStyle.label}
                 </span>
-                <span className="ml-2 text-sm font-medium text-gray-700">
+                <span className="text-sm font-medium text-slate-700 bg-white/80 px-3 py-1.5 rounded-lg">
                   {typeLabel}
                 </span>
               </div>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-slate-500 bg-white/50 px-2 py-1 rounded">
                 {anomaliesUtils.formatTime(anomalie.createdAt)}
               </span>
             </div>
             
-            <p className="text-sm text-gray-700 mb-3">
+            <p className="text-sm text-slate-700 mb-4 leading-relaxed">
               {anomalie.description}
             </p>
 
-            {/* Détails spécifiques */}
+            {/* Détails en grille */}
             {anomalie.details && (
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {anomalie.details.ecartMinutes && (
-                  <div>
-                    <span className="text-gray-500">Écart:</span>
-                    <span className="ml-1 font-medium">
+                  <div className="bg-white/80 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500 mb-1">Écart</div>
+                    <div className={`text-lg font-bold ${anomalie.details.ecartMinutes > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {anomalie.details.ecartMinutes > 0 ? '+' : ''}{anomalie.details.ecartMinutes} min
-                    </span>
+                    </div>
                   </div>
                 )}
                 {anomalie.details.heurePrevu && (
-                  <div>
-                    <span className="text-gray-500">Prévu:</span>
-                    <span className="ml-1 font-medium">{anomalie.details.heurePrevu}</span>
+                  <div className="bg-white/80 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500 mb-1">Prévu</div>
+                    <div className="text-lg font-bold text-slate-700">{anomalie.details.heurePrevu}</div>
                   </div>
                 )}
                 {anomalie.details.heureReelle && (
-                  <div>
-                    <span className="text-gray-500">Réel:</span>
-                    <span className="ml-1 font-medium">{anomalie.details.heureReelle}</span>
+                  <div className="bg-white/80 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500 mb-1">Réel</div>
+                    <div className="text-lg font-bold text-slate-700">{anomalie.details.heureReelle}</div>
                   </div>
                 )}
                 {anomalie.heuresExtra && (
-                  <div>
-                    <span className="text-gray-500">Heures sup:</span>
-                    <span className="ml-1 font-medium">{Number(anomalie.heuresExtra).toFixed(2)}h</span>
-                  </div>
-                )}
-                {anomalie.montantExtra && (
-                  <div>
-                    <span className="text-gray-500">Montant:</span>
-                    <span className="ml-1 font-medium">{anomalie.montantExtra}€</span>
+                  <div className="bg-white/80 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500 mb-1">Heures sup</div>
+                    <div className="text-lg font-bold text-blue-600">{Number(anomalie.heuresExtra).toFixed(2)}h</div>
                   </div>
                 )}
               </div>
             )}
             
-            {/* 🆕 Bouton Voir le contexte */}
+            {/* Bouton Voir le contexte */}
             <button
               onClick={fetchContexteJour}
               disabled={loadingContexte}
-              className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+              className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-white hover:bg-slate-50 text-slate-700 rounded-xl border border-slate-200 transition-all"
             >
               <Eye className="w-4 h-4" />
               {loadingContexte ? 'Chargement...' : 'Voir le contexte du jour'}
@@ -753,38 +771,41 @@ export default function ModalTraiterAnomalie({
             </div>
           )}
           {isHeuresSup && (
-            <div className={`mb-6 p-4 rounded-lg border ${
-              loadingBilan ? 'bg-gray-50 border-gray-200' :
+            <div className={`mb-6 p-5 rounded-xl border-2 ${
+              loadingBilan ? 'bg-slate-50 border-slate-200' :
               bilanJournalier?.soldeNet >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
                   Bilan du {anomaliesUtils.formatDate(anomalie.date)}
                 </span>
                 {loadingBilan && (
-                  <span className="text-xs text-gray-500 animate-pulse">Calcul en cours...</span>
+                  <span className="text-xs text-slate-500 animate-pulse flex items-center gap-2">
+                    <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                    Calcul en cours...
+                  </span>
                 )}
               </div>
               
               {bilanJournalier && !loadingBilan && (
                 <>
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div className="text-center p-2 bg-white rounded-lg">
-                      <div className="text-xs text-gray-500">Prévu</div>
-                      <div className="text-lg font-bold text-gray-700">
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="text-center p-4 bg-white rounded-xl shadow-sm">
+                      <div className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Prévu</div>
+                      <div className="text-2xl font-bold text-slate-700">
                         {(bilanJournalier.minutesPrevues / 60 || 0).toFixed(1)}h
                       </div>
                     </div>
-                    <div className="text-center p-2 bg-white rounded-lg">
-                      <div className="text-xs text-gray-500">Travaillé</div>
-                      <div className="text-lg font-bold text-blue-600">
+                    <div className="text-center p-4 bg-white rounded-xl shadow-sm">
+                      <div className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Travaillé</div>
+                      <div className="text-2xl font-bold text-blue-600">
                         {(bilanJournalier.minutesTravaillees / 60 || 0).toFixed(1)}h
                       </div>
                     </div>
-                    <div className="text-center p-2 bg-white rounded-lg">
-                      <div className="text-xs text-gray-500">Solde</div>
-                      <div className={`text-lg font-bold ${
+                    <div className="text-center p-4 bg-white rounded-xl shadow-sm">
+                      <div className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Solde</div>
+                      <div className={`text-2xl font-bold ${
                         bilanJournalier.soldeNet >= 0 ? 'text-emerald-600' : 'text-red-600'
                       }`}>
                         {bilanJournalier.soldeNet >= 0 ? '+' : ''}{bilanJournalier.soldeNet?.toFixed(2) || 0}h
@@ -794,14 +815,14 @@ export default function ModalTraiterAnomalie({
                   
                   {/* Message selon le solde */}
                   {bilanJournalier.soldeNet >= 0 ? (
-                    <div className="flex items-center gap-2 text-emerald-700 text-sm">
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Solde positif - Paiement extra possible</span>
+                    <div className="flex items-center gap-3 p-3 bg-emerald-100/50 rounded-xl">
+                      <CheckCircle className="w-5 h-5 text-emerald-600" />
+                      <span className="text-sm text-emerald-700 font-medium">Solde positif — Paiement extra recommandé</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 text-red-700 text-sm">
-                      <XCircle className="w-4 h-4" />
-                      <span>Solde négatif - L'employé n'a pas fait d'extra net ce jour</span>
+                    <div className="flex items-center gap-3 p-3 bg-red-100/50 rounded-xl">
+                      <XCircle className="w-5 h-5 text-red-600" />
+                      <span className="text-sm text-red-700 font-medium">Solde négatif — Pas d'extra net ce jour</span>
                     </div>
                   )}
                 </>
@@ -812,65 +833,82 @@ export default function ModalTraiterAnomalie({
           {/* Formulaire de traitement */}
           <form onSubmit={handleSubmit}>
             
-            {/* Choix de l'action */}
+            {/* Choix de l'action - Design moderne */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
+              <label className="block text-sm font-semibold text-slate-700 mb-3">
                 Action à effectuer
                 {estDejaTraitee && (
-                  <span className="ml-2 text-amber-600 text-xs">
+                  <span className="ml-2 text-amber-600 text-xs font-normal">
                     Cette anomalie a déjà été traitée ({anomalie.statut})
                   </span>
                 )}
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  { value: 'valider', label: 'Valider', description: 'Accepter dans la fiche de paie', icon: CheckCircle },
-                  { value: 'refuser', label: 'Refuser', description: 'Heures non comptabilisées', icon: XCircle },
-                  { value: 'corriger', label: 'Corriger', description: 'Erreur administrative', icon: AlertTriangle },
-                  { value: 'reporter', label: 'Reporter', description: 'Besoin de vérification', icon: HelpCircle, highlight: 'amber' },
+                  { value: 'valider', label: 'Valider', description: 'Accepter dans la fiche de paie', icon: CheckCircle, color: 'emerald' },
+                  { value: 'refuser', label: 'Refuser', description: 'Heures non comptabilisées', icon: XCircle, color: 'red' },
+                  { value: 'corriger', label: 'Corriger', description: 'Erreur administrative', icon: AlertTriangle, color: 'orange' },
+                  { value: 'reporter', label: 'Reporter', description: 'Besoin de vérification', icon: HelpCircle, color: 'amber' },
                   ...(canPayExtra ? [{ 
                     value: 'payer_extra', 
-                    label: '💶 Payer en Extra', 
+                    label: 'Payer en Extra', 
                     description: 'Espèces hors fiche de paie',
-                    highlight: 'purple'
+                    icon: Banknote,
+                    color: 'purple'
                   }] : []),
                   ...(canConvertToExtra ? [{ 
                     value: 'convertir_extra', 
-                    label: '🔄 Convertir en Extra', 
+                    label: 'Convertir en Extra', 
                     description: 'Transformer en heures "au noir"',
-                    highlight: 'emerald'
+                    icon: TrendingUp,
+                    color: 'teal'
                   }] : [])
-                ].map((option) => (
-                  <label
-                    key={option.value}
-                    className={`${estDejaTraitee && action !== option.value ? 'opacity-50' : ''} cursor-pointer border-2 rounded-lg p-4 transition-all ${
-                      action === option.value
-                        ? getActionColor(option.value)
-                        : option.highlight === 'purple'
-                          ? 'border-purple-300 bg-purple-50 hover:border-purple-400'
-                          : option.highlight === 'amber'
-                            ? 'border-amber-300 bg-amber-50 hover:border-amber-400'
-                            : option.highlight === 'emerald'
-                              ? 'border-emerald-300 bg-emerald-50 hover:border-emerald-400'
-                              : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="action"
-                      value={option.value}
-                      checked={action === option.value}
-                      onChange={(e) => setAction(e.target.value)}
-                      disabled={estDejaTraitee && action !== option.value}
-                      className="sr-only"
-                    />
-                    <div className="flex items-center gap-2 mb-1">
-                      {getActionIcon(option.value)}
-                      <span className="font-medium">{option.label}</span>
-                    </div>
-                    <p className="text-xs text-gray-600">{option.description}</p>
-                  </label>
-                ))}
+                ].map((option) => {
+                  const Icon = option.icon;
+                  const isSelected = action === option.value;
+                  const colorClasses = {
+                    emerald: isSelected ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50',
+                    red: isSelected ? 'border-red-500 bg-red-50 ring-2 ring-red-500/20' : 'border-slate-200 hover:border-red-300 hover:bg-red-50/50',
+                    orange: isSelected ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/20' : 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/50',
+                    amber: isSelected ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-500/20' : 'border-slate-200 hover:border-amber-300 hover:bg-amber-50/50',
+                    purple: isSelected ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-500/20' : 'border-purple-200 bg-purple-50/30 hover:border-purple-300 hover:bg-purple-50',
+                    teal: isSelected ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-500/20' : 'border-teal-200 bg-teal-50/30 hover:border-teal-300 hover:bg-teal-50'
+                  };
+                  const iconColors = {
+                    emerald: 'text-emerald-600',
+                    red: 'text-red-600',
+                    orange: 'text-orange-600',
+                    amber: 'text-amber-600',
+                    purple: 'text-purple-600',
+                    teal: 'text-teal-600'
+                  };
+                  
+                  return (
+                    <label
+                      key={option.value}
+                      className={`${estDejaTraitee && action !== option.value ? 'opacity-50' : ''} cursor-pointer border-2 rounded-xl p-4 transition-all ${colorClasses[option.color]}`}
+                    >
+                      <input
+                        type="radio"
+                        name="action"
+                        value={option.value}
+                        checked={action === option.value}
+                        onChange={(e) => setAction(e.target.value)}
+                        disabled={estDejaTraitee && action !== option.value}
+                        className="sr-only"
+                      />
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-white shadow-sm' : 'bg-white/50'}`}>
+                          <Icon className={`w-5 h-5 ${iconColors[option.color]}`} />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-800">{option.label}</div>
+                          <p className="text-xs text-slate-500">{option.description}</p>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
@@ -1212,21 +1250,21 @@ export default function ModalTraiterAnomalie({
 
             {/* Commentaire */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
                 Commentaire {action && (
-                  <span className="text-gray-500 font-normal">
+                  <span className="text-slate-400 font-normal">
                     ({action === 'refuser' ? 'Obligatoire' : 'Optionnel'})
                   </span>
                 )}
               </label>
               <div className="relative">
-                <MessageSquare className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <MessageSquare className="absolute left-4 top-4 h-4 w-4 text-slate-400" />
                 <textarea
                   value={commentaire}
                   onChange={(e) => setCommentaire(e.target.value)}
                   rows={3}
                   required={action === 'refuser'}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-400 transition-all resize-none"
                   placeholder={
                     action === 'valider' ? 'Motif de validation...' :
                     action === 'refuser' ? 'Motif de refus...' :
@@ -1239,43 +1277,51 @@ export default function ModalTraiterAnomalie({
 
             {/* Erreur */}
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                <p className="text-sm text-red-600">Erreur: {error}</p>
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">Erreur</p>
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
               </div>
             )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                disabled={!action || loading}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-md focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  action === 'valider' ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500' :
-                  action === 'refuser' ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500' :
-                  action === 'corriger' ? 'bg-orange-600 hover:bg-orange-700 focus:ring-orange-500' :
-                  'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
-                }`}
-              >
-                {loading ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Traitement...
-                  </div>
-                ) : (
-                  estDejaTraitee ? 
-                  `Modifier (${action === 'valider' ? 'Valider' : action === 'refuser' ? 'Refuser' : 'Corriger'})` :
-                  `${action === 'valider' ? 'Valider' : action === 'refuser' ? 'Refuser' : action === 'corriger' ? 'Corriger' : 'Traiter'}`
-                )}
-              </button>
-            </div>
           </form>
+        </div>
+
+        {/* Footer fixe avec actions */}
+        <div className="flex-shrink-0 px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-all"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!action || loading}
+            className={`px-6 py-2.5 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl active:scale-95 flex items-center gap-2 ${
+              action === 'valider' ? 'bg-emerald-600 hover:bg-emerald-700' :
+              action === 'refuser' ? 'bg-red-600 hover:bg-red-700' :
+              action === 'corriger' ? 'bg-orange-600 hover:bg-orange-700' :
+              action === 'reporter' ? 'bg-amber-600 hover:bg-amber-700' :
+              action === 'payer_extra' ? 'bg-purple-600 hover:bg-purple-700' :
+              action === 'convertir_extra' ? 'bg-teal-600 hover:bg-teal-700' :
+              'bg-slate-600 hover:bg-slate-700'
+            }`}
+            style={!action ? {} : { boxShadow: '0 4px 14px 0 rgba(0, 0, 0, 0.2)' }}
+          >
+            {loading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Traitement...
+              </>
+            ) : (
+              estDejaTraitee ? 
+              `Modifier → ${action === 'valider' ? 'Valider' : action === 'refuser' ? 'Refuser' : action === 'corriger' ? 'Corriger' : action}` :
+              `${action === 'valider' ? '✓ Valider' : action === 'refuser' ? '✗ Refuser' : action === 'corriger' ? '🔧 Corriger' : action === 'reporter' ? '⏳ Reporter' : action === 'payer_extra' ? '💶 Créer paiement' : action === 'convertir_extra' ? '🔄 Convertir' : 'Traiter'}`
+            )}
+          </button>
         </div>
       </div>
 

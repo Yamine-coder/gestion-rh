@@ -28,6 +28,7 @@ export default function GestionAnomalies() {
     fetchAnomalies 
   } = useAnomalies({
     ...filtres,
+    limit: 200,
     autoRefresh: true,
     refreshInterval: 30000
   });

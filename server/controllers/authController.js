@@ -119,6 +119,7 @@ const login = async (req, res) => {
 
     res.status(200).json({ 
       token, 
+      userId: user.id,
       role: user.role,
       firstLogin: !user.firstLoginDone // Indique si c'est la première connexion
     });
