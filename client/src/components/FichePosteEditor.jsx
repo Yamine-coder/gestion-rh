@@ -24,6 +24,9 @@ import {
   RotateCcw
 } from 'lucide-react';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const FichePosteEditor = ({ userRole = 'admin' }) => {
   const [fiches, setFiches] = useState([]);
   const [selectedCategorie, setSelectedCategorie] = useState(null);
@@ -43,7 +46,7 @@ const FichePosteEditor = ({ userRole = 'admin' }) => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:5000/api/fiches-poste', {
+      const response = await axios.get(`${API_BASE}/api/fiches-poste`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setFiches(response.data);
@@ -58,7 +61,7 @@ const FichePosteEditor = ({ userRole = 'admin' }) => {
   const handleSelectFiche = async (categorie) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:5000/api/fiches-poste/${encodeURIComponent(categorie)}`, {
+      const response = await axios.get(`${API_BASE}/api/fiches-poste/${encodeURIComponent(categorie)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSelectedCategorie(categorie);
@@ -76,7 +79,7 @@ const FichePosteEditor = ({ userRole = 'admin' }) => {
       setSaving(true);
       const token = localStorage.getItem('token');
       
-      await axios.post('http://localhost:5000/api/fiches-poste', editingFiche, {
+      await axios.post(`${API_BASE}/api/fiches-poste`, editingFiche, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -100,7 +103,7 @@ const FichePosteEditor = ({ userRole = 'admin' }) => {
     
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:5000/api/fiches-poste/${encodeURIComponent(selectedCategorie)}`, {
+      await axios.delete(`${API_BASE}/api/fiches-poste/${encodeURIComponent(selectedCategorie)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -123,7 +126,7 @@ const FichePosteEditor = ({ userRole = 'admin' }) => {
       });
       
       const response = await axios.get(
-        `http://localhost:5000/api/fiches-poste/generer/${encodeURIComponent(categorie)}?${params}`,
+        `${API_BASE}/api/fiches-poste/generer/${encodeURIComponent(categorie)}?${params}`,
         {
           headers: { Authorization: `Bearer ${token}` },
           responseType: 'blob'
@@ -157,7 +160,7 @@ const FichePosteEditor = ({ userRole = 'admin' }) => {
       });
       
       const response = await axios.get(
-        `http://localhost:5000/api/fiches-poste/preview/${encodeURIComponent(categorie)}?${params}`,
+        `${API_BASE}/api/fiches-poste/preview/${encodeURIComponent(categorie)}?${params}`,
         {
           headers: { Authorization: `Bearer ${token}` },
           responseType: 'blob'

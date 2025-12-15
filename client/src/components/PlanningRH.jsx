@@ -269,7 +269,7 @@ const CONGE_ICONS = {
 };
 
 // Configuration API centralisée
-const API_URL = 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Fonction utilitaire pour construire les URLs d'API
 const buildApiUrl = (endpoint) => `${API_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;

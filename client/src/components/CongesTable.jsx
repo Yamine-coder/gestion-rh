@@ -7,6 +7,9 @@
   import ConflictAnalysisModal from "./ConflictAnalysisModal";
   import "../styles/menu-animations.css"; // Pour l'animation highlight
 
+  // URL de l'API (utilise la variable d'environnement en production)
+  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
   function CongesTable({ onViewCongés, onCongeUpdate, highlightCongeId, onHighlightComplete }) {
     const [conges, setConges] = useState([]);
     const [employes, setEmployes] = useState([]);
@@ -29,10 +32,10 @@
       try {
         // Récupérer les congés ET les employés en parallèle
         const [congesRes, employesRes] = await Promise.all([
-          axios.get("http://localhost:5000/admin/conges", {
+          axios.get(`${API_BASE}/admin/conges", {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get("http://localhost:5000/admin/employes", {
+          axios.get(`${API_BASE}/admin/employes", {
             headers: { Authorization: `Bearer ${token}` },
           })
         ]);
@@ -42,7 +45,7 @@
         
         // Marquer automatiquement toutes les demandes en attente comme vues
         await axios.post(
-          "http://localhost:5000/admin/conges/vu", 
+          `${API_BASE}/admin/conges/vu", 
           {}, // Corps vide pour marquer toutes les demandes en attente
           { headers: { Authorization: `Bearer ${token}` }}
         );
@@ -93,7 +96,7 @@
     const updateStatut = async (id, statut) => {
       try {
         await axios.put(
-          `http://localhost:5000/conges/${id}`,
+          `${API_BASE}/conges/${id}`,
           { statut },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -584,7 +587,7 @@
                         {c.justificatif ? (
                           <button
                             onClick={() => setPreviewJustificatif({
-                              url: `http://localhost:5000${c.justificatif}`,
+                              url: `${API_BASE}${c.justificatif}`,
                               type: c.justificatif.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
                               employeName: c.user?.prenom && c.user?.nom ? `${c.user.prenom} ${c.user.nom}` : c.user?.email,
                               congeType: c.type,
@@ -816,7 +819,7 @@
                         {c.justificatif && (
                           <button
                             onClick={() => setPreviewJustificatif({
-                              url: `http://localhost:5000${c.justificatif}`,
+                              url: `${API_BASE}${c.justificatif}`,
                               type: c.justificatif.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
                               employeName: c.user?.prenom && c.user?.nom ? `${c.user.prenom} ${c.user.nom}` : c.user?.email,
                               congeType: c.type,

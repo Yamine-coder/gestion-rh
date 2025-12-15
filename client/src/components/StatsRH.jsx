@@ -49,6 +49,9 @@ import axios from "axios";
 import NavigationRestoreNotification from "./NavigationRestoreNotification";
 import { saveNavigation, restoreNavigation, getSessionDuration } from "../utils/navigationUtils";
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 // Composant pour les cartes statistiques avec badge d'alerte
 const StatCard = ({ icon, label, value, color = "text-[#cf292c]", bgColor = "bg-gray-50", alert, trend }) => (
   <div className="group relative bg-white rounded-lg border border-gray-200 p-5 hover:border-gray-300 transition-all duration-200">
@@ -179,7 +182,7 @@ const StatsRH = ({ embedded = false }) => {
           throw new Error("Token d'authentification manquant");
         }
 
-        const response = await axios.get(`http://localhost:5000/admin/stats?periode=${periode}`, {
+        const response = await axios.get(`${API_BASE}/admin/stats?periode=${periode}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         

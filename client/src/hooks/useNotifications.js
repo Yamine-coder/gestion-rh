@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { getToken } from '../utils/tokenManager';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export const useNotifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -13,7 +16,7 @@ export const useNotifications = () => {
       const token = getToken();
       if (!token) return;
 
-      const response = await axios.get('http://localhost:5000/api/notifications', {
+      const response = await axios.get(`${API_BASE}/api/notifications`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setNotifications(response.data);
@@ -28,7 +31,7 @@ export const useNotifications = () => {
       const token = getToken();
       if (!token) return;
 
-      const response = await axios.get('http://localhost:5000/api/notifications/non-lues', {
+      const response = await axios.get(`${API_BASE}/api/notifications/non-lues`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // Ne mettre à jour que si le nombre a changé (évite les re-renders inutiles)
@@ -47,7 +50,7 @@ export const useNotifications = () => {
       if (!token) return;
 
       await axios.put(
-        `http://localhost:5000/api/notifications/${notificationId}/marquer-lue`,
+        `${API_BASE}/api/notifications/${notificationId}/marquer-lue`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -67,7 +70,7 @@ export const useNotifications = () => {
       if (!token) return;
 
       await axios.put(
-        'http://localhost:5000/api/notifications/marquer-toutes-lues',
+        `${API_BASE}/api/notifications/marquer-toutes-lues`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -88,7 +91,7 @@ export const useNotifications = () => {
       if (!token) return;
 
       await axios.delete(
-        `http://localhost:5000/api/notifications/${notificationId}`,
+        `${API_BASE}/api/notifications/${notificationId}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -107,7 +110,7 @@ export const useNotifications = () => {
     // Fonction inline pour éviter les dépendances
     const loadNotifications = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/notifications', {
+        const response = await axios.get(`${API_BASE}/api/notifications`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setNotifications(response.data);
@@ -118,7 +121,7 @@ export const useNotifications = () => {
 
     const loadUnreadCount = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/notifications/non-lues', {
+        const response = await axios.get(`${API_BASE}/api/notifications/non-lues`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setUnreadCount(prevCount => {

@@ -7,6 +7,9 @@ import { CATEGORIES_EMPLOYES, CATEGORIES_ADMIN } from '../utils/categoriesConfig
 import { getCurrentDateString } from '../utils/parisTimeUtils';
 import { Mail, Send, CheckCircle, AlertTriangle, Printer, ArrowLeft, Clock, User, Lock, FileText, Shield } from 'lucide-react';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 // Fonction de formatage automatique du téléphone
 const formatTelephone = (value) => {
   // Supprimer tout sauf les chiffres
@@ -131,7 +134,7 @@ function FormulaireCreationEmploye({ onEmployeCreated, onClose, isEmbedded = fal
       
       // Appel à l'API pour envoyer l'email avec les identifiants
       const response = await axios.post(
-        "http://localhost:5000/admin/employes/envoyer-identifiants", 
+        `${API_BASE}/admin/employes/envoyer-identifiants`, 
         {
           employeId: nouvelEmploye.id,
           email: nouvelEmploye.email,
@@ -234,7 +237,7 @@ function FormulaireCreationEmploye({ onEmployeCreated, onClose, isEmbedded = fal
     setLoading(true);
 
     try {
-      const response = await axios.post("http://localhost:5000/admin/employes", {
+      const response = await axios.post(`${API_BASE}/admin/employes`, {
         email,
         nom,
         prenom,

@@ -3,6 +3,9 @@ import React, { useState } from 'react';
 import { Check, X, Edit, AlertTriangle, FileText } from 'lucide-react';
 import { useToast } from '../Toast';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
   const { showToast, ToastContainer } = useToast();
   const [action, setAction] = useState(null);
@@ -34,7 +37,7 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/anomalies/${anomalie.id}/traiter`, {
+      const response = await fetch(`${API_BASE}/api/anomalies/${anomalie.id}/traiter`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

@@ -3,6 +3,9 @@ import './ComparaisonPlanningRealite.css';
 import { getCurrentDateString } from '../utils/parisTimeUtils';
 import { User, Calendar, ClipboardList } from 'lucide-react';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const ComparaisonPlanningRealite = () => {
   const [comparaisons, setComparaisons] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -31,7 +34,7 @@ const ComparaisonPlanningRealite = () => {
         dateFin: filtres.dateFin
       });
 
-      const response = await fetch(`http://localhost:5000/api/comparison/planning-vs-realite?${params}`, {
+      const response = await fetch(`${API_BASE}/api/comparison/planning-vs-realite?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

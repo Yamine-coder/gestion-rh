@@ -4,7 +4,7 @@ import { Check, X } from 'lucide-react';
 import { useToast } from '../ui/Toast';
 
 // Configuration API centralisée
-const API_URL = 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 /**
  * SYSTÈME D'ANOMALIES SIMPLIFIÉ - VALIDATION RAPIDE UNIQUEMENT

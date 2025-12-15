@@ -4,6 +4,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Lock, Eye, EyeOff, CheckCircle } from "lucide-react";
 import logo from "../assets/onboarding/logo.png";
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function ResetPasswordPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -69,7 +72,7 @@ function ResetPasswordPage() {
     setIsLoading(true);
 
     try {
-      await axios.post("http://localhost:5000/auth/reset-password", {
+      await axios.post(`${API_BASE}/auth/reset-password`, {
         token,
         nouveauMotDePasse
       });

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export const useCongesNotification = () => {
   const [demandesEnAttente, setDemandesEnAttente] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -11,7 +14,7 @@ export const useCongesNotification = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
       
-      const response = await axios.get('http://localhost:5000/admin/conges?statut=en+attente', {
+      const response = await axios.get(`${API_BASE}/admin/conges?statut=en+attente`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       

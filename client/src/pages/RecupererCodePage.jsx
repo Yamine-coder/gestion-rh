@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { Mail, ArrowLeft } from "lucide-react";
 import logo from "../assets/logo.jpg";
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function RecupererCodePage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -18,7 +21,7 @@ function RecupererCodePage() {
     setIsLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:5000/auth/recuperer-code", {
+      const res = await axios.post(`${API_BASE}/auth/recuperer-code`, {
         email
       });
 

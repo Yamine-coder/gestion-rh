@@ -21,6 +21,9 @@ import {
 } from 'lucide-react';
 import FichePosteEditor from './FichePosteEditor';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const Parametres = () => {
   const [activeTab, setActiveTab] = useState('profil');
   const [loading, setLoading] = useState(false);
@@ -61,7 +64,7 @@ const Parametres = () => {
         setLoading(true);
         const token = localStorage.getItem('token');
         
-        const profileRes = await axios.get('http://localhost:5000/auth/profile', {
+        const profileRes = await axios.get(`${API_BASE}/auth/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -140,7 +143,7 @@ const Parametres = () => {
 
       console.log('📤 Envoi mise à jour profil:', updateData);
 
-      const response = await axios.put('http://localhost:5000/auth/profile', updateData, {
+      const response = await axios.put(`${API_BASE}/auth/profile`, updateData, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -198,7 +201,7 @@ const Parametres = () => {
     try {
       setSecurityData(prev => ({ ...prev, isRequestingRecovery: true }));
 
-      const response = await axios.post("http://localhost:5000/auth/forgot-password", { email });
+      const response = await axios.post(`${API_BASE}/auth/forgot-password`, { email });
       
       if (response.data.success) {
         toast.success(`Lien de récupération envoyé à ${email}`);

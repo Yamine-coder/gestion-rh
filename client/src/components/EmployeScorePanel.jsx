@@ -5,7 +5,7 @@ import { CheckCircle, XCircle, Wrench, AlertTriangle, Calendar } from 'lucide-re
 import axios from 'axios';
 import { toLocalDateString } from '../utils/parisTimeUtils';
 
-const API_URL = 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const EmployeScorePanel = ({ employeId, employeName, onClose }) => {
   const [anomaliesData, setAnomaliesData] = useState(null);

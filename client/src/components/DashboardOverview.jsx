@@ -637,14 +637,14 @@ function DashboardOverview({ onGoToConges }) {
       // Try common endpoint patterns
       let res;
       try { 
-        res = await axios.get(`http://localhost:5000/admin/shifts?start=${date}&end=${date}`, { 
+        res = await axios.get(`${API_BASE}/admin/shifts?start=${date}&end=${date}`, { 
           headers:{Authorization:`Bearer ${token}`}
         }); 
         console.log('✅ [DASHBOARD] API /admin/shifts réponse:', res.data?.length || 0, 'shifts');
       }
       catch { 
         try { 
-          res = await axios.get(`http://localhost:5000/admin/planning/jour?date=${date}`, { 
+          res = await axios.get(`${API_BASE}/admin/planning/jour?date=${date}`, { 
             headers:{Authorization:`Bearer ${token}`}
           }); 
           console.log('✅ [DASHBOARD] API /admin/planning/jour réponse:', res.data?.length || 0, 'plannings');
@@ -673,7 +673,7 @@ function DashboardOverview({ onGoToConges }) {
       console.log('🔍 [DASHBOARD] Appel API comparaisons pour date:', date);
       
       // Récupérer la liste des employés
-      const employesRes = await axios.get('http://localhost:5000/admin/employes', {
+      const employesRes = await axios.get(`${API_BASE}/admin/employes`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const employes = Array.isArray(employesRes.data) ? employesRes.data : [];
@@ -692,7 +692,7 @@ function DashboardOverview({ onGoToConges }) {
           });
           
           const compRes = await axios.get(
-            `http://localhost:5000/api/comparison/planning-vs-realite?${params}`,
+            `${API_BASE}/api/comparison/planning-vs-realite?${params}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
           
@@ -722,7 +722,7 @@ function DashboardOverview({ onGoToConges }) {
     try { 
       setLoading(true); 
       console.log('🔍 [DASHBOARD] Appel API /admin/stats...');
-      const res = await axios.get('http://localhost:5000/admin/stats',{ headers:{Authorization:`Bearer ${token}`}}); 
+      const res = await axios.get(`${API_BASE}/admin/stats`,{ headers:{Authorization:`Bearer ${token}`}}); 
       console.log('✅ [DASHBOARD] API /admin/stats réponse:', res.data);
       setStats(res.data||{}); 
       setLastUpdated(Date.now()); 
@@ -740,13 +740,13 @@ function DashboardOverview({ onGoToConges }) {
     if(!token) return;
     try {
       console.log('🔍 [DASHBOARD] Appel API /admin/employes...');
-      const empRes = await axios.get('http://localhost:5000/admin/employes', {
+      const empRes = await axios.get(`${API_BASE}/admin/employes`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       // Récupérer les pointages d'aujourd'hui avec les détails
       const today = getCurrentDateString();
-      const pointagesRes = await axios.get(`http://localhost:5000/admin/pointages?date=${today}`, {
+      const pointagesRes = await axios.get(`${API_BASE}/admin/pointages?date=${today}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -798,7 +798,7 @@ function DashboardOverview({ onGoToConges }) {
       console.log('🔍 [DASHBOARD] Appel API /admin/conges...');
       
       // Récupérer les demandes en attente
-      const resEnAttente = await axios.get('http://localhost:5000/admin/conges?statut=en%20attente',{ headers:{Authorization:`Bearer ${token}`}}); 
+      const resEnAttente = await axios.get(`${API_BASE}/admin/conges?statut=en%20attente`,{ headers:{Authorization:`Bearer ${token}`}}); 
       let list=[]; 
       if(Array.isArray(resEnAttente.data)) list=resEnAttente.data; 
       else if(Array.isArray(resEnAttente.data?.conges)) list=resEnAttente.data.conges; 
@@ -807,7 +807,7 @@ function DashboardOverview({ onGoToConges }) {
       setPendingConges(list.length);
       
       // Récupérer les congés approuvés à venir dans la semaine
-      const resApprouves = await axios.get('http://localhost:5000/admin/conges?statut=approuvé',{ headers:{Authorization:`Bearer ${token}`}}); 
+      const resApprouves = await axios.get(`${API_BASE}/admin/conges?statut=approuvé`,{ headers:{Authorization:`Bearer ${token}`}}); 
       let approuves=[]; 
       if(Array.isArray(resApprouves.data)) approuves=resApprouves.data; 
       else if(Array.isArray(resApprouves.data?.conges)) approuves=resApprouves.data.conges;

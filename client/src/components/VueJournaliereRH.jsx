@@ -6,6 +6,9 @@ import { saveAs } from "file-saver";
 import NavigationRestoreNotification from "./NavigationRestoreNotification";
 import { saveNavigation, restoreNavigation, getSessionDuration } from "../utils/navigationUtils";
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function VueJournaliereRH() {
   // Helper pour obtenir la date locale au format YYYY-MM-DD
   const getLocalDateString = (d = new Date()) => {
@@ -114,7 +117,7 @@ function VueJournaliereRH() {
   const fetchPointages = useCallback(async () => {
     try {
       const res = await axios.get(
-        `http://localhost:5000/pointage/admin/pointages/jour/${date}`,
+        `${API_BASE}/pointage/admin/pointages/jour/${date}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

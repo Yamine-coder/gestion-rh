@@ -9,6 +9,9 @@ import {
   TrashIcon 
 } from '@heroicons/react/24/outline';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const UploadDocument = ({ 
   documentType, // 'domicile', 'rib', 'navigo'
   currentFile, // Chemin du fichier actuel (ou null)
@@ -88,7 +91,7 @@ const UploadDocument = ({
       }
 
       const token = localStorage.getItem('token');
-      const response = await axios.post('http://localhost:5000/api/documents/upload', formData, {
+      const response = await axios.post(`${API_BASE}/api/documents/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${token}`
@@ -117,7 +120,7 @@ const UploadDocument = ({
 
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:5000/api/documents/delete/${documentType}`, {
+      await axios.delete(`${API_BASE}/api/documents/delete/${documentType}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -172,7 +175,7 @@ const UploadDocument = ({
                   <p className="text-sm text-emerald-700 truncate">{currentFile.split('/').pop()}</p>
                   <div className="flex gap-2 mt-2">
                     <a
-                      href={`http://localhost:5000${currentFile}`}
+                      href={`${API_BASE}${currentFile}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs font-medium text-emerald-600 hover:text-emerald-800 underline"

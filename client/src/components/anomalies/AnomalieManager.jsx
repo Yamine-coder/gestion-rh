@@ -3,7 +3,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { Check, X, AlertTriangle, Loader } from 'lucide-react';
 
 // Configuration API
-const API_URL = 'http://localhost:5000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 /**
  * SYSTÈME D'ANOMALIES UNIFIÉ - VERSION PARFAITE

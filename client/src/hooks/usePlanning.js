@@ -5,6 +5,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { detectConflicts } from '../utils/congeConflicts';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export function usePlanningWithConges() {
   const [showCongesInPlanning, setShowCongesInPlanning] = useState(false);
   const [conges, setConges] = useState([]);
@@ -20,10 +23,10 @@ export function usePlanningWithConges() {
     setLoading(true);
     try {
       const [congesRes, employesRes] = await Promise.all([
-        axios.get("http://localhost:5000/admin/conges", {
+        axios.get(`${API_BASE}/admin/conges`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        axios.get("http://localhost:5000/admin/employes", {
+        axios.get(`${API_BASE}/admin/employes`, {
           headers: { Authorization: `Bearer ${token}` },
         })
       ]);

@@ -3,6 +3,9 @@ import { Calendar, Send, AlertTriangle, FileText, Info, X, Heart, GraduationCap,
 import DatePickerCustom from './DatePickerCustom';
 import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 // Types nécessitant un justificatif obligatoire
 const TYPES_JUSTIFICATIF_OBLIGATOIRE = ['maladie', 'maternite', 'paternite', 'deces'];
 // Types où le justificatif est optionnel mais recommandé
@@ -580,7 +583,7 @@ function DemandeCongeForm({
                       justificatifPreview.match(/\.(jpg|jpeg|png|webp)$/i) ? (
                         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-emerald-200 dark:border-emerald-700">
                           <img 
-                            src={`http://localhost:5000${justificatifPreview}`}
+                            src={`${API_BASE}${justificatifPreview}`}
                             alt="Justificatif" 
                             className="w-full h-full object-cover"
                           />

@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 import {
   Calendar as CalendarIcon,
   Users,
@@ -53,7 +57,7 @@ export default function TopNavAdmin({
         const token = localStorage.getItem('token');
         if (!token) return;
         
-        const response = await axios.get('http://localhost:5000/auth/profile', {
+        const response = await axios.get(`${API_BASE}/auth/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         

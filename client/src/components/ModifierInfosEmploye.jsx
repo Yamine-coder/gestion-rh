@@ -18,6 +18,9 @@ import {
   InformationCircleIcon
 } from '@heroicons/react/24/outline';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
   const [config, setConfig] = useState({ direct: [], validation: [], verrouille: [] });
   const [editingField, setEditingField] = useState(null);
@@ -58,7 +61,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
 
   const loadConfig = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/modifications/config/champs-modifiables', {
+      const res = await axios.get(`${API_BASE}/api/modifications/config/champs-modifiables', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setConfig(res.data);
@@ -69,7 +72,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
 
   const loadMesDemandes = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/modifications/mes-demandes', {
+      const res = await axios.get(`${API_BASE}/api/modifications/mes-demandes', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMesDemandes(res.data);
@@ -141,7 +144,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
     setLoading(true);
     try {
       await axios.put(
-        'http://localhost:5000/api/modifications/modification-directe',
+        `${API_BASE}/api/modifications/modification-directe',
         { champ, nouvelle_valeur: newValue },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -180,7 +183,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
     setLoading(true);
     try {
       await axios.post(
-        'http://localhost:5000/api/modifications/demande-modification',
+        `${API_BASE}/api/modifications/demande-modification',
         { champ, nouvelle_valeur: newValue, motif },
         { headers: { Authorization: `Bearer ${token}` } }
       );

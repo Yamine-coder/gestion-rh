@@ -2,6 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, AlertTriangle, CheckCircle, XCircle, MessageSquare, Upload, TrendingUp } from 'lucide-react';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 /**
  * WORKFLOW AVANCÉ DE GESTION DES ANOMALIES
  * Inspiré de Workday, BambooHR, SAP SuccessFactors
@@ -50,7 +53,7 @@ export function useEmployeScore(employeId) {
 
   const loadScore = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/anomalies/score/${employeId}`, {
+      const response = await fetch(`${API_BASE}/api/anomalies/score/${employeId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       
@@ -93,7 +96,7 @@ export function usePatternDetection(employeId) {
 
   const detectPatterns = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/anomalies/patterns/${employeId}`, {
+      const response = await fetch(`${API_BASE}/api/anomalies/patterns/${employeId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       
@@ -227,7 +230,7 @@ export function AnomalieWorkflowCard({ anomalie, onComplete }) {
 
   const handleAutoValidation = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/anomalies/${anomalie.id}/traiter`, {
+      const response = await fetch(`${API_BASE}/api/anomalies/${anomalie.id}/traiter`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -253,7 +256,7 @@ export function AnomalieWorkflowCard({ anomalie, onComplete }) {
   const handleDemanderJustification = () => {
     setEtape('justification');
     // Envoyer notification à l'employé
-    fetch(`http://localhost:5000/api/anomalies/${anomalie.id}/demander-justification`, {
+    fetch(`${API_BASE}/api/anomalies/${anomalie.id}/demander-justification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

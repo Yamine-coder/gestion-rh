@@ -6,6 +6,9 @@ import {
   BarChart3, PieChart, Activity
 } from 'lucide-react';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 /**
  * DASHBOARD ANALYTICS POUR LES ANOMALIES
  * Inspiré de Workday Analytics et SAP SuccessFactors
@@ -35,7 +38,7 @@ export default function AnomaliesDashboard({ periode = 'mois', departement = 'al
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `http://localhost:5000/api/anomalies/analytics?periode=${periode}&dept=${departement}`,
+        `${API_BASE}/api/anomalies/analytics?periode=${periode}&dept=${departement}`,
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
       

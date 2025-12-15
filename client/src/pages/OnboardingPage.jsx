@@ -4,6 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { Lock, Eye, EyeOff, Lightbulb, CheckCircle } from "lucide-react";
 import logo from "../assets/onboarding/logo.png";
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function OnboardingPage() {
   const navigate = useNavigate();
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState("");
@@ -31,7 +34,7 @@ function OnboardingPage() {
 
     try {
       const token = localStorage.getItem("token");
-      await axios.post("http://localhost:5000/auth/complete-onboarding", {
+      await axios.post(`${API_BASE}/auth/complete-onboarding`, {
         nouveauMotDePasse
       }, {
         headers: { Authorization: `Bearer ${token}` }

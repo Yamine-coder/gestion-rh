@@ -3,6 +3,9 @@ import React, { useState } from 'react';
 import { useSyncAnomalies } from '../hooks/useAnomalies';
 import { TEST_SCENARIOS, TEST_BY_GRAVITE, TEST_MESSAGES, TEST_GUIDE } from '../utils/testAnomaliesData';
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 /**
  * Composant de test pour le système de gestion des anomalies
  * À utiliser temporairement pour vérifier que tout fonctionne
@@ -34,7 +37,7 @@ export default function TestAnomalies() {
         return;
       }
 
-      const response = await fetch('http://localhost:5000/api/anomalies', {
+      const response = await fetch(`${API_BASE}/api/anomalies`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -139,7 +142,7 @@ export default function TestAnomalies() {
   const testBackendServer = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/health', {
+      const response = await fetch(`${API_BASE}/health`, {
         method: 'GET'
       }).catch(() => null);
 

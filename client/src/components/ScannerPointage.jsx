@@ -3,13 +3,16 @@ import { useState } from "react";
 import QrReader from "react-qr-reader";
 import axios from "axios";
 
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 export default function ScannerPointage() {
   const [message, setMessage] = useState("");
 
   const handleScan = async (data) => {
     if (data) {
       try {
-        const res = await axios.post("http://localhost:5000/pointage/qr", {
+        const res = await axios.post(`${API_BASE}/pointage/qr`, {
           contenu: data,
         });
         setMessage(res.data.message);
