@@ -1,69 +1,39 @@
-const { Resend } = require('resend');
+const SibApiV3Sdk = require('sib-api-v3-sdk');
 
-// Configuration Resend (API HTTP - pas de SMTP bloqué)
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Configuration Brevo (Sendinblue) - API HTTP sans restriction de domaine
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
 
-// Fallback: Gmail via nodemailer si pas de clé Resend
-const nodemailer = require('nodemailer');
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 
 // Petite aide: délai asynchrone
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// Fonction d'envoi universelle - Resend (prioritaire) ou Gmail (fallback)
+// Fonction d'envoi universelle via Brevo
 async function sendEmail({ to, subject, html, from }) {
   const restaurantName = 'Chez Antoine';
-  const fromEmail = from || process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  const fromEmail = from || process.env.EMAIL_FROM || 'moussaouiyamine1@gmail.com';
   
-  // Priorité 1: Resend (API HTTP - fonctionne partout)
-  if (process.env.RESEND_API_KEY) {
-    console.log('📧 Envoi via Resend...');
-    try {
-      const { data, error } = await resend.emails.send({
-        from: `${restaurantName} <${fromEmail}>`,
-        to: [to],
-        subject: subject,
-        html: html
-      });
-      
-      if (error) {
-        console.error('❌ Erreur Resend:', error);
-        throw new Error(error.message);
-      }
-      
-      console.log('✅ Email envoyé via Resend:', data?.id);
-      return { success: true, provider: 'resend', id: data?.id };
-    } catch (err) {
-      console.error('❌ Erreur Resend:', err.message);
-      throw err;
-    }
+  if (!process.env.BREVO_API_KEY) {
+    throw new Error('BREVO_API_KEY non configurée');
   }
   
-  // Priorité 2: Gmail via nodemailer (fallback)
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
-    console.log('📧 Envoi via Gmail...');
-    try {
-      await transporter.sendMail({
-        from: `"${restaurantName}" <${process.env.EMAIL_USER}>`,
-        to: to,
-        subject: subject,
-        html: html
-      });
-      console.log('✅ Email envoyé via Gmail');
-      return { success: true, provider: 'gmail' };
-    } catch (err) {
-      console.error('❌ Erreur Gmail:', err.message);
-      throw err;
-    }
+  console.log('📧 Envoi via Brevo...');
+  try {
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = html;
+    sendSmtpEmail.sender = { name: restaurantName, email: fromEmail };
+    sendSmtpEmail.to = [{ email: to }];
+    
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log('✅ Email envoyé via Brevo:', data.messageId);
+    return { success: true, provider: 'brevo', id: data.messageId };
+  } catch (err) {
+    console.error('❌ Erreur Brevo:', err.message || err);
+    throw err;
   }
-  
-  throw new Error('Aucun service email configuré (RESEND_API_KEY ou EMAIL_USER/EMAIL_PASSWORD)');
 }
 
 // Template email professionnel pour nouvel employé
