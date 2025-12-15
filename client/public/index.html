@@ -159,19 +159,13 @@
             .then(function(registration) {
               console.log('✅ Service Worker enregistré:', registration.scope);
               
-              // Vérifier les mises à jour
-              registration.addEventListener('updatefound', function() {
-                var newWorker = registration.installing;
-                newWorker.addEventListener('statechange', function() {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // Nouvelle version disponible
-                    console.log('🔄 Nouvelle version disponible!');
-                    if (confirm('Une nouvelle version est disponible. Recharger?')) {
-                      newWorker.postMessage({ type: 'SKIP_WAITING' });
-                      window.location.reload();
-                    }
-                  }
-                });
+              // Recharger automatiquement quand un nouveau SW prend le contrôle
+              var refreshing = false;
+              navigator.serviceWorker.addEventListener('controllerchange', function() {
+                if (refreshing) return;
+                refreshing = true;
+                console.log('🔄 Nouveau Service Worker actif, rechargement...');
+                window.location.reload();
               });
             })
             .catch(function(error) {
