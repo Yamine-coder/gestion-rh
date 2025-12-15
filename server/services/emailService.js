@@ -1,38 +1,69 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// Configuration du transporteur email - Gmail
+// Configuration Resend (API HTTP - pas de SMTP bloqué)
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+// Fallback: Gmail via nodemailer si pas de clé Resend
+const nodemailer = require('nodemailer');
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
-  },
-  // Debug temporaire pour diagnostiquer l'auth
-  logger: true,
-  debug: true
+  }
 });
 
 // Petite aide: délai asynchrone
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// Envoi avec retry automatique si Brevo renvoie un rate limit d'auth (403)
-async function sendWithRetry(mailOptions, { retries = 2, waitMs = 65000 } = {}) {
-  let lastError;
-  for (let attempt = 0; attempt <= retries; attempt++) {
+// Fonction d'envoi universelle - Resend (prioritaire) ou Gmail (fallback)
+async function sendEmail({ to, subject, html, from }) {
+  const restaurantName = 'Chez Antoine';
+  const fromEmail = from || process.env.EMAIL_FROM || 'onboarding@resend.dev';
+  
+  // Priorité 1: Resend (API HTTP - fonctionne partout)
+  if (process.env.RESEND_API_KEY) {
+    console.log('📧 Envoi via Resend...');
     try {
-      return await transporter.sendMail(mailOptions);
-    } catch (err) {
-      lastError = err;
-      const isRateLimited = (err.responseCode === 403) || (typeof err.response === 'string' && err.response.includes('rate limited'));
-      if (isRateLimited && attempt < retries) {
-        console.warn(`⏳ SMTP rate limited (403). Nouvelle tentative dans ${Math.round(waitMs/1000)}s... [essai ${attempt + 1}/${retries}]`);
-        await delay(waitMs);
-        continue;
+      const { data, error } = await resend.emails.send({
+        from: `${restaurantName} <${fromEmail}>`,
+        to: [to],
+        subject: subject,
+        html: html
+      });
+      
+      if (error) {
+        console.error('❌ Erreur Resend:', error);
+        throw new Error(error.message);
       }
-      break;
+      
+      console.log('✅ Email envoyé via Resend:', data?.id);
+      return { success: true, provider: 'resend', id: data?.id };
+    } catch (err) {
+      console.error('❌ Erreur Resend:', err.message);
+      throw err;
     }
   }
-  throw lastError;
+  
+  // Priorité 2: Gmail via nodemailer (fallback)
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+    console.log('📧 Envoi via Gmail...');
+    try {
+      await transporter.sendMail({
+        from: `"${restaurantName}" <${process.env.EMAIL_USER}>`,
+        to: to,
+        subject: subject,
+        html: html
+      });
+      console.log('✅ Email envoyé via Gmail');
+      return { success: true, provider: 'gmail' };
+    } catch (err) {
+      console.error('❌ Erreur Gmail:', err.message);
+      throw err;
+    }
+  }
+  
+  throw new Error('Aucun service email configuré (RESEND_API_KEY ou EMAIL_USER/EMAIL_PASSWORD)');
 }
 
 // Template email professionnel pour nouvel employé
@@ -255,16 +286,15 @@ const envoyerEmailAccueil = async (employeData, motDePasseTemporaire) => {
   `;
 
   const mailOptions = {
-    from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
     to: email,
     subject: `Bienvenue chez ${restaurantName} - Vos identifiants`,
     html: htmlContent
   };
 
   try {
-    await sendWithRetry(mailOptions);
+    const result = await sendEmail(mailOptions);
     console.log(`✅ Email de bienvenue envoyé avec succès à ${email}`);
-    return { success: true };
+    return { success: true, provider: result.provider };
   } catch (error) {
     console.error('❌ Erreur envoi email:', error);
     return { success: false, error: error.message };
@@ -393,16 +423,15 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
   `;
 
   const mailOptions = {
-    from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
     to: email,
     subject: `Récupération de mot de passe - ${restaurantName}`,
     html: htmlContent
   };
 
   try {
-    await sendWithRetry(mailOptions);
+    const result = await sendEmail(mailOptions);
     console.log(`✅ Email de récupération envoyé à ${email}`);
-    return { success: true };
+    return { success: true, provider: result.provider };
   } catch (error) {
     console.error('❌ Erreur envoi email récupération:', error);
     return { success: false, error: error.message };
