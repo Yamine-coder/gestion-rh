@@ -202,7 +202,7 @@ export default function PeerFeedback() {
   const pointsGagnes = feedbacksRecus.reduce((acc, fb) => acc + (fb.status === 'approved' ? fb.points_proposed : 0), 0);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-14 pb-24">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pt-header pb-24">
       {/* Header sobre style MesConges */}
       <div className="px-3 py-3">
         <div className="flex items-center justify-between bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 rounded-xl p-3">
@@ -230,7 +230,7 @@ export default function PeerFeedback() {
       </div>
 
       {/* Tabs minimalistes */}
-      <div className="sticky top-14 z-30 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-lg px-4 pb-3">
+      <div className="sticky top-[calc(60px+env(safe-area-inset-top,0px))] z-30 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-lg px-4 pb-3">
         <div className="flex gap-1 p-1 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200/50 dark:border-slate-700/50">
           {[
             { id: 0, label: 'Envoyer', icon: Send },
@@ -575,7 +575,7 @@ export default function PeerFeedback() {
       {/* Modal de confirmation - Bottom sheet mobile */}
       {showConfirm && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4"
           onClick={(e) => e.target === e.currentTarget && setShowConfirm(false)}
         >
           <div 

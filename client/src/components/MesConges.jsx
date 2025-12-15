@@ -701,8 +701,8 @@ function MesConges() {
             {/* Sheet mobile / Modal desktop */}
             <div className="w-full lg:w-[640px] max-h-full lg:max-h-[85vh] flex flex-col bg-white dark:bg-slate-900 rounded-t-3xl lg:rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom lg:zoom-in-95 duration-300">
               
-              {/* Header mobile uniquement */}
-              <div className="lg:hidden flex items-center justify-between px-4 pt-3 pb-1">
+              {/* Header mobile uniquement - sticky pour rester visible */}
+              <div className="lg:hidden sticky top-0 z-10 flex items-center justify-between px-4 pt-3 pb-2 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
                 <div className="w-8" />
                 <div className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full" />
                 <button
