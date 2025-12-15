@@ -9,28 +9,16 @@
       "type": "image/x-icon"
     },
     {
-      "src": "logo192.png",
+      "src": "icon-192.png",
       "type": "image/png",
       "sizes": "192x192",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
-      "src": "logo192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "maskable"
-    },
-    {
-      "src": "logo512.png",
+      "src": "icon-512.png",
       "type": "image/png",
       "sizes": "512x512",
-      "purpose": "any"
-    },
-    {
-      "src": "logo512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ],
   "start_url": "/home",
@@ -39,12 +27,9 @@
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
   "theme_color": "#cf292c",
-  "background_color": "#fcf8f5",
+  "background_color": "#cf292c",
   "categories": ["business", "productivity"],
   "lang": "fr-FR",
   "dir": "ltr",
-  "prefer_related_applications": false,
-  "edge_side_panel": {
-    "preferred_width": 400
-  }
+  "prefer_related_applications": false
 }
