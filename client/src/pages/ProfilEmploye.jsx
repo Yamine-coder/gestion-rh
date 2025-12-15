@@ -1728,13 +1728,13 @@ const ProfilEmploye = React.memo(() => {
         <div className="px-3 py-2.5 bg-primary-50/50 dark:bg-primary-900/10 border-l-2 border-primary-500">
           <div className="flex flex-col gap-2">
             <label className="text-xs font-medium text-primary-700 dark:text-primary-300">{label}</label>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               {type === 'textarea' ? (
                 <textarea
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-primary-300 dark:border-primary-600 focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-colors resize-none"
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-primary-300 dark:border-primary-600 focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-colors resize-none"
                   placeholder={placeholder}
                   rows={3}
                   autoFocus
@@ -1746,29 +1746,32 @@ const ProfilEmploye = React.memo(() => {
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-primary-300 dark:border-primary-600 focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-colors"
+                  className="w-full sm:flex-1 px-3 py-2 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-primary-300 dark:border-primary-600 focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-colors"
                   placeholder={placeholder}
                   autoFocus
                 />
               )}
-              <button
-                onClick={() => handleSaveField(field, editValue)}
-                disabled={isLoading}
-                className="px-3 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
-              >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <CheckCircleIcon className="w-4 h-4" />
-                )}
-              </button>
-              <button
-                onClick={cancelEditing}
-                disabled={isLoading}
-                className="px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                ✕
-              </button>
+              <div className="flex gap-2 justify-end sm:justify-start">
+                <button
+                  onClick={() => handleSaveField(field, editValue)}
+                  disabled={isLoading}
+                  className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                >
+                  {isLoading ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <CheckCircleIcon className="w-4 h-4" />
+                  )}
+                  <span className="sm:hidden">Valider</span>
+                </button>
+                <button
+                  onClick={cancelEditing}
+                  disabled={isLoading}
+                  className="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             {requiresValidation && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
