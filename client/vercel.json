@@ -23,6 +23,18 @@
       "dest": "/manifest.json"
     },
     {
+      "src": "/(.*\\.png)",
+      "dest": "/$1"
+    },
+    {
+      "src": "/(.*\\.svg)",
+      "dest": "/$1"
+    },
+    {
+      "src": "/(.*\\.ico)",
+      "dest": "/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
     }
