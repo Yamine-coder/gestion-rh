@@ -2216,12 +2216,29 @@ function HomeEmploye() {
       )}
 
       {/* Modal Score Détaillé */}
-      {showScoreModal && scoreData && (
+      {showScoreModal && (
         <div className="fixed inset-0 z-[400] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowScoreModal(false)}>
           <div 
             className="bg-white dark:bg-gray-800 w-full max-w-[360px] sm:max-w-md rounded-2xl shadow-2xl max-h-[85vh] overflow-hidden" 
             onClick={e => e.stopPropagation()}
           >
+            {!scoreData ? (
+              /* Message si pas de données */
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                  <Trophy className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Score non disponible</h3>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">Les données de score ne sont pas encore disponibles.</p>
+                <button
+                  onClick={() => setShowScoreModal(false)}
+                  className="px-4 py-2 bg-[#cf292c] text-white rounded-lg font-medium"
+                >
+                  Fermer
+                </button>
+              </div>
+            ) : (
+            <>
             {/* Header dynamique selon le niveau */}
             {(() => {
               const totalPoints = scoreData.score?.total_points || scoreData.score?.score_total || 0;
@@ -2521,6 +2538,8 @@ function HomeEmploye() {
                 <span>Historique</span>
               </Link>
             </div>
+            </>
+            )}
           </div>
         </div>
       )}
