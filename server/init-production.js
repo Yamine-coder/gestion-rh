@@ -38,9 +38,7 @@ async function main() {
       categorie: 'direction',
       statut: 'actif',
       dateEmbauche: new Date(),
-      congesAnnuels: 25,
-      congesRestants: 25,
-      rpiRestants: 2,
+      firstLoginDone: true,
     }
   });
 

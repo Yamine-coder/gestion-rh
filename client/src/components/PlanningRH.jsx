@@ -6,7 +6,7 @@ import { normalizeDateLocal, getCurrentDateString, isToday, toLocalDateString } 
 import { DEBUG_MODE, debugLog, debugWarn, debugError } from '../utils/debugMode';
 import { getCategorieEmploye as getCategorieEmployeUtil, CATEGORIES } from '../utils/categoriesConfig';
 import { TYPES_CONGES, getTypeConge, getTypesForSelect } from '../config/typesConges';
-// Import uuid retir� - plus besoin d'IDs uniques pour les segments
+// Import uuid retire - plus besoin d'IDs uniques pour les segments
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
 import { 
