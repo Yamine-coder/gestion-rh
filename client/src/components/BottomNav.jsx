@@ -199,20 +199,22 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
         role="navigation" 
         aria-label="Navigation principale"
       >
-        {/* Container principal - hauteur réduite */}
-        <div className="relative h-[56px]">
+        {/* Container principal */}
+        <div className="relative h-[64px]">
           
-          {/* FAB Central - Bouton flottant compact */}
+          {/* FAB Central - Bouton flottant avec cercle blanc autour */}
           <button 
             onClick={openQuickQR}
             aria-label="Mon QR Code"
-            className="absolute left-1/2 -translate-x-1/2 -top-5 z-10 group"
+            className="absolute left-1/2 -translate-x-1/2 -top-7 z-20 group"
           >
+            {/* Cercle blanc derrière pour créer l'effet de découpe */}
+            <div className="absolute inset-0 -m-1 bg-white dark:bg-slate-900 rounded-full" />
             <div 
-              className="w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 ease-out group-active:scale-95"
+              className="relative w-[56px] h-[56px] rounded-full flex items-center justify-center transition-all duration-200 ease-out group-active:scale-95"
               style={{
                 backgroundColor: '#dc2626',
-                boxShadow: '0 2px 12px rgba(220, 38, 38, 0.35), 0 0 0 3px white'
+                boxShadow: '0 4px 15px rgba(220, 38, 38, 0.4)'
               }}
             >
               {/* QR Code Icon */}
@@ -222,23 +224,12 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
             </div>
           </button>
 
-          {/* SVG Background avec découpe incurvée */}
-          <svg 
-            className="absolute inset-0 w-full h-full" 
-            viewBox="0 0 375 56" 
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            preserveAspectRatio="none"
-          >
-            <path 
-              d="M0 20C0 8.954 8.954 0 20 0H145C150 0 154 1.5 157 4.5C164 11.5 173 20 187.5 20C202 20 211 11.5 218 4.5C221 1.5 225 0 230 0H355C366.046 0 375 8.954 375 20V56H0V20Z"
-              fill="#dc2626"
-            />
-          </svg>
+          {/* Background simple rouge avec coins arrondis en haut */}
+          <div className="absolute inset-0 bg-[#dc2626] rounded-t-3xl" />
 
-          {/* Navigation Items - compact */}
+          {/* Navigation Items */}
           <div className="relative h-full px-4">
-            <div className="mx-auto h-full grid grid-cols-5 items-center">
+            <div className="mx-auto h-full grid grid-cols-5 items-center pt-2">
               
               {/* Accueil */}
               <NavLink 

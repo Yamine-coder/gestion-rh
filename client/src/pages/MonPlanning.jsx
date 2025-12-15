@@ -964,10 +964,10 @@ export default function MonPlanning() {
   };
   
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 pb-24">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 pb-navbar pt-header">
       {/* Toast */}
       {toast.show && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl shadow-lg text-white text-sm font-medium ${
+        <div className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl shadow-lg text-white text-sm font-medium ${
           toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
         }`}>
           {toast.message}
@@ -975,9 +975,9 @@ export default function MonPlanning() {
       )}
       
       {/* Header */}
-      <div className="bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 sticky top-0 z-40">
+      <div className="bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700 sticky top-[calc(60px+env(safe-area-inset-top,0px))] z-30">
         {/* Titre */}
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between">
+        <div className="px-4 pt-3 pb-3 flex items-center justify-between">
           <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Mon Planning</h1>
           <button 
             onClick={() => { fetchShifts(); fetchRemplacements(); }}

@@ -151,9 +151,9 @@ export default function MonScore() {
   const NiveauIcon = niveauConfig.icon;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-      {/* Header fixe avec bouton retour - style identique à MesAnomalies */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 shadow-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pt-header">
+      {/* Sous-header avec titre spécifique à la page */}
+      <div className="sticky top-[calc(60px+env(safe-area-inset-top,0px))] z-30 bg-white dark:bg-gray-800 shadow-sm border-b border-gray-100 dark:border-gray-700">
         <div className="flex items-center justify-between px-4 py-3">
           <button 
             onClick={() => navigate('/home')}
@@ -163,7 +163,7 @@ export default function MonScore() {
           </button>
           <div className="flex items-center gap-2">
             <Trophy className="w-5 h-5 text-[#cf292c]" />
-            <h1 className="text-base font-semibold text-gray-900 dark:text-white">Mon Score</h1>
+            <h1 className="text-base font-semibold text-gray-900 dark:text-white">Feedback</h1>
           </div>
           <button
             onClick={fetchData}
@@ -173,12 +173,10 @@ export default function MonScore() {
             <RefreshCw className={`w-5 h-5 text-gray-500 dark:text-gray-400 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
-        {/* Ligne accent rouge */}
-        <div className="h-0.5 w-full bg-gradient-to-r from-[#cf292c] via-[#cf292c] to-transparent" />
       </div>
 
-      {/* Contenu avec padding pour le header fixe */}
-      <div className="pb-navbar lg:pb-8 pt-header">
+      {/* Contenu */}
+      <div className="pb-navbar lg:pb-8">
         
         {/* Card Score principale */}
         <div className="px-4 py-4">

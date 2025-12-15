@@ -22,8 +22,8 @@
   --safe-right: env(safe-area-inset-right, 0px);
   
   /* Hauteur de la navbar mobile (incluant le safe-area) */
-  /* 100px = hauteur de base de la navbar (icônes + labels + padding + marge de sécurité) */
-  --navbar-height-mobile: calc(100px + var(--safe-bottom));
+  /* 90px = hauteur de base de la navbar (64px) + marge FAB (26px) */
+  --navbar-height-mobile: calc(90px + var(--safe-bottom));
   
   /* Hauteur du header mobile (incluant le safe-area top) */
   --header-height-mobile: calc(60px + var(--safe-top));
