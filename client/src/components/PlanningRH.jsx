@@ -8061,10 +8061,10 @@ export default function PlanningRH() {
             </div>
           )}
             
-            {/* Zone de contenu - Fixed sous navbar (64px) + barre filtres (56px) + l�gende segments (28px) + l�gende comparaison si active */}
+            {/* Zone de contenu - Fixed sous navbar (64px) + barre filtres (56px) + legende segments (28px) + legende comparaison si active */}
             <main className={`fixed ${showComparaison ? 'top-[184px]' : 'top-[148px]'} left-0 right-0 bottom-0 overflow-hidden bg-white transition-all duration-200`}>
               {filteredEmployes.length === 0 ? (
-                /* �tat vide - Aucun employ� trouv� */
+                /* Etat vide - Aucun employe trouve */
                 <div className="flex flex-col items-center justify-center py-12 px-4">
                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3">
                     <UsersRound className="w-8 h-8 text-gray-400" strokeWidth={1.5} />
@@ -8092,7 +8092,7 @@ export default function PlanningRH() {
                       className="px-6 py-3 bg-[#cf292c] hover:bg-[#b31f22] text-white rounded-lg font-medium transition-colors flex items-center gap-2"
                     >
                       <UserPlus className="w-4 h-4" strokeWidth={2} />
-                      Ajouter un employ�
+                      Ajouter un employe
                     </button>
                   )}
                 </div>
