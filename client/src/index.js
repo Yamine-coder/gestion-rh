@@ -39,19 +39,23 @@ if (typeof window !== 'undefined') {
 reportWebVitals();
 
 // Enregistrement du Service Worker pour PWA
-// Cela permet l'installation sur mobile et le mode hors-ligne
-serviceWorkerRegistration.register({
-  onSuccess: (registration) => {
-    console.log('✅ PWA: Application prête pour utilisation hors-ligne');
-  },
-  onUpdate: (registration) => {
-    console.log('📦 PWA: Nouvelle version disponible');
-    // Stocker la registration pour mise à jour manuelle ultérieure
-    window.__SW_REGISTRATION__ = registration;
-    // Ne pas afficher de popup automatique pour éviter les boucles
-    // L'utilisateur peut recharger manuellement si besoin
-  }
-});
+// Désactivé en développement pour éviter les boucles de "nouvelle version"
+if (process.env.NODE_ENV === 'production') {
+  serviceWorkerRegistration.register({
+    onSuccess: (registration) => {
+      console.log('✅ PWA: Application prête pour utilisation hors-ligne');
+    },
+    onUpdate: (registration) => {
+      console.log('📦 PWA: Nouvelle version disponible');
+      // Stocker la registration pour mise à jour manuelle ultérieure
+      window.__SW_REGISTRATION__ = registration;
+    }
+  });
+} else {
+  // En développement, désactiver le service worker
+  serviceWorkerRegistration.unregister();
+  console.log('🔧 DEV: Service Worker désactivé');
+}
 
 // Initialiser la détection d'installation PWA
 serviceWorkerRegistration.initInstallPrompt();

@@ -98,25 +98,25 @@ const InstallPWABanner = ({
   return (
     <div 
       className={`
-        fixed left-0 right-0 z-50 mx-4 
-        ${position === 'bottom' ? 'bottom-4' : 'top-4'}
-        animate-slide-up
+        fixed left-2 right-2 sm:left-4 sm:right-4 z-[60] 
+        ${position === 'bottom' ? 'bottom-20 sm:bottom-24' : 'top-4'}
+        animate-[slideUp_0.3s_ease-out]
       `}
     >
-      <div className="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 overflow-hidden">
-        <div className="p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden max-w-md mx-auto">
+        <div className="p-3 sm:p-4">
           <div className="flex items-start gap-3">
             {/* Icône */}
-            <div className="flex-shrink-0 w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center">
-              <Smartphone className="w-6 h-6 text-brand-primary" />
+            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-[#cf292c]/10 rounded-xl flex items-center justify-center">
+              <Smartphone className="w-5 h-5 sm:w-6 sm:h-6 text-[#cf292c]" />
             </div>
             
             {/* Contenu */}
             <div className="flex-1 min-w-0">
-              <h3 className="text-white font-semibold text-base">
+              <h3 className="text-gray-900 font-semibold text-sm sm:text-base">
                 Installer l'application
               </h3>
-              <p className="text-slate-400 text-sm mt-0.5">
+              <p className="text-gray-500 text-xs sm:text-sm mt-0.5 leading-snug">
                 Accédez rapidement à Chez Antoine depuis votre écran d'accueil
               </p>
             </div>
@@ -124,7 +124,7 @@ const InstallPWABanner = ({
             {/* Bouton fermer */}
             <button
               onClick={handleDismiss}
-              className="flex-shrink-0 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+              className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors"
               aria-label="Fermer"
             >
               <X className="w-5 h-5" />
@@ -132,17 +132,17 @@ const InstallPWABanner = ({
           </div>
           
           {/* Boutons */}
-          <div className="flex gap-3 mt-4">
+          <div className="flex gap-2 sm:gap-3 mt-3 sm:mt-4">
             <button
               onClick={handleDismiss}
-              className="flex-1 py-2.5 px-4 text-slate-400 hover:text-white text-sm font-medium transition-colors"
+              className="flex-1 py-2 sm:py-2.5 px-3 sm:px-4 text-gray-500 hover:text-gray-700 text-xs sm:text-sm font-medium transition-colors rounded-xl hover:bg-gray-100"
             >
               Plus tard
             </button>
             <button
               onClick={handleInstall}
               disabled={installing}
-              className="flex-1 py-2.5 px-4 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              className="flex-1 py-2 sm:py-2.5 px-3 sm:px-4 bg-[#cf292c] hover:bg-[#b52429] text-white rounded-xl text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 sm:gap-2 transition-all disabled:opacity-50 shadow-md"
             >
               {installing ? (
                 <>
@@ -159,22 +159,6 @@ const InstallPWABanner = ({
           </div>
         </div>
       </div>
-      
-      <style jsx>{`
-        @keyframes slide-up {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slide-up {
-          animation: slide-up 0.3s ease-out;
-        }
-      `}</style>
     </div>
   );
 };
@@ -220,7 +204,7 @@ export const InstallPWAButton = ({ className = '' }) => {
       disabled={installing}
       className={`
         flex items-center gap-2 px-4 py-2 
-        bg-brand-primary hover:bg-brand-primary/90 
+        bg-[#cf292c] hover:bg-[#b52429] 
         text-white rounded-lg text-sm font-medium 
         transition-all disabled:opacity-50
         ${className}

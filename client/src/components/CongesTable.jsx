@@ -32,10 +32,10 @@
       try {
         // Récupérer les congés ET les employés en parallèle
         const [congesRes, employesRes] = await Promise.all([
-          axios.get(`${API_BASE}/admin/conges", {
+          axios.get(`${API_BASE}/admin/conges`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get(`${API_BASE}/admin/employes", {
+          axios.get(`${API_BASE}/admin/employes`, {
             headers: { Authorization: `Bearer ${token}` },
           })
         ]);
@@ -45,7 +45,7 @@
         
         // Marquer automatiquement toutes les demandes en attente comme vues
         await axios.post(
-          `${API_BASE}/admin/conges/vu", 
+          `${API_BASE}/admin/conges/vu`, 
           {}, // Corps vide pour marquer toutes les demandes en attente
           { headers: { Authorization: `Bearer ${token}` }}
         );

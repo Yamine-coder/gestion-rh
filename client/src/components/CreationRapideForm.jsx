@@ -163,7 +163,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
         if (!daysOfWeek.length) { setError('Choisissez au moins un jour'); setLoading(false); return; }
         const segments = creneaux.map(c => ({ start: c.heureDebut, end: c.heureFin }));
         const body = { employeIds: selectedEmployees, startDate, monthsCount, daysOfWeek, segments, mode: 'skip' };
-        const res = await axios.post(`${API_BASE}/shifts/recurring', body, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.post(`${API_BASE}/shifts/recurring`, body, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.data || !res.data.success) { setError(res.data?.error || 'Erreur création récurrente'); setLoading(false); return; }
         formattedDate = startDate;
         rangeInfo = { employeIds: selectedEmployees, startDate, endDate: res.data.to };
@@ -179,7 +179,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
             commentaire: '', aValider: false, isExtra: false
           }))
         }));
-        const res = await axios.post(`${API_BASE}/shifts/batch', { shifts: shiftsToCreate }, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.post(`${API_BASE}/shifts/batch`, { shifts: shiftsToCreate }, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.data || res.data.created === 0) { setError(res.data?.errors?.join('\n') || 'Aucun planning créé'); setLoading(false); return; }
         formattedDate = shiftsToCreate.length ? shiftsToCreate[0].date : null;
         rangeInfo = { employeIds: selectedEmployees, startDate, endDate };
@@ -204,7 +204,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
       const token = localStorage.getItem('token');
       if (!token) { setDeleteError('Session expirée'); setDeleteLoading(false); return; }
       const body = { employeIds: lastCreationRange.employeIds, startDate: lastCreationRange.startDate, endDate: lastCreationRange.endDate, type: 'travail' };
-      const res = await axios.post(`${API_BASE}/shifts/delete-range', body, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.post(`${API_BASE}/shifts/delete-range`, body, { headers: { Authorization: `Bearer ${token}` } });
       const deleted = res.data.deleted || res.data.count || 0;
       setDeleteSuccess(`Plannings supprimés: ${deleted}`);
     } catch (e) {
@@ -237,7 +237,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
       if(!token){ setWipeMsg('Session expirée'); setWipeLoading(false); return; }
       const body = { startDate: '1970-01-01', endDate: '2100-12-31', type: 'travail' };
       if(wipeSelectedEmployees.length) body.employeIds = wipeSelectedEmployees;
-      const res = await axios.post(`${API_BASE}/shifts/delete-range', body, { headers:{ Authorization:`Bearer ${token}` }});
+      const res = await axios.post(`${API_BASE}/shifts/delete-range`, body, { headers:{ Authorization:`Bearer ${token}` }});
       const deleted = res.data.deleted || res.data.count || 0;
       setWipeMsg(`${deleted} planning(s) supprimé(s)`);
       setWipeSuccess(true);
@@ -458,7 +458,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                       const token = localStorage.getItem('token');
                       if(!token){ setDelError('Session expirée'); setDelLoading(false); return; }
                       const body = { employeIds: delSelectedEmployees, startDate: delStartDate, endDate: delEndDate, type:'travail' };
-                      const res = await axios.post(`${API_BASE}/shifts/delete-range', body, { headers: { Authorization: `Bearer ${token}` } });
+                      const res = await axios.post(`${API_BASE}/shifts/delete-range`, body, { headers: { Authorization: `Bearer ${token}` } });
                       const deleted = res.data.deleted || res.data.count || 0;
                       setDelSuccess(`${deleted} planning(s) supprimé(s)`);
                       onSuccess();

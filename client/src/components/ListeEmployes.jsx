@@ -11,7 +11,7 @@ import { getCurrentDateString, toLocalDateString } from "../utils/parisTimeUtils
 import "./animations.css"; // Import des animations partagées
 
 // URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || '${API_BASE}';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Fonction de formatage automatique du téléphone
 const formatTelephone = (value) => {
@@ -114,7 +114,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   const fetchEmployes = async () => {
     setIsRefreshing(true);
     try {
-      const res = await axios.get("${API_BASE}/admin/employes", {
+      const res = await axios.get(`${API_BASE}/admin/employes`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setEmployes(res.data);
@@ -130,7 +130,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   const fetchDemandesModification = async () => {
     setLoadingDemandes(true);
     try {
-      const res = await axios.get("${API_BASE}/api/modifications/demandes-en-attente", {
+      const res = await axios.get(`${API_BASE}/api/modifications/demandes-en-attente`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setDemandesModification(res.data);
@@ -399,7 +399,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
 
           try {
             await axios.post(
-              '${API_BASE}/admin/employes',
+              `${API_BASE}/admin/employes`,
               {
                 prenom: prenom || '',
                 nom: nom || '',

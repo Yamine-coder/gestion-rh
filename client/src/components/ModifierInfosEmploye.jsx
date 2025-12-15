@@ -61,7 +61,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
 
   const loadConfig = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/modifications/config/champs-modifiables', {
+      const res = await axios.get(`${API_BASE}/api/modifications/config/champs-modifiables`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setConfig(res.data);
@@ -72,7 +72,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
 
   const loadMesDemandes = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/modifications/mes-demandes', {
+      const res = await axios.get(`${API_BASE}/api/modifications/mes-demandes`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMesDemandes(res.data);
@@ -144,7 +144,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
     setLoading(true);
     try {
       await axios.put(
-        `${API_BASE}/api/modifications/modification-directe',
+        `${API_BASE}/api/modifications/modification-directe`,
         { champ, nouvelle_valeur: newValue },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -183,7 +183,7 @@ const ModifierInfosEmploye = ({ employe, onUpdate, fieldsToShow = null }) => {
     setLoading(true);
     try {
       await axios.post(
-        `${API_BASE}/api/modifications/demande-modification',
+        `${API_BASE}/api/modifications/demande-modification`,
         { champ, nouvelle_valeur: newValue, motif },
         { headers: { Authorization: `Bearer ${token}` } }
       );

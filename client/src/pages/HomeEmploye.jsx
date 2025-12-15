@@ -954,16 +954,6 @@ function HomeEmploye() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          BOUTON TEST LEVEL UP (à supprimer en prod)
-      ══════════════════════════════════════════════════════════════════ */}
-      <button
-        onClick={() => triggerLevelUpAnimation(NIVEAUX_CONFIG[0], NIVEAUX_CONFIG[1])}
-        className="fixed bottom-24 right-4 z-50 bg-red-600 text-white px-3 py-2 rounded-full shadow-lg text-xs font-bold hover:bg-red-700"
-      >
-        🚨 Test À surveiller → Bronze
-      </button>
-
-      {/* ══════════════════════════════════════════════════════════════════
           BANNIÈRE INSTALLATION PWA
       ══════════════════════════════════════════════════════════════════ */}
       <InstallPWABanner autoShow={true} delay={10000} position="bottom" />

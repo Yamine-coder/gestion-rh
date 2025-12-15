@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
 import {
   Calendar as CalendarIcon,
   Users,
@@ -30,6 +26,9 @@ import {
 import logo from "../assets/onboarding/logo.png";
 import { useNotifications } from "../hooks/useNotifications";
 import { useNavigoNotification } from "../hooks/useNavigoNotification";
+
+// URL de l'API (utilise la variable d'environnement en production)
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 /**
  * TopNavAdmin - Navigation horizontale améliorée style Skello
