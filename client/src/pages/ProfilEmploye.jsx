@@ -418,13 +418,13 @@ const FormulaireAdresse = ({ employe, onSave, onCancel, isLoading }) => {
           />
           
           {/* CP + Ville */}
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full">
             <input
               type="text"
               inputMode="numeric"
               value={codePostal}
               onChange={handleCodePostalChange}
-              className={`w-24 h-10 px-3 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border tabular-nums ${
+              className={`w-20 flex-shrink-0 h-10 px-2 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border tabular-nums ${
                 errors.codePostal ? 'border-red-400' : 'border-primary-300 dark:border-primary-600'
               } focus:ring-2 focus:ring-primary-500/50 transition-colors`}
               placeholder="75001"
@@ -434,7 +434,7 @@ const FormulaireAdresse = ({ employe, onSave, onCancel, isLoading }) => {
               type="text"
               value={ville}
               onChange={(e) => { setVille(e.target.value); setErrors(prev => ({ ...prev, ville: null })); }}
-              className={`flex-1 h-10 px-3 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border ${
+              className={`flex-1 min-w-0 h-10 px-3 text-sm rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 border ${
                 errors.ville ? 'border-red-400' : 'border-primary-300 dark:border-primary-600'
               } focus:ring-2 focus:ring-primary-500/50 transition-colors`}
               placeholder="Ville"

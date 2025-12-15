@@ -257,6 +257,7 @@ router.delete('/:id', authMiddleware, isAdmin, async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/consignes/stats/ponctualite - Stats de ponctualité employé
+// Standard SIRH : Ponctualité = respect des horaires (retards + départs anticipés)
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/stats/ponctualite', authMiddleware, async (req, res) => {
   try {
@@ -275,68 +276,67 @@ router.get('/stats/ponctualite', authMiddleware, async (req, res) => {
       orderBy: { date: 'asc' }
     });
     
-    // Récupérer les pointages du mois
-    const pointages = await prisma.pointage.findMany({
+    // Récupérer uniquement les anomalies de PONCTUALITÉ (retards + départs anticipés)
+    // Les pointages hors planning ne comptent pas (problème de planification, pas de ponctualité)
+    const anomaliesPonctualite = await prisma.anomalie.findMany({
       where: {
-        userId,
-        horodatage: { gte: startOfMonth, lte: now },
-        type: 'entree'
+        employe_id: userId,
+        date_anomalie: { gte: startOfMonth, lte: now },
+        type: { in: ['retard', 'depart_anticipe'] }, // Standard SIRH
+        status: { in: ['pending', 'validated'] } // Exclure les anomalies rejetées
       }
     });
     
-    // Calculer la ponctualité
-    let shiftsAvecPointage = 0;
-    let retards = 0;
-    let joursConsecutifsSansRetard = 0;
-    let maxConsecutif = 0;
+    // Compter les anomalies par type
+    const retards = anomaliesPonctualite.filter(a => a.type === 'retard').length;
+    const departsAnticipes = anomaliesPonctualite.filter(a => a.type === 'depart_anticipe').length;
     
-    for (const shift of shifts) {
-      const shiftDate = toLocalDateString(new Date(shift.date));
-      const segments = Array.isArray(shift.segments) ? shift.segments : [];
-      const firstSegment = segments.find(s => s.type?.toLowerCase() !== 'pause');
-      
-      if (!firstSegment) continue;
-      
-      const heureDebutShift = firstSegment.start || firstSegment.debut;
-      if (!heureDebutShift) continue;
-      
-      // Trouver le pointage d'entrée ce jour
-      const pointageJour = pointages.find(p => {
-        const pDate = toLocalDateString(new Date(p.horodatage));
-        return pDate === shiftDate;
-      });
-      
-      if (pointageJour) {
-        shiftsAvecPointage++;
-        
-        // Comparer l'heure du pointage avec l'heure du shift
-        const heurePointage = new Date(pointageJour.horodatage);
-        const [h, m] = heureDebutShift.split(':').map(Number);
-        const heureShift = new Date(shift.date);
-        heureShift.setHours(h, m, 0, 0);
-        
-        // Tolérance de 5 minutes
-        const diffMinutes = (heurePointage - heureShift) / 60000;
-        
-        if (diffMinutes > 5) {
-          retards++;
-          joursConsecutifsSansRetard = 0;
-        } else {
-          joursConsecutifsSansRetard++;
-          maxConsecutif = Math.max(maxConsecutif, joursConsecutifsSansRetard);
+    // Total des incidents de ponctualité
+    const totalIncidents = retards + departsAnticipes;
+    
+    // Calculer la ponctualité basée sur les shifts du mois
+    // Un shift est "ponctuel" s'il n'a ni retard ni départ anticipé
+    const totalShifts = shifts.length;
+    const shiftsAvecIncident = new Set();
+    
+    // Identifier les shifts avec incidents de ponctualité
+    for (const anomalie of anomaliesPonctualite) {
+      const anomalieDate = toLocalDateString(new Date(anomalie.date_anomalie));
+      for (const shift of shifts) {
+        const shiftDate = toLocalDateString(new Date(shift.date));
+        if (shiftDate === anomalieDate) {
+          shiftsAvecIncident.add(shift.id);
+          break;
         }
       }
     }
     
-    const ponctualite = shiftsAvecPointage > 0 
-      ? Math.round(((shiftsAvecPointage - retards) / shiftsAvecPointage) * 100)
+    // Calculer jours consécutifs sans incident de ponctualité
+    let joursConsecutifsSansIncident = 0;
+    let maxConsecutif = 0;
+    const sortedShifts = [...shifts].sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    for (const shift of sortedShifts) {
+      if (shiftsAvecIncident.has(shift.id)) {
+        joursConsecutifsSansIncident = 0;
+      } else {
+        joursConsecutifsSansIncident++;
+        maxConsecutif = Math.max(maxConsecutif, joursConsecutifsSansIncident);
+      }
+    }
+    
+    // Ponctualité = (shifts sans retard ni départ anticipé / total shifts) × 100
+    const ponctualite = totalShifts > 0 
+      ? Math.round(((totalShifts - shiftsAvecIncident.size) / totalShifts) * 100)
       : 100;
     
     res.json({
       ponctualiteMois: ponctualite,
       joursConsecutifsSansRetard: maxConsecutif,
-      totalShifts: shifts.length,
+      totalShifts,
       retards,
+      departsAnticipes,
+      totalIncidents,
       mois: now.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
     });
   } catch (error) {
