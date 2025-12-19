@@ -54,28 +54,28 @@ function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center p-4 sm:p-6 md:p-8">
-      <div className="bg-white shadow-lg sm:shadow-xl rounded-2xl p-6 sm:p-8 md:p-10 w-full max-w-[420px] sm:max-w-md md:max-w-lg">
+    <div className="min-h-screen bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center p-4 sm:p-6 md:p-8 lg:p-4">
+      <div className="bg-white shadow-lg sm:shadow-xl lg:shadow-2xl rounded-2xl p-6 sm:p-8 md:p-10 lg:p-8 w-full max-w-[420px] sm:max-w-md md:max-w-lg lg:max-w-md">
         {/* Logo */}
-        <div className="flex justify-center mb-6 sm:mb-8">
-          <img src={logo} alt="Logo" className="h-24 sm:h-28 md:h-32 w-auto object-contain" />
+        <div className="flex justify-center mb-6 sm:mb-8 lg:mb-4">
+          <img src={logo} alt="Logo" className="h-24 sm:h-28 md:h-32 lg:h-20 w-auto object-contain" />
         </div>
         
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-center text-red-700">Bienvenue !</h1>
-        <p className="text-gray-600 text-sm sm:text-base text-center mb-5 sm:mb-6 md:mb-8">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-2xl font-bold mb-2 lg:mb-1 text-center text-red-700">Bienvenue !</h1>
+        <p className="text-gray-600 text-sm sm:text-base lg:text-sm text-center mb-5 sm:mb-6 md:mb-8 lg:mb-4">
           Créez votre mot de passe personnel pour sécuriser votre compte
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 md:space-y-6 lg:space-y-3">
           {/* Nouveau mot de passe */}
           <div>
-            <label className="block text-sm sm:text-base font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
+            <label className="block text-sm sm:text-base lg:text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
             <div className="relative flex items-center">
               <Lock className="absolute left-3 sm:left-4 text-gray-400" size={18} />
               <input
                 type={showPassword ? "text" : "password"}
                 placeholder="Minimum 8 caractères"
-                className="pl-10 sm:pl-12 pr-10 sm:pr-12 h-11 sm:h-12 md:h-14 text-sm sm:text-base block w-full rounded-lg bg-gray-50 border border-gray-300 shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white hover:bg-gray-100 transition duration-200"
+                className="pl-10 sm:pl-12 pr-10 sm:pr-12 h-11 sm:h-12 md:h-14 lg:h-11 text-sm sm:text-base lg:text-sm block w-full rounded-lg bg-gray-50 border border-gray-300 shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white hover:bg-gray-100 transition duration-200"
                 value={nouveauMotDePasse}
                 onChange={(e) => setNouveauMotDePasse(e.target.value)}
                 required
@@ -93,13 +93,13 @@ function OnboardingPage() {
 
           {/* Confirmation mot de passe */}
           <div>
-            <label className="block text-sm sm:text-base font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
+            <label className="block text-sm sm:text-base lg:text-sm font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
             <div className="relative flex items-center">
               <Lock className="absolute left-3 sm:left-4 text-gray-400" size={18} />
               <input
                 type={showConfirmPassword ? "text" : "password"}
                 placeholder="Retapez votre mot de passe"
-                className="pl-10 sm:pl-12 pr-10 sm:pr-12 h-11 sm:h-12 md:h-14 text-sm sm:text-base block w-full rounded-lg bg-gray-50 border border-gray-300 shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white hover:bg-gray-100 transition duration-200"
+                className="pl-10 sm:pl-12 pr-10 sm:pr-12 h-11 sm:h-12 md:h-14 lg:h-11 text-sm sm:text-base lg:text-sm block w-full rounded-lg bg-gray-50 border border-gray-300 shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:bg-white hover:bg-gray-100 transition duration-200"
                 value={confirmMotDePasse}
                 onChange={(e) => setConfirmMotDePasse(e.target.value)}
                 required
@@ -116,12 +116,12 @@ function OnboardingPage() {
           </div>
 
           {/* Conseils */}
-          <div className="bg-red-50 rounded-lg p-3 sm:p-4 border border-red-100">
-            <div className="flex items-start gap-2 sm:gap-3">
+          <div className="bg-red-50 rounded-lg p-3 sm:p-4 lg:p-3 border border-red-100">
+            <div className="flex items-start gap-2 sm:gap-3 lg:gap-2">
               <Lightbulb className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
               <div>
-                <h3 className="font-semibold text-red-800 text-xs sm:text-sm mb-1">Conseils pour un bon mot de passe :</h3>
-                <ul className="text-xs sm:text-sm text-red-700 space-y-0.5 sm:space-y-1">
+                <h3 className="font-semibold text-red-800 text-xs sm:text-sm lg:text-xs mb-1">Conseils pour un bon mot de passe :</h3>
+                <ul className="text-xs sm:text-sm lg:text-xs text-red-700 space-y-0.5 sm:space-y-1 lg:space-y-0.5">
                   <li className="flex items-center gap-1.5">
                     <CheckCircle size={12} className="flex-shrink-0" />
                     <span>Au moins 8 caractères</span>
@@ -141,14 +141,14 @@ function OnboardingPage() {
 
           {/* Message d'erreur */}
           {erreur && (
-            <p className="bg-red-100 text-red-600 text-xs sm:text-sm p-2 sm:p-3 rounded-lg" aria-live="assertive">
+            <p className="bg-red-100 text-red-600 text-xs sm:text-sm lg:text-xs p-2 sm:p-3 lg:p-2 rounded-lg" aria-live="assertive">
               {erreur}
             </p>
           )}
 
           <button
             type="submit"
-            className={`w-full py-3 sm:py-3.5 md:py-4 px-4 rounded-lg text-white text-sm sm:text-base font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+            className={`w-full py-3 sm:py-3.5 md:py-4 lg:py-3 px-4 rounded-lg text-white text-sm sm:text-base lg:text-sm font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
               isLoading || !nouveauMotDePasse || !confirmMotDePasse
                 ? "bg-red-400 cursor-not-allowed"
                 : "bg-red-600 hover:bg-red-700 hover:shadow-lg active:scale-[0.98]"

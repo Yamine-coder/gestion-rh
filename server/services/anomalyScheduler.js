@@ -909,19 +909,34 @@ class AnomalyScheduler {
   }
 
   /**
-   * 🆕 Détecte les pointages sans shift prévu et crée des anomalies
+   * � LOGIQUE STANDARD SIRH : Détecte les pointages sans shift prévu
+   * 
+   * Pour chaque pointage, on cherche le shift le plus pertinent :
+   * 1. Récupérer les shifts de J et J-1
+   * 2. Pour chaque shift, calculer l'écart avec l'heure du pointage
+   * 3. Associer au shift avec le plus petit écart (max 4h de tolérance)
+   * 4. Si aucun shift trouvé → anomalie "pointage hors planning"
    */
   async checkPointagesSansShift(dateStr) {
     try {
-      // 🕐 Bornes Paris
-      const { startUTC, endUTC } = getParisDateBoundsUTC(dateStr);
+      const paris = getParisTime();
+      const realToday = paris.dateStr;
       
-      // 1. Récupérer tous les pointages du jour
+      // Calculer hier
+      const hier = new Date();
+      hier.setDate(hier.getDate() - 1);
+      const hierStr = `${hier.getFullYear()}-${String(hier.getMonth() + 1).padStart(2, '0')}-${String(hier.getDate()).padStart(2, '0')}`;
+      
+      // Bornes pour aujourd'hui et hier
+      const boundsToday = getParisDateBoundsUTC(realToday);
+      const boundsHier = getParisDateBoundsUTC(hierStr);
+      
+      // 1. Récupérer tous les pointages des dernières 24h
       const pointages = await prisma.pointage.findMany({
         where: {
           horodatage: {
-            gte: startUTC,
-            lt: endUTC
+            gte: boundsHier.startUTC,
+            lt: boundsToday.endUTC
           }
         },
         include: {
@@ -938,7 +953,7 @@ class AnomalyScheduler {
         pointagesParUser[p.userId].push(p);
       }
 
-      // 3. Pour chaque user ayant pointé, vérifier s'il a un shift
+      // 3. Pour chaque user ayant pointé
       for (const [userId, userPointages] of Object.entries(pointagesParUser)) {
         const userIdInt = parseInt(userId);
         
@@ -948,147 +963,133 @@ class AnomalyScheduler {
           continue;
         }
 
-        // Chercher un shift pour cet employé ce jour (utiliser les bornes Paris déjà calculées)
-        const shift = await prisma.shift.findFirst({
-          where: {
-            employeId: userIdInt,
-            date: {
-              gte: startUTC,
-              lt: endUTC
-            },
-            type: { in: ['travail', 'présence', 'presence'] }
-          }
-        });
+        // 🎯 LOGIQUE SIRH : Récupérer les shifts de J et J-1
+        const [shiftsToday, shiftsHier] = await Promise.all([
+          prisma.shift.findMany({
+            where: {
+              employeId: userIdInt,
+              date: { gte: boundsToday.startUTC, lt: boundsToday.endUTC },
+              type: { in: ['travail', 'présence', 'presence'] }
+            }
+          }),
+          prisma.shift.findMany({
+            where: {
+              employeId: userIdInt,
+              date: { gte: boundsHier.startUTC, lt: boundsHier.endUTC },
+              type: { in: ['travail', 'présence', 'presence'] }
+            }
+          })
+        ]);
         
-        // 🆕 Vérifier si l'employé a un segment EXTRA dans son shift
-        // Si oui, le pointage est légitime même sans segment "normal"
-        const hasExtraSegment = shift?.segments?.some(seg => seg.isExtra === true) || false;
-        const hasNormalWorkSegment = shift?.segments?.some(seg => {
-          const segType = seg.type?.toLowerCase();
-          return segType !== 'pause' && segType !== 'break' && !seg.isExtra;
-        }) || false;
-
-        // Vérifier s'il y a un congé/repos ce jour
-        const shiftCongeRepos = await prisma.shift.findFirst({
-          where: {
-            employeId: userIdInt,
-            date: {
-              gte: startUTC,
-              lt: endUTC
-            },
-            type: { in: ['conge', 'congé', 'repos', 'absence', 'maladie', 'formation'] }
-          }
-        });
-
-        // ===== CAS: POINTAGE PENDANT CONGÉ/REPOS =====
-        if (shiftCongeRepos && userPointages.length > 0) {
-          const anomalieCongeExistante = await prisma.anomalie.findFirst({
-            where: {
-              employeId: userIdInt,
-              date: {
-                gte: startUTC,
-                lt: endUTC
-              },
-              type: 'pointage_pendant_conge'
-            }
-          });
-
-          if (!anomalieCongeExistante) {
-            // Calculer les heures travaillées
-            const entrees = userPointages.filter(p => p.type === 'ENTRÉE' || p.type === 'arrivee');
-            const sorties = userPointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
+        const allShifts = [
+          ...shiftsToday.map(s => ({ ...s, shiftDate: realToday })),
+          ...shiftsHier.map(s => ({ ...s, shiftDate: hierStr }))
+        ];
+        
+        // Fonction pour obtenir l'heure de début d'un shift en minutes
+        const getShiftStartMinutes = (shift) => {
+          const segments = Array.isArray(shift.segments) ? shift.segments : [];
+          const workSegment = segments.find(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
+          if (!workSegment) return null;
+          
+          const startTime = workSegment.start || workSegment.debut;
+          if (!startTime) return null;
+          
+          const [h, m] = startTime.split(':').map(Number);
+          return h * 60 + m;
+        };
+        
+        // Pour chaque pointage d'entrée, trouver le shift le plus proche
+        const entreesPointages = userPointages.filter(p => 
+          p.type === 'ENTRÉE' || p.type === 'arrivee' || p.type === 'entree'
+        );
+        
+        for (const pointage of entreesPointages) {
+          const pointageDate = new Date(pointage.horodatage);
+          const pointageDateStr = pointageDate.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+          const pointageMinutes = pointageDate.getHours() * 60 + pointageDate.getMinutes();
+          
+          // Chercher le meilleur shift
+          let bestShift = null;
+          let bestDistance = Infinity;
+          
+          for (const shift of allShifts) {
+            const shiftStart = getShiftStartMinutes(shift);
+            if (shiftStart === null) continue;
             
-            let totalMinutes = 0;
-            for (let i = 0; i < Math.min(entrees.length, sorties.length); i++) {
-              const entree = new Date(entrees[i].horodatage);
-              const sortie = new Date(sorties[i].horodatage);
-              if (sortie > entree) {
-                totalMinutes += (sortie - entree) / (1000 * 60);
-              }
+            // Calculer la distance
+            let distance;
+            if (shift.shiftDate === pointageDateStr) {
+              // Même jour : distance simple
+              distance = Math.abs(pointageMinutes - shiftStart);
+            } else if (shift.shiftDate === hierStr && pointageDateStr === realToday) {
+              // Shift d'hier, pointage aujourd'hui (shift de nuit)
+              // Le pointage est après minuit, le shift a commencé hier soir
+              distance = pointageMinutes + (1440 - shiftStart); // minutes depuis le début du shift
+            } else {
+              continue; // Pas pertinent
             }
-            const heuresTravaillees = Math.round(totalMinutes / 60 * 10) / 10;
-
-            await prisma.anomalie.create({
-              data: {
+            
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestShift = shift;
+            }
+          }
+          
+          // Tolérance : 4h (240 min) max
+          const MAX_TOLERANCE = 240;
+          
+          if (!bestShift || bestDistance > MAX_TOLERANCE) {
+            // Aucun shift trouvé ou trop loin → vérifier si anomalie existe déjà
+            const anomalieExistante = await prisma.anomalie.findFirst({
+              where: {
                 employeId: userIdInt,
-                date: new Date(`${dateStr}T12:00:00.000Z`),
-                type: 'pointage_pendant_conge',
-                gravite: 'haute',
-                statut: 'en_attente',
-                details: {
-                  typeAbsence: shiftCongeRepos.type,
-                  pointages: userPointages.map(p => ({
-                    type: p.type,
-                    heure: new Date(p.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                  })),
-                  heuresTravaillees,
-                  detecteAutomatiquement: true,
-                  detectePar: 'scheduler'
+                date: {
+                  gte: new Date(`${pointageDateStr}T00:00:00.000Z`),
+                  lt: new Date(`${pointageDateStr}T23:59:59.999Z`)
                 },
-                description: `⚠️ Pointage pendant ${shiftCongeRepos.type} - ${heuresTravaillees}h travaillées alors que l'employé est en ${shiftCongeRepos.type}`
+                type: 'pointage_hors_planning'
               }
             });
-
-            console.log(`🏖️ [SCHEDULER] POINTAGE PENDANT CONGÉ: ${user?.prenom} ${user?.nom} - ${heuresTravaillees}h pendant ${shiftCongeRepos.type}`);
-          }
-          continue; // Ne pas créer aussi pointage_hors_planning
-        }
-
-        // Si PAS de shift mais des pointages = anomalie
-        // 🆕 SAUF si l'employé a un segment EXTRA (heures au noir planifiées)
-        if (!shift && userPointages.length > 0) {
-          // Vérifier si anomalie existe déjà
-          const anomalieExistante = await prisma.anomalie.findFirst({
-            where: {
-              employeId: userIdInt,
-              date: {
-                gte: startUTC,
-                lt: endUTC
-              },
-              type: 'pointage_hors_planning'
-            }
-          });
-        } else if (shift && hasExtraSegment && !hasNormalWorkSegment && userPointages.length > 0) {
-          // 🆕 CAS: Employé pointe pour un shift 100% extra = OK, pas d'anomalie
-          console.log(`✅ [SCHEDULER] Pointage pour shift extra: ${user?.prenom} ${user?.nom}`);
-          continue;
-
-          if (!anomalieExistante) {
-            // Calculer les heures travaillées
-            const entrees = userPointages.filter(p => p.type === 'ENTRÉE' || p.type === 'arrivee');
-            const sorties = userPointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
             
-            let totalMinutes = 0;
-            for (let i = 0; i < Math.min(entrees.length, sorties.length); i++) {
-              const entree = new Date(entrees[i].horodatage);
-              const sortie = new Date(sorties[i].horodatage);
-              if (sortie > entree) {
-                totalMinutes += (sortie - entree) / (1000 * 60);
+            if (!anomalieExistante) {
+              // Calculer les heures travaillées
+              const sorties = userPointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
+              let totalMinutes = 0;
+              
+              for (const sortie of sorties) {
+                const sortieTime = new Date(sortie.horodatage);
+                if (sortieTime > pointageDate) {
+                  totalMinutes = (sortieTime - pointageDate) / (1000 * 60);
+                  break;
+                }
               }
+              const heuresTravaillees = Math.round(totalMinutes / 60 * 10) / 10;
+              
+              await prisma.anomalie.create({
+                data: {
+                  employeId: userIdInt,
+                  date: new Date(`${pointageDateStr}T12:00:00.000Z`),
+                  type: 'pointage_hors_planning',
+                  gravite: 'moyenne',
+                  statut: 'en_attente',
+                  details: {
+                    pointages: userPointages.map(p => ({
+                      type: p.type,
+                      heure: new Date(p.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })
+                    })),
+                    heuresTravaillees,
+                    detecteAutomatiquement: true,
+                    detectePar: 'scheduler_sirh'
+                  },
+                  description: `Pointage hors planning - ${heuresTravaillees}h travaillées sans shift prévu`
+                }
+              });
+              
+              console.log(`⚡ [SCHEDULER-SIRH] POINTAGE HORS PLANNING: ${user?.prenom} ${user?.nom} - ${heuresTravaillees}h sans shift`);
             }
-            const heuresTravaillees = Math.round(totalMinutes / 60 * 10) / 10;
-
-            await prisma.anomalie.create({
-              data: {
-                employeId: userIdInt,
-                date: new Date(`${dateStr}T12:00:00.000Z`),
-                type: 'pointage_hors_planning',
-                gravite: 'moyenne',
-                statut: 'en_attente',
-                details: {
-                  pointages: userPointages.map(p => ({
-                    type: p.type,
-                    heure: new Date(p.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-                  })),
-                  heuresTravaillees,
-                  detecteAutomatiquement: true,
-                  detectePar: 'scheduler'
-                },
-                description: `Pointage hors planning - ${heuresTravaillees}h travaillées sans shift prévu`
-              }
-            });
-
-            console.log(`⚡ [SCHEDULER] POINTAGE HORS PLANNING: ${user?.prenom} ${user?.nom} - ${heuresTravaillees}h sans shift`);
+          } else {
+            console.log(`✅ [SCHEDULER-SIRH] ${user?.prenom} ${user?.nom}: Shift trouvé (${bestShift.shiftDate}, distance ${bestDistance}min)`);
           }
         }
       }

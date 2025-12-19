@@ -36,7 +36,8 @@ function LoginPage() {
       console.log('- firstLogin:', firstLogin);
 
       setToken(token); // Utiliser setToken avec timestamp au lieu de localStorage.setItem direct
-      localStorage.setItem("role", role);
+      // Normaliser le rôle en minuscule pour cohérence
+      localStorage.setItem("role", role?.toLowerCase() || 'employee');
       if (userId) localStorage.setItem("userId", userId.toString());
       
       // Vérification immédiate après stockage
@@ -49,8 +50,9 @@ function LoginPage() {
         console.log('- Redirection vers onboarding');
         navigate("/onboarding");
       } else {
-        // Connexion normale
-        const destination = role === "admin" ? "/admin" : "/home";
+        // Connexion normale - normaliser le rôle en minuscule pour la comparaison
+        const normalizedRole = role?.toLowerCase();
+        const destination = normalizedRole === "admin" ? "/admin" : "/home";
         console.log('- Redirection vers:', destination);
         navigate(destination);
       }

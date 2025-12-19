@@ -134,7 +134,19 @@ const IntelligenceHero = () => {
   const feelsLike = weather?.feelsLike ?? weather?.temperature;
   const terrasseConfort = weather?.terrasseConfort;
   const rainForecast = weather?.rainForecast;
-  const weatherDecision = getWeatherDecision(weather);
+  
+  // 🎯 Utiliser les données staffing du backend si disponibles
+  const staffing = weather?.staffingRecommendation;
+  const weatherDecision = staffing ? {
+    // Utiliser les données du backend Open-Meteo
+    livraison: 0, // Pas de livraison calculée côté backend pour l'instant
+    affluence: staffing.impactPercentage || 0,
+    action: staffing.detailedRecommendations?.[0] ? {
+      type: staffing.alertLevel === 'alerte' ? 'warning' : staffing.alertLevel === 'attention' ? 'warning' : 'info',
+      text: staffing.detailedRecommendations[0],
+      icon: staffing.alertLevel === 'alerte' ? Umbrella : staffing.alertLevel === 'attention' ? ThermometerSun : TrendingUp
+    } : null
+  } : getWeatherDecision(weather);
   
   const matchesFiltered = upcomingMatches
     .filter(m => m.impact !== 'très_faible' && getDaysUntil(m.date) >= 0 && getDaysUntil(m.date) <= 30)
@@ -144,10 +156,14 @@ const IntelligenceHero = () => {
   
   const topMatch = matchesFiltered[0];
   const ActionIcon = weatherDecision.action?.icon;
+  
+  // 🎯 Prévisions des prochains jours
+  const forecast3Days = weather?.forecast3Days || [];
 
   return (
-    <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm p-4 hover:shadow-md transition-shadow duration-200">
-      <div className="flex items-center gap-5 text-sm">
+    <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
+      {/* Ligne principale */}
+      <div className="flex items-center gap-5 text-sm p-4">
       
       {/* Indicateur LIVE */}
       {weather && (
@@ -186,29 +202,18 @@ const IntelligenceHero = () => {
           <span className="text-[10px] text-gray-400 mt-0.5">Extérieur</span>
         </div>
 
-        {/* Impact livraison */}
-        {weatherDecision.livraison !== 0 && (
-          <div className="flex flex-col items-center">
-            <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${
-              weatherDecision.livraison > 0 ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'
-            }`}>
-              {weatherDecision.livraison > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-              {weatherDecision.livraison > 0 ? '+' : ''}{weatherDecision.livraison}%
-            </div>
-            <span className="text-[10px] text-gray-400 mt-0.5">Livraisons</span>
-          </div>
-        )}
-
-        {/* Impact affluence */}
+        {/* Impact affluence - Mis en avant */}
         <div className="flex flex-col items-center">
-          <div className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${
-            weatherDecision.affluence > 0 ? 'bg-green-50 text-green-600' :
-            weatherDecision.affluence < 0 ? 'bg-red-50 text-red-600' :
-            'bg-gray-50 text-gray-500'
+          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
+            weatherDecision.affluence >= 15 ? 'bg-green-100 text-green-700 border-green-200' :
+            weatherDecision.affluence >= 5 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+            weatherDecision.affluence > -10 ? 'bg-gray-100 text-gray-600 border-gray-200' :
+            weatherDecision.affluence > -20 ? 'bg-orange-100 text-orange-700 border-orange-200' :
+            'bg-red-100 text-red-700 border-red-200'
           }`}>
-            {weatherDecision.affluence > 0 ? <TrendingUp className="w-3 h-3" /> :
-             weatherDecision.affluence < 0 ? <TrendingDown className="w-3 h-3" /> :
-             <Minus className="w-3 h-3" />}
+            {weatherDecision.affluence > 0 ? <TrendingUp className="w-3.5 h-3.5" /> :
+             weatherDecision.affluence < 0 ? <TrendingDown className="w-3.5 h-3.5" /> :
+             <Minus className="w-3.5 h-3.5" />}
             {weatherDecision.affluence > 0 ? '+' : ''}{weatherDecision.affluence}%
           </div>
           <span className="text-[10px] text-gray-400 mt-0.5">Affluence</span>
@@ -239,6 +244,24 @@ const IntelligenceHero = () => {
       </div>
 
       <div className="w-px h-10 bg-slate-200/70 mx-1" />
+
+      {/* Recommandation Staffing */}
+      {staffing && (
+        <>
+          <div className="flex flex-col">
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded ${
+              staffing.alertLevel === 'alerte' ? 'bg-red-100 text-red-700' :
+              staffing.alertLevel === 'attention' ? 'bg-amber-100 text-amber-700' :
+              weatherDecision.affluence >= 10 ? 'bg-green-100 text-green-700' :
+              'bg-blue-50 text-blue-700'
+            }`}>
+              {staffing.recommendation}
+            </span>
+            <span className="text-[10px] text-gray-400 mt-0.5">Recommandation</span>
+          </div>
+          <div className="w-px h-10 bg-slate-200/70 mx-1" />
+        </>
+      )}
 
       {/* Événements */}
       <div className="flex flex-col">
@@ -306,6 +329,58 @@ const IntelligenceHero = () => {
         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
       </button>
       </div>
+      
+      {/* 🎯 Ligne secondaire : Prévisions + Alertes */}
+      {(forecast3Days.length > 0 || staffing?.tomorrowAlert || staffing?.detailedRecommendations?.length > 0) && (
+        <div className="px-4 py-2.5 bg-slate-50/50 border-t border-slate-100 flex items-center gap-4 text-xs">
+          
+          {/* Prévisions 2-3 jours */}
+          {forecast3Days.length > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-gray-400 font-medium">Prévisions:</span>
+              {forecast3Days.map((day, i) => {
+                const DayIcon = getWeatherIcon(day.condition);
+                return (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <span className="text-gray-500">{day.jour}</span>
+                    <DayIcon className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-600">{day.tempMax}°</span>
+                    <span className={`font-medium px-1 py-0.5 rounded text-[10px] ${
+                      day.impact.color === 'green' ? 'bg-green-100 text-green-700' :
+                      day.impact.color === 'red' ? 'bg-red-100 text-red-700' :
+                      day.impact.color === 'orange' ? 'bg-orange-100 text-orange-700' :
+                      'text-gray-400'
+                    }`}>
+                      {day.impact.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          
+          {/* Alerte demain */}
+          {staffing?.tomorrowAlert && (
+            <>
+              <div className="w-px h-5 bg-slate-200" />
+              <div className="flex items-center gap-2 text-amber-700 bg-amber-50 px-2 py-1 rounded">
+                <span className="font-medium">⚠️ {staffing.tomorrowAlert.message}</span>
+              </div>
+            </>
+          )}
+          
+          {/* Actions suggérées */}
+          {staffing?.detailedRecommendations?.length > 0 && !staffing?.tomorrowAlert && (
+            <>
+              <div className="w-px h-5 bg-slate-200" />
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">💡</span>
+                <span className="text-gray-600">{staffing.detailedRecommendations.join(' • ')}</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };

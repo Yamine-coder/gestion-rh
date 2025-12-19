@@ -314,7 +314,7 @@ const Badgeuse = () => {
         }
 
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
+          video: { facingMode: 'user' }  // Caméra avant pour tablette murale
         });
         
         stream.getTracks().forEach(track => track.stop());
@@ -657,7 +657,7 @@ const Badgeuse = () => {
               ) : !cameraError && cameraReady ? (
                 <>
                   <QrReader
-                    constraints={{ facingMode: 'environment' }}
+                    constraints={{ facingMode: 'user' }}  // Caméra avant pour tablette murale
                     onResult={(result, error) => {
                       if (error && error.name !== 'NotFoundException') {
                         console.warn('Scanner:', error);

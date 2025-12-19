@@ -5,7 +5,7 @@ import {
   Users, AlertTriangle, Droplets, Snowflake, BarChart3,
   Trophy, Calendar, Wallet, Clock, RefreshCw, Loader2,
   CalendarCheck, CalendarPlus, ThermometerSun, CloudSun,
-  Zap, AlertCircle, CheckCircle2, Info, Gift, MapPin
+  Zap, AlertCircle, CheckCircle2, Info, Gift, MapPin, CloudDrizzle
 } from 'lucide-react';
 
 // Noms des jours en français
@@ -204,8 +204,30 @@ const MeteoWidget = () => {
   const affluence = data?.affluence;
   const matches = data?.matches;
   const holidays = data?.holidays;
+  
+  // 🎯 Nouvelles données staffing
+  const staffing = weather?.staffingRecommendation;
+  const forecast3Days = weather?.forecast3Days || [];
+  const rainForecast = weather?.rainForecast;
 
   const WeatherIcon = getWeatherIcon(weather?.condition);
+  
+  // Couleur selon impact staffing
+  const getImpactBadgeColor = (percentage) => {
+    if (percentage >= 15) return 'bg-green-100 text-green-700 border-green-200';
+    if (percentage >= 5) return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+    if (percentage > -10) return 'bg-gray-100 text-gray-600 border-gray-200';
+    if (percentage > -25) return 'bg-orange-100 text-orange-700 border-orange-200';
+    return 'bg-red-100 text-red-700 border-red-200';
+  };
+  
+  const getAlertLevelStyle = (level) => {
+    switch(level) {
+      case 'alerte': return 'bg-red-50 border-red-200 text-red-700';
+      case 'attention': return 'bg-orange-50 border-orange-200 text-orange-700';
+      default: return 'bg-blue-50 border-blue-200 text-blue-700';
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -226,7 +248,7 @@ const MeteoWidget = () => {
               <div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-3xl font-bold tracking-tight">{weather?.temperature || '--'}°</span>
-                  <span className="text-white/60 text-sm">C</span>
+                  <span className="text-white/60 text-sm">({weather?.feelsLike || '--'}° ressenti)</span>
                 </div>
                 <p className="text-white/80 text-xs capitalize">
                   {weather?.description || 'Chargement...'}
@@ -271,43 +293,114 @@ const MeteoWidget = () => {
         </div>
       </div>
 
-      {/* Affluence + Message en ligne */}
-      <div className="p-3 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-        <div className="flex items-center gap-3">
-          {/* Jauge circulaire affluence */}
-          <div className="relative w-14 h-14 flex-shrink-0">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle cx="28" cy="28" r="24" stroke="#e5e7eb" strokeWidth="4" fill="none" />
-              <circle 
-                cx="28" cy="28" r="24" 
-                stroke={affluence?.level === 'élevée' || affluence?.level === 'très_élevée' ? '#f97316' : affluence?.level === 'moyenne' ? '#eab308' : '#3b82f6'}
-                strokeWidth="4" 
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray={`${(affluence?.percentage || 50) * 1.5} 150`}
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-sm font-bold text-gray-700">{affluence?.percentage || 50}%</span>
+      {/* 🎯 SECTION IMPACT STAFFING - NOUVEAU */}
+      {staffing && (
+        <div className={`p-3 border-b-2 ${getAlertLevelStyle(staffing.alertLevel)}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              <span className="font-semibold text-sm">Impact Staffing</span>
             </div>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${getImpactBadgeColor(staffing.impactPercentage)}`}>
+              {staffing.impactLabel}
+            </span>
           </div>
           
-          {/* Message */}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-800 truncate">
-              {data?.mainMessage || 'Analyse en cours...'}
-            </p>
-            <p className="text-xs text-gray-500">Affluence {getAffluenceLabel(affluence?.level).toLowerCase()}</p>
-          </div>
+          {/* Recommandation principale */}
+          <p className="text-sm font-medium mb-2">{staffing.recommendation}</p>
           
-          {/* Badge alerte si nécessaire */}
-          {data?.alertLevel !== 'normal' && (
-            <div className="flex-shrink-0">
-              {getAlertBadge(data?.alertLevel)}
+          {/* Raisons */}
+          {staffing.reasons?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {staffing.reasons.map((reason, i) => (
+                <span key={i} className="text-xs bg-white/60 px-2 py-0.5 rounded">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          )}
+          
+          {/* Recommandations détaillées */}
+          {staffing.detailedRecommendations?.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-current/20">
+              <p className="text-xs font-medium mb-1">💡 Actions suggérées :</p>
+              <ul className="text-xs space-y-0.5">
+                {staffing.detailedRecommendations.map((rec, i) => (
+                  <li key={i} className="flex items-center gap-1">
+                    <span className="w-1 h-1 bg-current rounded-full" />
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Alerte demain */}
+          {staffing.tomorrowAlert && (
+            <div className="mt-2 pt-2 border-t border-current/20 flex items-start gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <div className="text-xs">
+                <p className="font-medium">{staffing.tomorrowAlert.message}</p>
+                <p className="opacity-80">{staffing.tomorrowAlert.recommendation}</p>
+              </div>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Prévision pluie */}
+      {rainForecast && rainForecast.pluieDans !== null && (
+        <div className="px-3 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2 text-xs text-blue-700">
+          <Umbrella className="w-3.5 h-3.5" />
+          <span className="font-medium">{rainForecast.message}</span>
+        </div>
+      )}
+
+      {/* Terrasse */}
+      {weather?.terrasseConfort && (
+        <div className={`px-3 py-2 border-b border-gray-100 flex items-center justify-between text-xs ${
+          weather.terrasseConfort.niveau === 'bon' ? 'bg-green-50 text-green-700' :
+          weather.terrasseConfort.niveau === 'moyen' ? 'bg-yellow-50 text-yellow-700' :
+          'bg-red-50 text-red-700'
+        }`}>
+          <span className="flex items-center gap-1.5">
+            <ThermometerSun className="w-3.5 h-3.5" />
+            <span className="font-medium">{weather.terrasseConfort.message}</span>
+          </span>
+          <span className="font-bold">{weather.terrasseConfort.score}%</span>
+        </div>
+      )}
+
+      {/* 🎯 PRÉVISIONS 3 JOURS - NOUVEAU */}
+      {forecast3Days.length > 0 && (
+        <div className="p-3 border-b border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Prévisions planification</p>
+          <div className="grid grid-cols-2 gap-2">
+            {forecast3Days.map((day, i) => {
+              const DayIcon = getWeatherIcon(day.condition);
+              return (
+                <div key={i} className="bg-gray-50 rounded-lg p-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DayIcon className="w-5 h-5 text-gray-500" />
+                    <div>
+                      <p className="text-xs font-medium text-gray-700">{day.jour}</p>
+                      <p className="text-[10px] text-gray-500">{day.tempMin}° / {day.tempMax}°</p>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                    day.impact.color === 'green' ? 'bg-green-100 text-green-700' :
+                    day.impact.color === 'red' ? 'bg-red-100 text-red-700' :
+                    day.impact.color === 'orange' ? 'bg-orange-100 text-orange-700' :
+                    'bg-gray-100 text-gray-500'
+                  }`}>
+                    {day.impact.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Facteurs d'influence - compact */}
       {factors.length > 0 && (
@@ -377,7 +470,12 @@ const MeteoWidget = () => {
 
       {/* Footer compact */}
       <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400">
-        {weather?.source === 'openweathermap' ? (
+        {weather?.source === 'open-meteo' ? (
+          <span className="flex items-center gap-1">
+            <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />
+            Live (Open-Meteo)
+          </span>
+        ) : weather?.source === 'openweathermap' ? (
           <span className="flex items-center gap-1">
             <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />
             Live

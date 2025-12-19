@@ -35,23 +35,36 @@ const Pointage = () => {
 
   const token = localStorage.getItem('token');
 
-  // Calculer la journée de travail (06h-06h) - se met à jour avec l'horloge
+  // État pour stocker le jour de travail effectif (déterminé par le shift le plus proche)
+  const [effectiveWorkDay, setEffectiveWorkDay] = useState(null);
+
+  /**
+   * 🎯 LOGIQUE STANDARD SIRH : Déterminer la journée de travail
+   * 
+   * La journée de travail est déterminée par le SHIFT, pas par l'heure.
+   * Un shift du 17/12 qui commence à 3h30 = journée de travail du 17/12
+   * Un shift du 16/12 qui finit à 2h00 le 17/12 = journée de travail du 16/12
+   */
   const workDayInfo = useMemo(() => {
     const now = heureActuelle;
     const hour = now.getHours();
-    const isNightShift = hour < 6; // Entre minuit et 6h = encore la journée de travail d'hier
     
-    const workDayDate = new Date(now);
-    if (isNightShift) {
-      workDayDate.setDate(workDayDate.getDate() - 1);
+    // Si on a détecté un shift, utiliser sa date comme journée de travail
+    if (effectiveWorkDay) {
+      return {
+        date: parseLocalDate(effectiveWorkDay),
+        isNightShift: hour < 6 || hour >= 22,
+        displayLabel: (hour < 6 || hour >= 22) ? 'Service de nuit' : 'Journée de travail'
+      };
     }
     
+    // Fallback : utiliser la date actuelle (avant détection du shift)
     return {
-      date: workDayDate,
-      isNightShift,
-      displayLabel: isNightShift ? 'Service de nuit' : 'Journée de travail'
+      date: new Date(now),
+      isNightShift: hour < 6 || hour >= 22,
+      displayLabel: (hour < 6 || hour >= 22) ? 'Service de nuit' : 'Journée de travail'
     };
-  }, [heureActuelle]);
+  }, [heureActuelle, effectiveWorkDay]);
 
   // Historique trié chronologiquement (plus ancien en premier)
   const sortedHistorique = useMemo(() => {
@@ -97,25 +110,34 @@ const Pointage = () => {
       return toLocalDateString(d); // Utilise l'utilitaire centralisé
     };
 
-    const fetchHistorique = async () => {
+    const fetchHistorique = async (workDayFilter = null) => {
       try {
         // Utiliser l'endpoint principal qui fonctionne
         const res = await axios.get(`${API_BASE}/pointage/mes-pointages`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-  // console.log('Pointages bruts reçus:', res.data?.length || 0);
         
-        // Filtrer pour la JOURNÉE DE TRAVAIL actuelle (06h à 06h)
+        // 🎯 LOGIQUE SIRH : Si on a un jour de travail effectif, l'utiliser
+        // Sinon, utiliser la date calendaire du pointage
         const now = new Date();
-        const currentWorkDay = getWorkDay(now);
+        const todayStr = toLocalDateString(now);
+        const yesterdayStr = toLocalDateString(new Date(now.getTime() - 24*60*60*1000));
         
+        // Filtrer les pointages de J et J-1 (pour couvrir les shifts de nuit)
         const pointagesJournee = res.data.filter(p => {
           const pointageDate = new Date(p.horodatage);
-          const pointageWorkDay = getWorkDay(pointageDate);
-          return pointageWorkDay === currentWorkDay;
+          const pointageDateStr = toLocalDateString(pointageDate);
+          
+          // Si on a un workDayFilter (effectiveWorkDay), filtrer dessus
+          if (workDayFilter) {
+            return pointageDateStr === workDayFilter;
+          }
+          
+          // Sinon, prendre les pointages d'aujourd'hui et d'hier
+          return pointageDateStr === todayStr || pointageDateStr === yesterdayStr;
         });
         
-        console.log('📅 Journée de travail:', currentWorkDay, '- Pointages:', pointagesJournee.length);
+        console.log('📅 [SIRH] Pointages filtrés - workDay:', workDayFilter || 'auto', '- trouvés:', pointagesJournee.length);
         setHistorique(pointagesJournee);
       } catch (err) {
         console.error('Erreur lors du chargement de l\'historique:', err);
@@ -140,53 +162,140 @@ const Pointage = () => {
       }
     };
 
+    /**
+     * 🎯 LOGIQUE STANDARD SIRH : Trouver le shift le plus pertinent
+     * 
+     * 1. Récupérer les shifts de J et J-1
+     * 2. Pour chaque shift, calculer l'écart avec l'heure actuelle
+     * 3. Retourner le shift avec le plus petit écart (max 4h de tolérance)
+     */
     const fetchPlannedShift = async () => {
       try {
-        // Utiliser la journée de travail (06h-06h) et non la date calendaire
         const now = new Date();
-        const workDayDate = new Date(now);
-        if (now.getHours() < 6) {
-          workDayDate.setDate(workDayDate.getDate() - 1);
-        }
-        const workDay = toLocalDateString(workDayDate);
+        const currentHour = now.getHours();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const today = toLocalDateString(now);
         
-        console.log('🔍 DEBUG: Fetching planning pour journée de travail:', workDay, '(heure actuelle:', now.getHours() + 'h)');
+        // Calculer hier
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = toLocalDateString(yesterday);
         
-        const res = await axios.get(`${API_BASE}/shifts/mes-shifts?start=${workDay}&end=${workDay}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        console.log('🎯 [SIRH] Recherche shift - maintenant:', currentHour + 'h', '- aujourd\'hui:', today, '- hier:', yesterdayStr);
         
-        console.log('🔍 DEBUG: Réponse API mes-shifts:', res.data);
-        console.log('🔍 DEBUG: Nombre de shifts reçus:', res.data?.length || 0);
+        // Récupérer les shifts de J et J-1
+        const [resToday, resYesterday] = await Promise.all([
+          axios.get(`${API_BASE}/shifts/mes-shifts?start=${today}&end=${today}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          axios.get(`${API_BASE}/shifts/mes-shifts?start=${yesterdayStr}&end=${yesterdayStr}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+        ]);
         
-        // Trouver le shift de l'utilisateur pour la journée de travail
-        const userShift = res.data.find(shift => {
-          // Utiliser l'utilitaire centralisé pour la comparaison de dates
-          const shiftDateLocal = toLocalDateString(shift.date);
+        const shiftsToday = resToday.data.filter(s => toLocalDateString(s.date) === today);
+        const shiftsYesterday = resYesterday.data.filter(s => toLocalDateString(s.date) === yesterdayStr);
+        
+        console.log('🎯 [SIRH] Shifts aujourd\'hui:', shiftsToday.length, '- hier:', shiftsYesterday.length);
+        
+        // Fonction pour calculer l'écart en minutes entre l'heure actuelle et le début du shift
+        const getShiftStartMinutes = (shift) => {
+          const segments = Array.isArray(shift.segments) ? shift.segments : [];
+          const workSegment = segments.find(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
+          if (!workSegment) return null;
           
-          console.log('🔍 DEBUG: Shift trouvé - employeId:', shift.employeId, 'date brute:', shift.date, 'date locale:', shiftDateLocal, 'workDay:', workDay, 'type:', shift.type);
-          return shiftDateLocal === workDay;
-        });
+          const startTime = workSegment.start || workSegment.debut;
+          if (!startTime) return null;
+          
+          const [h, m] = startTime.split(':').map(Number);
+          return h * 60 + m;
+        };
         
-        console.log('🔍 DEBUG: Shift utilisateur trouvé:', userShift);
-        setPlannedShift(userShift);
+        // Calculer le meilleur shift
+        let bestShift = null;
+        let bestDistance = Infinity;
+        let bestWorkDay = today;
+        
+        // Vérifier les shifts d'aujourd'hui
+        for (const shift of shiftsToday) {
+          const shiftStart = getShiftStartMinutes(shift);
+          if (shiftStart === null) continue;
+          
+          // Distance en minutes (gérer le passage minuit)
+          let distance = Math.abs(currentMinutes - shiftStart);
+          // Si le shift commence demain matin tôt, ajuster
+          if (shiftStart < 360 && currentMinutes > 1200) { // shift avant 6h, on est après 20h
+            distance = Math.abs(currentMinutes - (shiftStart + 1440)); // +24h
+          }
+          
+          console.log(`  📋 Shift ${shift.id} (${today}): début ${shiftStart}min, distance ${distance}min`);
+          
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestShift = shift;
+            bestWorkDay = today;
+          }
+        }
+        
+        // Vérifier les shifts d'hier (pour les shifts de nuit qui débordent)
+        for (const shift of shiftsYesterday) {
+          const segments = Array.isArray(shift.segments) ? shift.segments : [];
+          const workSegment = segments.find(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
+          if (!workSegment) continue;
+          
+          const endTime = workSegment.end || workSegment.fin;
+          if (!endTime) continue;
+          
+          const [endH, endM] = endTime.split(':').map(Number);
+          const endMinutes = endH * 60 + endM;
+          
+          // Si le shift d'hier finit après minuit (ex: 02:00 = 120min)
+          // et qu'on est avant cette heure, c'est pertinent
+          if (endMinutes < 360 && currentMinutes < endMinutes + 60) { // finit avant 6h, on est proche
+            const shiftStart = getShiftStartMinutes(shift);
+            // Calculer distance depuis le début du shift (hier soir)
+            const distance = currentMinutes + (1440 - (shiftStart || 0)); // distance depuis hier
+            
+            console.log(`  📋 Shift ${shift.id} (${yesterdayStr}, nuit): fin ${endMinutes}min, distance ${distance}min`);
+            
+            if (distance < bestDistance && distance < 600) { // Max 10h de distance
+              bestDistance = distance;
+              bestShift = shift;
+              bestWorkDay = yesterdayStr;
+            }
+          }
+        }
+        
+        // Tolérance max : 4h (240 min) avant le début du shift
+        if (bestShift && bestDistance > 240 && currentMinutes < getShiftStartMinutes(bestShift)) {
+          console.log('🎯 [SIRH] Shift trop loin dans le futur, pas encore de shift actif');
+          // Garder le shift pour l'affichage mais noter qu'il n'est pas encore actif
+        }
+        
+        console.log('🎯 [SIRH] Meilleur shift:', bestShift?.id, '- Jour:', bestWorkDay, '- Distance:', bestDistance + 'min');
+        
+        setEffectiveWorkDay(bestWorkDay);
+        setPlannedShift(bestShift);
       } catch (err) {
         console.error('Erreur lors du chargement du planning:', err);
-        console.error('🔍 DEBUG: Détails erreur:', err.response?.status, err.response?.data);
         setPlannedShift(null);
       }
     };
 
     // Fetch des anomalies officielles pour la journée de travail
-    const fetchMesAnomalies = async () => {
+    // Note: Cette fonction sera re-appelée quand effectiveWorkDay change via un autre useEffect
+    const fetchMesAnomalies = async (workDayOverride) => {
       try {
-        // Utiliser la même logique de journée de travail que les pointages
-        const now = new Date();
-        const workDayDate = new Date(now);
-        if (now.getHours() < 6) {
-          workDayDate.setDate(workDayDate.getDate() - 1);
+        // Utiliser le workDay passé en paramètre ou calculer
+        let workDay = workDayOverride;
+        if (!workDay) {
+          const now = new Date();
+          const workDayDate = new Date(now);
+          if (now.getHours() < 6) {
+            workDayDate.setDate(workDayDate.getDate() - 1);
+          }
+          workDay = toLocalDateString(workDayDate);
         }
-        const workDay = toLocalDateString(workDayDate);
         
         console.log('🔍 Fetch anomalies pour journée de travail:', workDay);
         
@@ -247,14 +356,14 @@ const Pointage = () => {
     fetchHistorique();
     fetchTotalHeures();
     fetchPlannedShift();
-    fetchMesAnomalies();
+    fetchMesAnomalies(); // Appel initial avec logique par défaut
     fetchRappelPointage();
     
     // Rafraîchir le rappel toutes les minutes
     const rappelInterval = setInterval(fetchRappelPointage, 60 * 1000);
     
     // 🔄 Polling léger des anomalies (60s) - temps réel gratuit
-    const anomaliesPollingInterval = setInterval(fetchMesAnomalies, 60 * 1000);
+    const anomaliesPollingInterval = setInterval(() => fetchMesAnomalies(effectiveWorkDay), 60 * 1000);
     
     return () => {
       clearInterval(interval);
@@ -262,6 +371,72 @@ const Pointage = () => {
       clearInterval(anomaliesPollingInterval);
     };
   }, [token]);
+
+  // Re-fetch anomalies quand le jour de travail effectif est détecté
+  useEffect(() => {
+    if (effectiveWorkDay && token) {
+      console.log('🔄 Re-fetch anomalies pour jour effectif:', effectiveWorkDay);
+      setAnomaliesLoading(true);
+      
+      const fetchAnomaliesForWorkDay = async () => {
+        try {
+          const response = await fetch(`${API_BASE}/api/anomalies?dateDebut=${effectiveWorkDay}&dateFin=${effectiveWorkDay}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            const userId = JSON.parse(atob(token.split('.')[1])).userId || JSON.parse(atob(token.split('.')[1])).id;
+            const anomaliesActives = (data.anomalies || []).filter(a => 
+              a.employe_id === userId && 
+              ['pending', 'validated'].includes(a.status) &&
+              toLocalDateString(a.date_anomalie) === effectiveWorkDay
+            );
+            console.log(`📋 Anomalies pour ${effectiveWorkDay}:`, anomaliesActives.length);
+            setMesAnomalies(anomaliesActives);
+          }
+        } catch (err) {
+          console.error('Erreur re-fetch anomalies:', err);
+        } finally {
+          setAnomaliesLoading(false);
+        }
+      };
+      
+      fetchAnomaliesForWorkDay();
+    }
+  }, [effectiveWorkDay, token]);
+
+  // 🎯 SIRH : Re-fetch des pointages quand le jour de travail effectif est détecté
+  useEffect(() => {
+    if (effectiveWorkDay && token) {
+      console.log('🔄 [SIRH] Re-fetch pointages pour jour effectif:', effectiveWorkDay);
+      
+      const fetchPointagesForWorkDay = async () => {
+        try {
+          const res = await axios.get(`${API_BASE}/pointage/mes-pointages`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          // Filtrer pour le jour de travail effectif
+          const pointagesJournee = res.data.filter(p => {
+            const pointageDate = new Date(p.horodatage);
+            const pointageDateStr = toLocalDateString(pointageDate);
+            return pointageDateStr === effectiveWorkDay;
+          });
+          
+          console.log('📅 [SIRH] Pointages pour', effectiveWorkDay, ':', pointagesJournee.length);
+          setHistorique(pointagesJournee);
+        } catch (err) {
+          console.error('Erreur re-fetch pointages:', err);
+        }
+      };
+      
+      fetchPointagesForWorkDay();
+    }
+  }, [effectiveWorkDay, token]);
 
   // Format heures/minutes
   const heures = Math.floor(totalHeures);

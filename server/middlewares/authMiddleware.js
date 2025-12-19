@@ -28,7 +28,9 @@ const authenticateToken = (req, res, next) => {
 
 // Middleware pour vérifier les droits admin
 const adminMiddleware = (req, res, next) => {
-  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'manager')) {
+  // Normaliser le rôle en minuscule pour comparaison
+  const role = req.user?.role?.toLowerCase();
+  if (!req.user || (role !== 'admin' && role !== 'manager')) {
     return res.status(403).json({ 
       error: 'Accès refusé. Droits administrateur requis.' 
     });

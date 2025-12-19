@@ -1,7 +1,9 @@
 // server/middlewares/isAdminMiddleware.js
 
 const isAdmin = (req, res, next) => {
-    if (req.user.role !== 'admin') {
+    // Normaliser le rôle en minuscule pour comparaison
+    const role = req.user.role?.toLowerCase();
+    if (role !== 'admin') {
       return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
     }
     next();

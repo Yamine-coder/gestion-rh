@@ -1,24 +1,40 @@
 /**
  * Service pour les APIs externes (Météo, Football, Événements)
  * Avec cache intelligent pour respecter les limites gratuites
+ * 
+ * 🌤️ MÉTÉO: Open-Meteo (100% gratuit, sans clé API, prévisions 7 jours)
  */
 
 const axios = require('axios');
 
 // Cache en mémoire avec TTL
 const cache = {
-  weather: { data: null, lastFetch: null, ttl: 30 * 60 * 1000 }, // 30 min
+  weather: { data: null, lastFetch: null, ttl: 15 * 60 * 1000 }, // 15 min (Open-Meteo est gratuit)
   matches: { data: null, lastFetch: null, ttl: 60 * 60 * 1000 }, // 1 heure
   events: { data: null, lastFetch: null, ttl: 60 * 60 * 1000 }, // 1 heure
 };
 
+// Coordonnées des villes (pour Open-Meteo qui nécessite lat/lon)
+const CITY_COORDS = {
+  'Paris': { lat: 48.8566, lon: 2.3522 },
+  'Lyon': { lat: 45.7640, lon: 4.8357 },
+  'Marseille': { lat: 43.2965, lon: 5.3698 },
+  'Bordeaux': { lat: 44.8378, lon: -0.5792 },
+  'Lille': { lat: 50.6292, lon: 3.0573 },
+  'Toulouse': { lat: 43.6047, lon: 1.4442 },
+  'Nice': { lat: 43.7102, lon: 7.2620 },
+  'Nantes': { lat: 47.2184, lon: -1.5536 },
+  'Strasbourg': { lat: 48.5734, lon: 7.7521 },
+  'Montpellier': { lat: 43.6108, lon: 3.8767 },
+};
+
 // ============================================
-// MÉTÉO - OpenWeatherMap API 2.5 (gratuit)
+// MÉTÉO - Open-Meteo API (100% gratuit, sans clé)
+// https://open-meteo.com/
 // ============================================
 async function getWeather() {
-  const apiKey = process.env.OPENWEATHER_API_KEY;
   const city = process.env.RESTAURANT_CITY || 'Paris';
-  const country = process.env.RESTAURANT_COUNTRY || 'FR';
+  const coords = CITY_COORDS[city] || CITY_COORDS['Paris'];
 
   // Vérifier le cache
   if (cache.weather.data && cache.weather.lastFetch) {
@@ -29,120 +45,352 @@ async function getWeather() {
     }
   }
 
-  // Si pas de clé API, retourner les données de fallback
-  if (!apiKey) {
-    console.log('⚠️ [WEATHER] Pas de clé API OpenWeather, utilisation fallback');
-    return getFallbackWeather();
-  }
-
   try {
-    // API Current Weather 2.5 (gratuite - 1M appels/mois)
+    // Open-Meteo API - 100% gratuit, pas de clé requise
     const response = await axios.get(
-      `https://api.openweathermap.org/data/2.5/weather?q=${city},${country}&appid=${apiKey}&units=metric&lang=fr`,
-      { timeout: 5000 }
+      `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,rain,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Europe/Paris&forecast_days=3`,
+      { timeout: 8000 }
     );
 
     const data = response.data;
+    const current = data.current;
+    const daily = data.daily;
+    const hourly = data.hourly;
     
-    // Calcul du ressenti thermique
-    const feelsLike = Math.round(data.main.feels_like);
-    const windSpeed = data.wind?.speed || 0; // m/s
-    const windKmh = Math.round(windSpeed * 3.6); // Convertir en km/h
+    const temp = Math.round(current.temperature_2m);
+    const feelsLike = Math.round(current.apparent_temperature);
+    const windKmh = Math.round(current.wind_speed_10m);
+    const weatherCode = current.weather_code;
     
-    // Évaluer le confort extérieur (terrasse)
-    const terrasseConfort = evaluateTerrasseConfort(data.main.temp, feelsLike, windKmh, data.weather[0].id);
+    // Mapper le code météo Open-Meteo
+    const condition = mapOpenMeteoCondition(weatherCode);
+    const description = getWeatherDescription(weatherCode);
+    
+    // Évaluer le confort terrasse
+    const terrasseConfort = evaluateTerrasseConfort(temp, feelsLike, windKmh, weatherCode);
+    
+    // 🎯 CALCUL IMPACT MÉTIER RESTAURANT
+    const staffingRecommendation = calculateStaffingImpact(temp, feelsLike, weatherCode, windKmh, daily);
+    
+    // Prévisions des prochaines heures (pour pluie)
+    const rainForecast = analyzeRainForecast(hourly);
+    
+    // Prévisions 3 jours pour planification
+    const forecast3Days = buildForecast3Days(daily);
     
     const weather = {
-      temperature: Math.round(data.main.temp),
+      temperature: temp,
       feelsLike: feelsLike,
-      tempMin: Math.round(data.main.temp_min),
-      tempMax: Math.round(data.main.temp_max),
-      humidity: data.main.humidity,
+      tempMin: Math.round(daily.temperature_2m_min[0]),
+      tempMax: Math.round(daily.temperature_2m_max[0]),
+      humidity: current.relative_humidity_2m,
       wind: {
         speed: windKmh,
-        direction: getWindDirection(data.wind?.deg)
+        direction: getWindDirection(current.wind_direction_10m)
       },
-      description: data.weather[0].description,
-      icon: data.weather[0].icon,
-      condition: mapWeatherCondition(data.weather[0].id),
-      city: data.name,
+      precipitation: current.precipitation || 0,
+      description: description,
+      condition: condition,
+      weatherCode: weatherCode,
+      city: city,
       terrasseConfort: terrasseConfort,
+      rainForecast: rainForecast,
+      forecast3Days: forecast3Days,
+      // 🎯 RECOMMANDATIONS MÉTIER
+      staffingRecommendation: staffingRecommendation,
       timestamp: new Date().toISOString(),
-      source: 'openweathermap',
-      // Coordonnées pour les prévisions pluie
-      coords: { lat: data.coord.lat, lon: data.coord.lon }
+      source: 'open-meteo',
+      coords: coords
     };
-
-    // Récupérer prévisions pluie (nowcasting)
-    try {
-      const rainForecast = await getRainForecast(data.coord.lat, data.coord.lon, apiKey);
-      weather.rainForecast = rainForecast;
-    } catch (e) {
-      weather.rainForecast = null;
-    }
 
     // Mettre en cache
     cache.weather.data = weather;
     cache.weather.lastFetch = Date.now();
     
-    console.log(`☀️ [WEATHER] Météo récupérée: ${weather.temperature}°C (ressenti ${feelsLike}°C), vent ${windKmh}km/h`);
+    console.log(`☀️ [WEATHER] Open-Meteo: ${temp}°C (ressenti ${feelsLike}°C), ${description}`);
+    console.log(`📊 [WEATHER] Impact staffing: ${staffingRecommendation.impactPercentage}% - ${staffingRecommendation.recommendation}`);
+    
     return weather;
 
   } catch (error) {
-    console.error('❌ [WEATHER] Erreur API météo:', error.message);
+    console.error('❌ [WEATHER] Erreur API Open-Meteo:', error.message);
     return cache.weather.data || getFallbackWeather();
   }
 }
 
-// Prévisions pluie pour les 60 prochaines minutes (nowcasting)
-async function getRainForecast(lat, lon, apiKey) {
-  try {
-    // API One Call 3.0 - minutely forecast (pluie minute par minute)
-    // Note: One Call 3.0 nécessite souscription, on utilise 2.5 forecast comme fallback
-    const response = await axios.get(
-      `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric&lang=fr&cnt=4`,
-      { timeout: 5000 }
-    );
-    
-    const forecasts = response.data.list || [];
-    
-    // Analyser les 3 prochaines heures
-    let pluieDans = null;
-    let intensite = 'aucune';
-    
-    for (let i = 0; i < forecasts.length; i++) {
-      const forecast = forecasts[i];
-      const weatherId = forecast.weather[0]?.id || 800;
-      const rain = forecast.rain?.['3h'] || 0;
-      const minutesFromNow = i * 60; // Chaque forecast = 1h
-      
-      // Détecter pluie
-      if ((weatherId >= 300 && weatherId < 600) || rain > 0) {
-        if (!pluieDans) {
-          pluieDans = minutesFromNow;
-          intensite = rain > 5 ? 'forte' : rain > 1 ? 'modérée' : 'légère';
-        }
-      }
-    }
-    
-    return {
-      pluieDans: pluieDans, // minutes avant la pluie (null = pas de pluie prévue)
-      intensite: intensite,
-      message: pluieDans !== null 
-        ? pluieDans === 0 
-          ? `Pluie ${intensite} en cours`
-          : `Pluie ${intensite} dans ~${pluieDans} min`
-        : 'Pas de pluie prévue (3h)',
-      impactLivraison: pluieDans !== null && pluieDans <= 60 ? '+15%' : null
-    };
-  } catch (e) {
-    console.warn('⚠️ [WEATHER] Erreur prévision pluie:', e.message);
-    return null;
+// 🎯 CALCUL IMPACT MÉTIER - Recommandations staffing basées sur la météo
+function calculateStaffingImpact(temp, feelsLike, weatherCode, windKmh, daily) {
+  let impactPercentage = 0;
+  let reasons = [];
+  let recommendations = [];
+  let alertLevel = 'normal'; // normal, attention, alerte
+  
+  // === TEMPÉRATURE ===
+  if (feelsLike >= 20 && feelsLike <= 26) {
+    // Température idéale terrasse
+    impactPercentage += 20;
+    reasons.push('🌡️ Température idéale terrasse');
+    recommendations.push('+1 serveur terrasse');
+  } else if (feelsLike > 26 && feelsLike <= 32) {
+    impactPercentage += 10;
+    reasons.push('☀️ Beau temps chaud');
+  } else if (feelsLike > 32) {
+    impactPercentage -= 15;
+    reasons.push('🥵 Canicule - clients évitent sorties');
+    recommendations.push('Prévoir pauses hydratation équipe');
+    alertLevel = 'attention';
+  } else if (feelsLike < 5) {
+    impactPercentage -= 20;
+    reasons.push('🥶 Grand froid');
+    recommendations.push('Équipe réduite possible');
+    alertLevel = 'attention';
+  } else if (feelsLike < 12) {
+    impactPercentage -= 10;
+    reasons.push('❄️ Temps frais');
   }
+  
+  // === PRÉCIPITATIONS ===
+  // Codes Open-Meteo: 51-67 = bruine/pluie, 71-77 = neige, 80-82 = averses, 95-99 = orages
+  if (weatherCode >= 61 && weatherCode <= 67) {
+    // Pluie modérée à forte
+    impactPercentage -= 25;
+    reasons.push('🌧️ Pluie - terrasse fermée');
+    recommendations.push('-1 à -2 serveurs');
+    alertLevel = 'attention';
+  } else if (weatherCode >= 51 && weatherCode <= 55) {
+    // Bruine légère
+    impactPercentage -= 10;
+    reasons.push('🌦️ Bruine légère');
+  } else if (weatherCode >= 71 && weatherCode <= 77) {
+    // Neige
+    impactPercentage -= 35;
+    reasons.push('❄️ Neige - déplacements difficiles');
+    recommendations.push('Anticiper absences/retards');
+    recommendations.push('Équipe minimale');
+    alertLevel = 'alerte';
+  } else if (weatherCode >= 95 && weatherCode <= 99) {
+    // Orages
+    impactPercentage -= 30;
+    reasons.push('⛈️ Orages');
+    recommendations.push('Terrasse impossible');
+    alertLevel = 'alerte';
+  } else if (weatherCode >= 80 && weatherCode <= 82) {
+    // Averses
+    impactPercentage -= 15;
+    reasons.push('🌧️ Averses');
+  } else if (weatherCode === 0 || weatherCode === 1) {
+    // Ciel dégagé
+    impactPercentage += 15;
+    reasons.push('☀️ Beau temps');
+  }
+  
+  // === VENT ===
+  if (windKmh > 40) {
+    impactPercentage -= 20;
+    reasons.push('💨 Vent très fort');
+    recommendations.push('Terrasse dangereuse');
+    alertLevel = 'alerte';
+  } else if (windKmh > 25) {
+    impactPercentage -= 10;
+    reasons.push('💨 Vent fort');
+  }
+  
+  // === JOUR DE LA SEMAINE ===
+  const dayOfWeek = new Date().getDay();
+  if (dayOfWeek === 5 || dayOfWeek === 6) {
+    // Vendredi/Samedi
+    impactPercentage += 15;
+    reasons.push('📅 Week-end');
+  } else if (dayOfWeek === 0) {
+    // Dimanche - peut varier selon le restaurant
+    impactPercentage += 5;
+    reasons.push('📅 Dimanche');
+  }
+  
+  // === PRÉVISION DEMAIN (alerte planification) ===
+  let tomorrowAlert = null;
+  if (daily && daily.weather_code && daily.weather_code[1]) {
+    const tomorrowCode = daily.weather_code[1];
+    const tomorrowPrecipProb = daily.precipitation_probability_max?.[1] || 0;
+    
+    if (tomorrowCode >= 61 || tomorrowPrecipProb > 70) {
+      tomorrowAlert = {
+        type: 'pluie',
+        message: `Demain: pluie probable (${tomorrowPrecipProb}%)`,
+        recommendation: 'Prévoir équipe réduite demain'
+      };
+    } else if (tomorrowCode >= 71 && tomorrowCode <= 77) {
+      tomorrowAlert = {
+        type: 'neige',
+        message: 'Demain: neige attendue',
+        recommendation: 'Anticiper absences demain'
+      };
+    } else if (daily.temperature_2m_max[1] > 32) {
+      tomorrowAlert = {
+        type: 'canicule',
+        message: `Demain: canicule (${Math.round(daily.temperature_2m_max[1])}°C)`,
+        recommendation: 'Prévoir pauses renforcées'
+      };
+    }
+  }
+  
+  // Limiter l'impact entre -40% et +35%
+  impactPercentage = Math.max(-40, Math.min(35, impactPercentage));
+  
+  // Générer la recommandation principale
+  let recommendation;
+  if (impactPercentage >= 20) {
+    recommendation = 'Rush probable - renforcer équipe';
+  } else if (impactPercentage >= 10) {
+    recommendation = 'Affluence normale à bonne';
+  } else if (impactPercentage > -10) {
+    recommendation = 'Journée standard';
+  } else if (impactPercentage > -25) {
+    recommendation = 'Affluence réduite probable';
+  } else {
+    recommendation = 'Journée calme - équipe minimale';
+  }
+  
+  return {
+    impactPercentage: impactPercentage,
+    impactLabel: impactPercentage > 0 ? `+${impactPercentage}%` : `${impactPercentage}%`,
+    recommendation: recommendation,
+    reasons: reasons,
+    detailedRecommendations: recommendations,
+    alertLevel: alertLevel,
+    tomorrowAlert: tomorrowAlert
+  };
 }
 
-// Évaluer le confort terrasse
-function evaluateTerrasseConfort(temp, feelsLike, windKmh, weatherId) {
+// Analyser les prévisions de pluie des prochaines heures
+function analyzeRainForecast(hourly) {
+  if (!hourly || !hourly.precipitation_probability) return null;
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  // Analyser les 6 prochaines heures
+  let pluieDans = null;
+  let maxProb = 0;
+  
+  for (let i = 0; i < Math.min(6, hourly.precipitation_probability.length); i++) {
+    const prob = hourly.precipitation_probability[i];
+    if (prob > maxProb) maxProb = prob;
+    
+    if (prob > 50 && pluieDans === null) {
+      pluieDans = i; // heures avant la pluie
+    }
+  }
+  
+  return {
+    pluieDans: pluieDans !== null ? pluieDans * 60 : null, // en minutes
+    probabiliteMax: maxProb,
+    message: pluieDans !== null 
+      ? pluieDans === 0 
+        ? `Pluie probable maintenant (${maxProb}%)`
+        : `Pluie dans ~${pluieDans}h (${maxProb}%)`
+      : maxProb > 30 
+        ? `Risque pluie ${maxProb}%`
+        : 'Pas de pluie prévue (6h)'
+  };
+}
+
+// Construire les prévisions sur 3 jours
+function buildForecast3Days(daily) {
+  if (!daily) return [];
+  
+  const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+  const forecasts = [];
+  
+  for (let i = 1; i <= 2; i++) { // Demain et après-demain
+    if (daily.weather_code[i] !== undefined) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      
+      const code = daily.weather_code[i];
+      const impact = calculateSimpleImpact(code, daily.temperature_2m_max[i]);
+      
+      forecasts.push({
+        jour: jours[date.getDay()],
+        date: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+        tempMin: Math.round(daily.temperature_2m_min[i]),
+        tempMax: Math.round(daily.temperature_2m_max[i]),
+        condition: mapOpenMeteoCondition(code),
+        description: getWeatherDescription(code),
+        precipProb: daily.precipitation_probability_max?.[i] || 0,
+        impact: impact
+      });
+    }
+  }
+  
+  return forecasts;
+}
+
+// Impact simplifié pour les prévisions
+function calculateSimpleImpact(weatherCode, tempMax) {
+  if (weatherCode >= 61 || weatherCode >= 95) return { label: '-20%', color: 'red' };
+  if (weatherCode >= 71 && weatherCode <= 77) return { label: '-30%', color: 'red' };
+  if (weatherCode >= 51 && weatherCode <= 55) return { label: '-10%', color: 'orange' };
+  if (tempMax > 32) return { label: '-10%', color: 'orange' };
+  if (weatherCode <= 3 && tempMax >= 18 && tempMax <= 28) return { label: '+15%', color: 'green' };
+  return { label: '~', color: 'gray' };
+}
+
+// Mapper les codes météo Open-Meteo vers nos conditions
+function mapOpenMeteoCondition(code) {
+  // Codes WMO: https://open-meteo.com/en/docs
+  if (code === 0) return 'soleil';
+  if (code === 1 || code === 2) return 'nuageux';
+  if (code === 3) return 'nuageux';
+  if (code >= 45 && code <= 48) return 'brouillard';
+  if (code >= 51 && code <= 55) return 'pluie_legere';
+  if (code >= 56 && code <= 57) return 'pluie_legere'; // verglas
+  if (code >= 61 && code <= 65) return 'pluie';
+  if (code >= 66 && code <= 67) return 'pluie'; // pluie verglaçante
+  if (code >= 71 && code <= 77) return 'neige';
+  if (code >= 80 && code <= 82) return 'pluie';
+  if (code >= 85 && code <= 86) return 'neige';
+  if (code >= 95 && code <= 99) return 'orage';
+  return 'normal';
+}
+
+// Description en français des codes météo
+function getWeatherDescription(code) {
+  const descriptions = {
+    0: 'Ciel dégagé',
+    1: 'Principalement dégagé',
+    2: 'Partiellement nuageux',
+    3: 'Couvert',
+    45: 'Brouillard',
+    48: 'Brouillard givrant',
+    51: 'Bruine légère',
+    53: 'Bruine modérée',
+    55: 'Bruine dense',
+    56: 'Bruine verglaçante légère',
+    57: 'Bruine verglaçante dense',
+    61: 'Pluie légère',
+    63: 'Pluie modérée',
+    65: 'Pluie forte',
+    66: 'Pluie verglaçante légère',
+    67: 'Pluie verglaçante forte',
+    71: 'Neige légère',
+    73: 'Neige modérée',
+    75: 'Neige forte',
+    77: 'Grains de neige',
+    80: 'Averses légères',
+    81: 'Averses modérées',
+    82: 'Averses violentes',
+    85: 'Averses de neige légères',
+    86: 'Averses de neige fortes',
+    95: 'Orage',
+    96: 'Orage avec grêle légère',
+    99: 'Orage avec grêle forte'
+  };
+  return descriptions[code] || 'Variable';
+}
+
+// Évaluer le confort terrasse (adapté pour codes Open-Meteo WMO)
+function evaluateTerrasseConfort(temp, feelsLike, windKmh, weatherCode) {
   let score = 100;
   let raisons = [];
   
@@ -167,10 +415,19 @@ function evaluateTerrasseConfort(temp, feelsLike, windKmh, weatherId) {
     raisons.push('vent');
   }
   
-  // Pluie/Mauvais temps
-  if (weatherId >= 200 && weatherId < 700) {
+  // Pluie/Mauvais temps (codes Open-Meteo WMO)
+  // 51-67: bruine/pluie, 71-77: neige, 80-82: averses, 95-99: orages
+  if ((weatherCode >= 51 && weatherCode <= 67) || 
+      (weatherCode >= 80 && weatherCode <= 82) ||
+      (weatherCode >= 95 && weatherCode <= 99)) {
     score -= 50;
     raisons.push('intempéries');
+  } else if (weatherCode >= 71 && weatherCode <= 77) {
+    score -= 60;
+    raisons.push('neige');
+  } else if (weatherCode >= 45 && weatherCode <= 48) {
+    score -= 20;
+    raisons.push('brouillard');
   }
   
   score = Math.max(0, score);
@@ -184,7 +441,7 @@ function evaluateTerrasseConfort(temp, feelsLike, windKmh, weatherId) {
       ? 'Terrasse agréable' 
       : score >= 40 
         ? `Terrasse limitée (${raisons.join(', ')})`
-        : `Terrasse vide → livraisons ↑`
+        : `Terrasse fermée`
   };
 }
 
