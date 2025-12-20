@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" id="theme-color-meta" content="#fecaca" />
+    <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
     <meta name="description" content="Chez Antoine - Au service du bon. Gestion du planning et pointage." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Chez Antoine" />
@@ -143,6 +143,9 @@
             setTimeout(function () {
               if (splash && splash.parentNode) {
                 splash.parentNode.removeChild(splash);
+                // Changer theme-color en rose après suppression du splash
+                var meta = document.querySelector('meta[name="theme-color"]');
+                if (meta) meta.setAttribute('content', '#fecaca');
                 // Émettre l'événement APRÈS suppression du DOM
                 window.dispatchEvent(new Event('splash:removed'));
               }
