@@ -378,7 +378,7 @@ function DemandeCongeForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 lg:p-5 space-y-3 lg:space-y-4 overflow-y-auto overscroll-contain max-w-full w-full flex-1">
+      <form onSubmit={handleSubmit} className="p-4 lg:p-5 space-y-3 lg:space-y-4 max-w-full w-full flex-1">
         {/* Type de congé avec liste moderne - optimisé mobile */}
         <div className="space-y-1.5 lg:space-y-1.5 overflow-hidden max-w-full w-full min-w-0">
           <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
@@ -742,8 +742,8 @@ function DemandeCongeForm({
           )}
         </div>
 
-        {/* Note informative */}
-        <div className="text-center pb-2">
+        {/* Note informative - avec padding pour safe-area mobile */}
+        <div className="text-center" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0.5rem))' }}>
           <div className="text-xs text-gray-500 dark:text-gray-400">
             Votre demande sera envoyée à votre manager pour validation
           </div>

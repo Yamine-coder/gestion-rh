@@ -3140,41 +3140,47 @@ const ProfilEmploye = React.memo(() => {
         </div>
       </div>
 
-      {/* Toast messages avec animations améliorées */}
-      <div className="fixed top-4 inset-x-0 flex flex-col items-center gap-2 px-4 z-50 pointer-events-none">
-        {erreur && (
-          <div className="w-full max-w-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-red-800 dark:text-red-200 rounded-xl shadow-lg px-4 py-3 text-sm flex items-start gap-3 animate-[slideDown_0.3s_ease-out] backdrop-blur-sm pointer-events-auto">
-            <ExclamationTriangleIcon className="w-5 h-5 mt-0.5 text-red-500" />
-            <div className="flex-1">
-              <span className="font-medium">Erreur</span>
-              <p className="mt-0.5 opacity-90">{erreur}</p>
+      {/* Toast messages - positionnés comme MesConges */}
+      {erreur && (
+        <div 
+          className="fixed left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 5rem)' }}
+        >
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl shadow-lg px-4 py-3 text-sm flex items-center gap-3 animate-[slideDown_0.3s_ease-out]">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+              <ExclamationTriangleIcon className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
             </div>
+            <span className="flex-1 text-sm leading-snug font-medium">{erreur}</span>
             <button 
               onClick={() => setErreur('')} 
-              className="opacity-60 hover:opacity-100 text-xs p-1 rounded transition-opacity hover:bg-red-100 dark:hover:bg-red-800/30"
+              className="flex-shrink-0 w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
               aria-label="Fermer le message"
             >
-              ✕
+              <span className="text-slate-400 text-lg">×</span>
             </button>
           </div>
-        )}
-        {succes && (
-          <div className="w-full max-w-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 text-emerald-800 dark:text-emerald-200 rounded-xl shadow-lg px-4 py-3 text-sm flex items-start gap-3 animate-[slideDown_0.3s_ease-out] backdrop-blur-sm pointer-events-auto">
-            <CheckCircleIcon className="w-5 h-5 mt-0.5 text-emerald-500" />
-            <div className="flex-1">
-              <span className="font-medium">Succès</span>
-              <p className="mt-0.5 opacity-90">{succes}</p>
+        </div>
+      )}
+      {succes && (
+        <div 
+          className="fixed left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 5rem)' }}
+        >
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl shadow-lg px-4 py-3 text-sm flex items-center gap-3 animate-[slideDown_0.3s_ease-out]">
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+              <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             </div>
+            <span className="flex-1 text-sm leading-snug font-medium">{succes}</span>
             <button 
               onClick={() => setSucces('')} 
-              className="opacity-60 hover:opacity-100 text-xs p-1 rounded transition-opacity hover:bg-emerald-100 dark:hover:bg-emerald-800/30"
+              className="flex-shrink-0 w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
               aria-label="Fermer le message"
             >
-              ✕
+              <span className="text-slate-400 text-lg">×</span>
             </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Modal changement mot de passe amélioré */}
       {showChangePassword && (
