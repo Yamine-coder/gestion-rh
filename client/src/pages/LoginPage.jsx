@@ -16,22 +16,29 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Page login: fond rose + theme-color rose pour iOS home indicator
+  // Theme-color pour iOS home indicator - attendre que le splash soit parti
   useEffect(() => {
-    // Classes CSS
-    document.documentElement.classList.add('login-page');
-    document.body.classList.add('login-page');
-    
-    // Theme-color pour iOS (colore le home indicator)
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    const prevColor = themeColorMeta?.getAttribute('content');
-    if (themeColorMeta) {
-      themeColorMeta.setAttribute('content', '#fecaca');
+    let isMounted = true;
+    
+    // Fonction pour appliquer le theme-color rose
+    const applyThemeColor = () => {
+      if (isMounted && themeColorMeta) {
+        themeColorMeta.setAttribute('content', '#fecaca');
+      }
+    };
+    
+    // Écouter l'événement app:ready (émis quand le splash disparaît)
+    window.addEventListener('app:ready', applyThemeColor, { once: true });
+    
+    // Si l'événement a déjà été émis (splash déjà parti), appliquer immédiatement
+    if (!document.getElementById('splash-screen')) {
+      applyThemeColor();
     }
     
     return () => {
-      document.documentElement.classList.remove('login-page');
-      document.body.classList.remove('login-page');
+      isMounted = false;
+      window.removeEventListener('app:ready', applyThemeColor);
       // Remettre le theme-color blanc pour les autres pages
       if (themeColorMeta) {
         themeColorMeta.setAttribute('content', '#ffffff');
@@ -115,6 +122,12 @@ function LoginPage() {
 
   return (
     <>
+      {/* Fond rose qui couvre tout l'écran (géré par React, pas par html/body) */}
+      <div 
+        className="fixed inset-0 bg-gradient-to-br from-red-100 to-red-200" 
+        style={{ zIndex: -1 }} 
+        aria-hidden="true"
+      />
       {/* Contenu centré */}
       <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto">
         <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
