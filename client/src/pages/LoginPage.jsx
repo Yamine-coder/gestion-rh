@@ -122,14 +122,13 @@ function LoginPage() {
 
   return (
     <>
-      {/* Fond rose qui couvre tout l'écran (géré par React, pas par html/body) */}
+      {/* Fond rose qui couvre tout l'écran */}
       <div 
         className="fixed inset-0 bg-gradient-to-br from-red-100 to-red-200" 
-        style={{ zIndex: -1 }} 
         aria-hidden="true"
       />
-      {/* Contenu centré */}
-      <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto">
+      {/* Contenu centré - z-index pour être au-dessus du fond */}
+      <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto z-10">
         <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
           {/* Logo */}
           <div className="flex justify-center mb-8">
