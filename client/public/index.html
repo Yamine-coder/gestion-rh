@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
+    <meta name="theme-color" id="theme-color-meta" content="#fecaca" />
     <meta name="description" content="Chez Antoine - Au service du bon. Gestion du planning et pointage." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Chez Antoine" />
@@ -48,11 +48,11 @@
         box-sizing: border-box;
       }
 
-      /* Background BLANC par défaut */
+      /* Background ROSE par défaut - le splash blanc couvre tout jusqu'à sa disparition */
       html, body {
         height: 100%;
         width: 100%;
-        background-color: #ffffff;
+        background-color: #fecaca;
       }
 
       /* iOS Safari PWA: stabilise la hauteur du viewport */
@@ -61,13 +61,13 @@
         body { min-height: -webkit-fill-available; }
       }
       
-      /* Splash screen - fond BLANC qui couvre TOUT y compris home indicator */
+      /* Splash screen - fond BLANC qui couvre TOUT y compris home indicator iOS */
       #splash-screen {
         position: fixed;
-        top: -100px;
-        left: -100px;
-        right: -100px;
-        bottom: -100px;
+        top: -150px;
+        left: -150px;
+        right: -150px;
+        bottom: -150px;
         background: #ffffff;
         display: flex;
         flex-direction: column;

@@ -16,30 +16,14 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Fond rose - attendre que le splash soit VRAIMENT supprimé du DOM
+  // Fond déjà rose par défaut (HTML) - juste s'assurer et nettoyer au départ
   useEffect(() => {
-    const pinkColor = '#fecaca';
-    let applied = false;
-    
-    const applyPinkBackground = () => {
-      if (applied) return;
-      applied = true;
-      document.documentElement.style.backgroundColor = pinkColor;
-      document.body.style.backgroundColor = pinkColor;
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', pinkColor);
-    };
-    
-    // Si splash déjà parti, appliquer immédiatement
-    if (!document.getElementById('splash-screen')) {
-      applyPinkBackground();
-    } else {
-      // Sinon attendre l'événement splash:removed
-      window.addEventListener('splash:removed', applyPinkBackground, { once: true });
-    }
+    // S'assurer que c'est rose (déjà fait par HTML mais au cas où)
+    document.documentElement.style.backgroundColor = '#fecaca';
+    document.body.style.backgroundColor = '#fecaca';
     
     return () => {
-      window.removeEventListener('splash:removed', applyPinkBackground);
+      // Changer en blanc quand on quitte login
       document.documentElement.style.backgroundColor = '#ffffff';
       document.body.style.backgroundColor = '#ffffff';
       const meta = document.querySelector('meta[name="theme-color"]');
