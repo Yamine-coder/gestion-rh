@@ -16,30 +16,17 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Theme-color pour iOS home indicator - attendre que le splash soit parti
+  // Theme-color: rose sur login, blanc ailleurs
   useEffect(() => {
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    let isMounted = true;
     
-    // Fonction pour appliquer le theme-color rose
-    const applyThemeColor = () => {
-      if (isMounted && themeColorMeta) {
-        themeColorMeta.setAttribute('content', '#fecaca');
-      }
-    };
-    
-    // Écouter l'événement app:ready (émis quand le splash disparaît)
-    window.addEventListener('app:ready', applyThemeColor, { once: true });
-    
-    // Si l'événement a déjà été émis (splash déjà parti), appliquer immédiatement
-    if (!document.getElementById('splash-screen')) {
-      applyThemeColor();
+    // S'assurer que c'est rose sur la page login
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute('content', '#fecaca');
     }
     
     return () => {
-      isMounted = false;
-      window.removeEventListener('app:ready', applyThemeColor);
-      // Remettre le theme-color blanc pour les autres pages
+      // Remettre blanc quand on quitte la page login
       if (themeColorMeta) {
         themeColorMeta.setAttribute('content', '#ffffff');
       }

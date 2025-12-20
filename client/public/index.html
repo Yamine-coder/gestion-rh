@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
     
     <!-- PWA Meta Tags -->
-    <!-- theme-color sera modifié dynamiquement par React pour le fond du home indicator iOS -->
-    <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
+    <!-- theme-color rose car la première page après splash est login -->
+    <meta name="theme-color" id="theme-color-meta" content="#fecaca" />
     <meta name="description" content="Chez Antoine - Au service du bon. Gestion du planning et pointage." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Chez Antoine" />
@@ -62,10 +62,13 @@
         body { min-height: -webkit-fill-available; }
       }
       
-      /* Splash screen - fond BLANC */
+      /* Splash screen - fond BLANC qui couvre TOUT y compris home indicator */
       #splash-screen {
         position: fixed;
-        inset: 0;
+        top: -100px;
+        left: -100px;
+        right: -100px;
+        bottom: -100px;
         background: #ffffff;
         display: flex;
         flex-direction: column;
