@@ -6,8 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
     
     <!-- PWA Meta Tags -->
-    <!-- theme-color rose car la première page après splash est login -->
-    <meta name="theme-color" id="theme-color-meta" content="#fecaca" />
+    <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
     <meta name="description" content="Chez Antoine - Au service du bon. Gestion du planning et pointage." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Chez Antoine" />
@@ -49,11 +48,11 @@
         box-sizing: border-box;
       }
 
-      /* Background ROSE par défaut car login est la 1ère page - JS le changera en blanc après login */
+      /* Background BLANC par défaut */
       html, body {
         height: 100%;
         width: 100%;
-        background-color: #fecaca;
+        background-color: #ffffff;
       }
 
       /* iOS Safari PWA: stabilise la hauteur du viewport */
@@ -142,7 +141,11 @@
             if (!splash) return;
             splash.classList.add('fade-out');
             setTimeout(function () {
-              if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
+              if (splash && splash.parentNode) {
+                splash.parentNode.removeChild(splash);
+                // Émettre l'événement APRÈS suppression du DOM
+                window.dispatchEvent(new Event('splash:removed'));
+              }
             }, 650);
           }, delay);
         }

@@ -16,30 +16,34 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Fond rose sur body pour iOS (le home indicator affiche le fond du body)
+  // Fond rose - attendre que le splash soit VRAIMENT supprimé du DOM
   useEffect(() => {
-    // Couleur UNIE rose (pas de gradient) - iOS étend mieux les couleurs unies
     const pinkColor = '#fecaca';
+    let applied = false;
     
-    // Appliquer sur html ET body avec !important via style attribute
-    document.documentElement.style.cssText += `background: ${pinkColor} !important;`;
-    document.body.style.cssText += `background: ${pinkColor} !important;`;
+    const applyPinkBackground = () => {
+      if (applied) return;
+      applied = true;
+      document.documentElement.style.backgroundColor = pinkColor;
+      document.body.style.backgroundColor = pinkColor;
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', pinkColor);
+    };
     
-    // Theme-color pour iOS
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeColorMeta) {
-      themeColorMeta.setAttribute('content', pinkColor);
+    // Si splash déjà parti, appliquer immédiatement
+    if (!document.getElementById('splash-screen')) {
+      applyPinkBackground();
+    } else {
+      // Sinon attendre l'événement splash:removed
+      window.addEventListener('splash:removed', applyPinkBackground, { once: true });
     }
     
     return () => {
-      // Restaurer le fond blanc quand on quitte login
-      document.documentElement.style.cssText = document.documentElement.style.cssText.replace(/background:[^;]+!important;?/g, '');
-      document.body.style.cssText = document.body.style.cssText.replace(/background:[^;]+!important;?/g, '');
-      document.documentElement.style.background = '#ffffff';
-      document.body.style.background = '#ffffff';
-      if (themeColorMeta) {
-        themeColorMeta.setAttribute('content', '#ffffff');
-      }
+      window.removeEventListener('splash:removed', applyPinkBackground);
+      document.documentElement.style.backgroundColor = '#ffffff';
+      document.body.style.backgroundColor = '#ffffff';
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', '#ffffff');
     };
   }, []);
 
