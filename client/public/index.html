@@ -56,11 +56,17 @@
         box-sizing: border-box;
       }
 
-      /* Background blanc par défaut */
+      /* Background blanc par défaut (évite le reveal blanc/bug iOS) */
       html, body {
-        min-height: 100%;
-        min-height: 100dvh;
+        height: 100%;
+        width: 100%;
         background: #ffffff;
+      }
+
+      /* iOS Safari / PWA: stabilise la hauteur du viewport (home indicator / barres dynamiques) */
+      @supports (-webkit-touch-callout: none) {
+        html { height: -webkit-fill-available; }
+        body { min-height: -webkit-fill-available; }
       }
 
       /* Dark mode pour les pages app */
@@ -76,14 +82,21 @@
       html.login-page body {
         background: linear-gradient(to bottom right, #fee2e2, #fecaca) !important;
       }
+
+      /* iOS peut "révéler" le fond lors de l'overscroll / resize: on surdimensionne le fond */
+      html.login-page body::before {
+        content: "";
+        position: fixed;
+        inset: -200px;
+        background: linear-gradient(to bottom right, #fee2e2, #fecaca);
+        z-index: -1;
+        pointer-events: none;
+      }
       
-      /* Splash screen - fond BLANC avec extension pour couvrir home indicator iOS */
+      /* Splash screen - fond BLANC surdimensionné pour couvrir le home indicator iOS */
       #splash-screen {
         position: fixed;
-        top: -50px;
-        left: 0;
-        right: 0;
-        bottom: -50px;
+        inset: -200px;
         background: #ffffff;
         display: flex;
         flex-direction: column;
