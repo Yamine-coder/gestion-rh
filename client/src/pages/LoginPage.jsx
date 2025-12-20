@@ -16,12 +16,12 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Sur la page login, on retire app-loaded pour garder le fond rose
+  // Sur la page login, ajouter login-page pour le fond rose
   useEffect(() => {
+    document.documentElement.classList.add('login-page');
     document.documentElement.classList.remove('app-loaded');
     return () => {
-      // Quand on quitte la page login, on remet app-loaded
-      document.documentElement.classList.add('app-loaded');
+      document.documentElement.classList.remove('login-page');
     };
   }, []);
 
@@ -100,12 +100,19 @@ function LoginPage() {
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto">
-      <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
-          <img src={logo} alt="Logo Chez Antoine" className="h-28 w-auto object-contain" />
-        </div>
+    <>
+      {/* Fond rose étendu pour couvrir le home indicator iOS */}
+      <div 
+        className="fixed left-0 right-0 bg-gradient-to-br from-red-100 to-red-200"
+        style={{ top: '-100px', bottom: '-100px' }}
+      />
+      {/* Contenu centré */}
+      <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto z-10">
+        <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
+          {/* Logo */}
+          <div className="flex justify-center mb-8">
+            <img src={logo} alt="Logo Chez Antoine" className="h-28 w-auto object-contain" />
+          </div>
         
         {!showForgotPassword ? (
           <>
@@ -285,8 +292,9 @@ function LoginPage() {
             </div>
           </>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

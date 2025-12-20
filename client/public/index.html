@@ -48,8 +48,6 @@
         --brand-primary: #cf292c;
         --brand-dark: #a01f22;
         --brand-light: #ff4145;
-        --login-bg-light: #fee2e2;
-        --login-bg-dark: #fecaca;
       }
       
       * {
@@ -58,34 +56,35 @@
         box-sizing: border-box;
       }
 
-      /* Background rose par défaut sur html/body pour couvrir le home indicator iOS */
+      /* Background blanc par défaut */
       html, body {
         min-height: 100%;
         min-height: 100dvh;
-        background: linear-gradient(to bottom right, #fee2e2, #fecaca);
-      }
-
-      /* Quand l'app est chargée et qu'on n'est pas sur login, le JS mettra app-loaded */
-      html.app-loaded,
-      html.app-loaded body {
         background: #ffffff;
       }
 
-      /* Dark mode */
+      /* Dark mode pour les pages app */
       @media (prefers-color-scheme: dark) {
         html.app-loaded,
         html.app-loaded body {
           background: #0f172a;
         }
       }
+
+      /* Page login: fond rose (activé via JS) */
+      html.login-page,
+      html.login-page body {
+        background: linear-gradient(to bottom right, #fee2e2, #fecaca) !important;
+      }
       
+      /* Splash screen - fond BLANC avec extension pour couvrir home indicator iOS */
       #splash-screen {
         position: fixed;
-        top: 0;
+        top: -50px;
         left: 0;
         right: 0;
-        bottom: 0;
-        background: linear-gradient(to bottom right, #fee2e2, #fecaca);
+        bottom: -50px;
+        background: #ffffff;
         display: flex;
         flex-direction: column;
         align-items: center;
