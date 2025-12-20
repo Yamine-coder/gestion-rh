@@ -155,7 +155,7 @@ async function notifierCongeApprouve(conge) {
   return await creerNotification({
     employeId: conge.userId,
     type: NOTIFICATION_TYPES.CONGE_APPROUVE,
-    titre: 'Demande de congé approuvée ✅',
+    titre: 'Demande de congé approuvée',
     message: {
       text: `Votre demande de ${conge.type} du ${dateDebut} au ${dateFin} a été approuvée.`,
       congeId: conge.id,
@@ -268,10 +268,10 @@ async function notifierNouvelleConsigne(consigne, employeIds) {
     : NOTIFICATION_TYPES.NOUVELLE_CONSIGNE;
   
   const titre = consigne.type === 'urgent' 
-    ? '⚠️ Consigne urgente' 
+    ? 'Consigne urgente' 
     : consigne.type === 'important'
-      ? '📌 Information importante'
-      : '📋 Nouvelle consigne';
+      ? 'Information importante'
+      : 'Nouvelle consigne';
   
   return await creerNotifications({
     employeIds,
@@ -309,7 +309,7 @@ async function notifierModificationApprouvee(employeId, modification) {
   return await creerNotification({
     employeId,
     type: NOTIFICATION_TYPES.MODIFICATION_APPROUVEE,
-    titre: 'Modification approuvée ✅',
+    titre: 'Modification approuvée',
     message: {
       text: `Votre demande de modification de pointage a été approuvée.`,
       modificationId: modification.id,
@@ -355,7 +355,7 @@ async function notifierDemandeRemplacement(employeIds, demande, employeAbsent, s
   return await creerNotifications({
     employeIds,
     type: NOTIFICATION_TYPES.REMPLACEMENT_DEMANDE,
-    titre: '🔄 Demande de remplacement',
+    titre: 'Demande de remplacement',
     message: {
       text: `${nomComplet} cherche un remplaçant pour le ${dateShift} (${shift.heureDebut} - ${shift.heureFin})`,
       demandeId: demande.id,
@@ -389,7 +389,7 @@ async function notifierAbsenceEquipe(employeIds, conge, employeAbsent) {
   return await creerNotifications({
     employeIds,
     type: NOTIFICATION_TYPES.ABSENCE_EQUIPE,
-    titre: '📅 Absence équipe',
+    titre: 'Absence équipe',
     message: {
       text: `${nomComplet} sera absent(e) ${periodeText} (${conge.type})`,
       congeId: conge.id,

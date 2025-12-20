@@ -33,6 +33,7 @@ import UploadPhotoProfil from '../components/UploadPhotoProfil';
 import MobileOnboarding from '../components/onboarding/MobileOnboarding';
 import { getToken, isTokenValid, setupTokenExpirationCheck, clearToken } from '../utils/tokenManager';
 import { getCategoriesEmploye } from '../utils/categoriesConfig';
+import { getImageUrl } from '../utils/imageUtils';
 
 // ============================================
 // CONFIGURATION API
@@ -1858,7 +1859,7 @@ const ProfilEmploye = React.memo(() => {
                     <div className="relative group flex-shrink-0">
                       {employe.photoProfil ? (
                         <img 
-                          src={`${API_URL}${employe.photoProfil}`}
+                          src={getImageUrl(employe.photoProfil)}
                           alt="Photo de profil"
                           className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl object-cover shadow-sm ring-2 ring-slate-100 dark:ring-slate-700"
                         />

@@ -6,24 +6,31 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { authMiddleware } = require('../middlewares/authMiddleware');
+const { 
+  uploadImage, 
+  deleteFile, 
+  extractPublicIdFromUrl, 
+  isCloudinaryUrl,
+  isCloudinaryConfigured 
+} = require('../services/cloudinaryService');
 
-// Configuration Multer pour l'upload de photos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../uploads/photos-profil');
-    // Créer le dossier s'il n'existe pas
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Format: user-{userId}-{timestamp}.{extension}
-    const ext = path.extname(file.originalname).toLowerCase();
-    const filename = `user-${req.userId}-${Date.now()}${ext}`;
-    cb(null, filename);
-  }
-});
+// Configuration Multer - stockage en mémoire pour Cloudinary
+const storage = isCloudinaryConfigured() 
+  ? multer.memoryStorage() // Buffer pour Cloudinary
+  : multer.diskStorage({   // Fallback local si Cloudinary non configuré
+      destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, '../uploads/photos-profil');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+      },
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const filename = `user-${req.userId}-${Date.now()}${ext}`;
+        cb(null, filename);
+      }
+    });
 
 // Filtre pour accepter uniquement les images
 const fileFilter = (req, file, cb) => {
@@ -50,7 +57,7 @@ const upload = multer({
 
 /**
  * POST /api/profil/upload-photo
- * Upload d'une photo de profil
+ * Upload d'une photo de profil (Cloudinary ou local)
  */
 router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req, res) => {
   try {
@@ -59,7 +66,7 @@ router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req,
     }
 
     const userId = req.userId;
-    const photoPath = `/uploads/photos-profil/${req.file.filename}`;
+    let photoUrl;
 
     // Récupérer l'ancienne photo pour la supprimer
     const user = await prisma.user.findUnique({
@@ -67,33 +74,65 @@ router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req,
       select: { photoProfil: true }
     });
 
-    // Supprimer l'ancienne photo si elle existe
-    if (user.photoProfil) {
-      const oldPhotoPath = path.join(__dirname, '..', user.photoProfil);
-      if (fs.existsSync(oldPhotoPath)) {
-        fs.unlinkSync(oldPhotoPath);
-        console.log(`🗑️  Ancienne photo supprimée: ${user.photoProfil}`);
+    // ☁️ CLOUDINARY : Upload vers le cloud si configuré
+    if (isCloudinaryConfigured()) {
+      try {
+        // Upload vers Cloudinary
+        const result = await uploadImage(
+          req.file.buffer,
+          'photos-profil',
+          `user-${userId}`
+        );
+        photoUrl = result.url;
+        
+        // Supprimer l'ancienne photo de Cloudinary si existe
+        if (user.photoProfil && isCloudinaryUrl(user.photoProfil)) {
+          const oldPublicId = extractPublicIdFromUrl(user.photoProfil);
+          if (oldPublicId) {
+            await deleteFile(oldPublicId);
+          }
+        }
+        
+        console.log(`☁️  Photo uploadée sur Cloudinary: ${photoUrl}`);
+      } catch (cloudinaryError) {
+        console.error('❌ Erreur Cloudinary:', cloudinaryError.message);
+        return res.status(500).json({ error: 'Erreur lors de l\'upload vers le cloud' });
       }
+    } else {
+      // 📁 FALLBACK LOCAL : Si Cloudinary non configuré
+      photoUrl = `/uploads/photos-profil/${req.file.filename}`;
+      
+      // Supprimer l'ancienne photo locale si elle existe
+      if (user.photoProfil && !isCloudinaryUrl(user.photoProfil)) {
+        const oldPhotoPath = path.join(__dirname, '..', user.photoProfil);
+        if (fs.existsSync(oldPhotoPath)) {
+          fs.unlinkSync(oldPhotoPath);
+          console.log(`🗑️  Ancienne photo locale supprimée: ${user.photoProfil}`);
+        }
+      }
+      
+      console.log(`📁 Photo stockée localement: ${photoUrl}`);
     }
 
     // Mettre à jour le chemin de la photo en BDD
     await prisma.user.update({
       where: { id: userId },
-      data: { photoProfil: photoPath }
+      data: { photoProfil: photoUrl }
     });
 
     console.log(`✅ Photo de profil mise à jour pour l'utilisateur ${userId}`);
     
     res.json({
       message: 'Photo de profil mise à jour avec succès',
-      photoUrl: photoPath
+      photoUrl: photoUrl,
+      storage: isCloudinaryConfigured() ? 'cloudinary' : 'local'
     });
 
   } catch (error) {
     console.error('Erreur upload photo:', error);
     
-    // Supprimer le fichier uploadé en cas d'erreur BDD
-    if (req.file) {
+    // Supprimer le fichier uploadé en cas d'erreur BDD (mode local seulement)
+    if (req.file && req.file.filename) {
       const filePath = path.join(__dirname, '../uploads/photos-profil', req.file.filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -110,7 +149,7 @@ router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req,
 
 /**
  * DELETE /api/profil/delete-photo
- * Supprimer la photo de profil
+ * Supprimer la photo de profil (Cloudinary ou local)
  */
 router.delete('/delete-photo', authMiddleware, async (req, res) => {
   try {
@@ -126,11 +165,20 @@ router.delete('/delete-photo', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Aucune photo de profil à supprimer' });
     }
 
-    // Supprimer le fichier
-    const photoPath = path.join(__dirname, '..', user.photoProfil);
-    if (fs.existsSync(photoPath)) {
-      fs.unlinkSync(photoPath);
-      console.log(`🗑️  Photo supprimée: ${user.photoProfil}`);
+    // ☁️ CLOUDINARY : Supprimer du cloud si c'est une URL Cloudinary
+    if (isCloudinaryUrl(user.photoProfil)) {
+      const publicId = extractPublicIdFromUrl(user.photoProfil);
+      if (publicId) {
+        await deleteFile(publicId);
+        console.log(`☁️  Photo Cloudinary supprimée: ${publicId}`);
+      }
+    } else {
+      // 📁 LOCAL : Supprimer le fichier local
+      const photoPath = path.join(__dirname, '..', user.photoProfil);
+      if (fs.existsSync(photoPath)) {
+        fs.unlinkSync(photoPath);
+        console.log(`🗑️  Photo locale supprimée: ${user.photoProfil}`);
+      }
     }
 
     // Mettre à jour la BDD

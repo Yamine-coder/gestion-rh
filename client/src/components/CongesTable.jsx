@@ -6,6 +6,7 @@
   import { saveAs } from "file-saver";
   import ConflictAnalysisModal from "./ConflictAnalysisModal";
   import "../styles/menu-animations.css"; // Pour l'animation highlight
+  import { getImageUrl } from '../utils/imageUtils';
 
   // URL de l'API (utilise la variable d'environnement en production)
   const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -587,7 +588,7 @@
                         {c.justificatif ? (
                           <button
                             onClick={() => setPreviewJustificatif({
-                              url: `${API_BASE}${c.justificatif}`,
+                              url: getImageUrl(c.justificatif),
                               type: c.justificatif.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
                               employeName: c.user?.prenom && c.user?.nom ? `${c.user.prenom} ${c.user.nom}` : c.user?.email,
                               congeType: c.type,
@@ -819,7 +820,7 @@
                         {c.justificatif && (
                           <button
                             onClick={() => setPreviewJustificatif({
-                              url: `${API_BASE}${c.justificatif}`,
+                              url: getImageUrl(c.justificatif),
                               type: c.justificatif.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
                               employeName: c.user?.prenom && c.user?.nom ? `${c.user.prenom} ${c.user.nom}` : c.user?.email,
                               congeType: c.type,

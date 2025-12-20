@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Calendar, Send, AlertTriangle, FileText, Info, X, Heart, GraduationCap, Stethoscope, Clock, DollarSign, Users, Upload, Paperclip, Trash2, CheckCircle } from "lucide-react";
 import DatePickerCustom from './DatePickerCustom';
 import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
+import { getImageUrl } from '../utils/imageUtils';
 
 // URL de l'API (utilise la variable d'environnement en production)
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -578,12 +579,12 @@ function DemandeCongeForm({
                           className="w-full h-full object-cover"
                         />
                       </div>
-                    ) : typeof justificatifPreview === 'string' && justificatifPreview.startsWith('/') ? (
-                      // Justificatif existant (URL serveur) - vérifier si c'est une image
-                      justificatifPreview.match(/\.(jpg|jpeg|png|webp)$/i) ? (
+                    ) : typeof justificatifPreview === 'string' && (justificatifPreview.startsWith('/') || justificatifPreview.startsWith('http')) ? (
+                      // Justificatif existant (URL serveur ou Cloudinary) - vérifier si c'est une image
+                      justificatifPreview.match(/\.(jpg|jpeg|png|webp)$/i) || justificatifPreview.includes('/image/') ? (
                         <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border border-emerald-200 dark:border-emerald-700">
                           <img 
-                            src={`${API_BASE}${justificatifPreview}`}
+                            src={getImageUrl(justificatifPreview)}
                             alt="Justificatif" 
                             className="w-full h-full object-cover"
                           />
@@ -600,7 +601,7 @@ function DemandeCongeForm({
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300 truncate">
-                        {typeof justificatifPreview === 'string' && justificatifPreview.startsWith('/') 
+                        {typeof justificatifPreview === 'string' && (justificatifPreview.startsWith('/') || justificatifPreview.startsWith('http'))
                           ? 'Justificatif existant' 
                           : justificatifPreview?.name || justificatifPreview}
                       </p>

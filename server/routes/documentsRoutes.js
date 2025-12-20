@@ -5,24 +5,33 @@ const path = require('path');
 const fs = require('fs');
 const prisma = require('../prisma/client');
 const { authMiddleware } = require('../middlewares/authMiddleware');
+const { 
+  uploadDocument, 
+  deleteFile, 
+  extractPublicIdFromUrl, 
+  isCloudinaryUrl,
+  isCloudinaryConfigured 
+} = require('../services/cloudinaryService');
 
-// Configuration de Multer pour l'upload des documents
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/documents');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const userId = req.userId;
-    const type = req.body.type || 'document'; // domicile, rib, navigo
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname);
-    cb(null, `${type}-${userId}-${timestamp}${ext}`);
-  }
-});
+// Configuration de Multer - mémoire pour Cloudinary, disk pour local
+const storage = isCloudinaryConfigured()
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, '../uploads/documents');
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        const userId = req.userId;
+        const type = req.body.type || 'document';
+        const timestamp = Date.now();
+        const ext = path.extname(file.originalname);
+        cb(null, `${type}-${userId}-${timestamp}${ext}`);
+      }
+    });
 
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -41,12 +50,12 @@ const upload = multer({
 
 // ========================================
 // POST /api/documents/upload
-// Upload un document (domicile, rib, navigo)
+// Upload un document (domicile, rib, navigo) - Cloudinary ou local
 // ========================================
 router.post('/upload', authMiddleware, upload.single('document'), async (req, res) => {
   try {
     const userId = req.userId;
-    const { type, mois, annee } = req.body; // type: domicile, rib, navigo
+    const { type, mois, annee } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
@@ -56,7 +65,7 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
       return res.status(400).json({ error: 'Type de document invalide' });
     }
 
-    const filePath = `/uploads/documents/${req.file.filename}`;
+    let fileUrl;
 
     // Récupérer l'utilisateur pour supprimer l'ancien fichier si existe
     const user = await prisma.user.findUnique({
@@ -68,33 +77,59 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
       }
     });
 
-    // Supprimer l'ancien fichier selon le type
-    let oldFilePath = null;
-    if (type === 'domicile' && user.justificatifDomicile) {
-      oldFilePath = user.justificatifDomicile;
-    } else if (type === 'rib' && user.justificatifRIB) {
-      oldFilePath = user.justificatifRIB;
-    } else if (type === 'navigo' && user.justificatifNavigo) {
-      oldFilePath = user.justificatifNavigo;
-    }
+    // Récupérer l'ancien fichier selon le type
+    let oldFileUrl = null;
+    if (type === 'domicile') oldFileUrl = user.justificatifDomicile;
+    else if (type === 'rib') oldFileUrl = user.justificatifRIB;
+    else if (type === 'navigo') oldFileUrl = user.justificatifNavigo;
 
-    if (oldFilePath) {
-      const fullOldPath = path.join(__dirname, '..', oldFilePath);
-      if (fs.existsSync(fullOldPath)) {
-        fs.unlinkSync(fullOldPath);
-        console.log(`🗑️  Ancien document supprimé: ${oldFilePath}`);
+    // ☁️ CLOUDINARY : Upload vers le cloud si configuré
+    if (isCloudinaryConfigured()) {
+      try {
+        const resourceType = req.file.mimetype === 'application/pdf' ? 'raw' : 'image';
+        const result = await uploadDocument(
+          req.file.buffer,
+          `documents/${type}`,
+          `${type}-user-${userId}`,
+          resourceType
+        );
+        fileUrl = result.url;
+
+        // Supprimer l'ancien fichier de Cloudinary
+        if (oldFileUrl && isCloudinaryUrl(oldFileUrl)) {
+          const oldPublicId = extractPublicIdFromUrl(oldFileUrl);
+          if (oldPublicId) {
+            const oldResourceType = oldFileUrl.includes('/raw/') ? 'raw' : 'image';
+            await deleteFile(oldPublicId, oldResourceType);
+          }
+        }
+
+        console.log(`☁️  Document ${type} uploadé sur Cloudinary: ${fileUrl}`);
+      } catch (cloudinaryError) {
+        console.error('❌ Erreur Cloudinary:', cloudinaryError.message);
+        return res.status(500).json({ error: 'Erreur lors de l\'upload vers le cloud' });
       }
+    } else {
+      // 📁 FALLBACK LOCAL
+      fileUrl = `/uploads/documents/${req.file.filename}`;
+
+      // Supprimer l'ancien fichier local
+      if (oldFileUrl && !isCloudinaryUrl(oldFileUrl)) {
+        const fullOldPath = path.join(__dirname, '..', oldFileUrl);
+        if (fs.existsSync(fullOldPath)) {
+          fs.unlinkSync(fullOldPath);
+          console.log(`🗑️  Ancien document local supprimé: ${oldFileUrl}`);
+        }
+      }
+
+      console.log(`📁 Document ${type} stocké localement: ${fileUrl}`);
     }
 
     // Mettre à jour le champ correspondant dans la base
     const updateData = {};
-    if (type === 'domicile') {
-      updateData.justificatifDomicile = filePath;
-    } else if (type === 'rib') {
-      updateData.justificatifRIB = filePath;
-    } else if (type === 'navigo') {
-      updateData.justificatifNavigo = filePath;
-    }
+    if (type === 'domicile') updateData.justificatifDomicile = fileUrl;
+    else if (type === 'rib') updateData.justificatifRIB = fileUrl;
+    else if (type === 'navigo') updateData.justificatifNavigo = fileUrl;
 
     await prisma.user.update({
       where: { id: userId },
@@ -104,8 +139,9 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
     console.log(`✅ Document ${type} uploadé pour l'utilisateur ${userId}`);
     res.json({
       message: 'Document uploadé avec succès',
-      filePath: filePath,
-      type: type
+      filePath: fileUrl,
+      type: type,
+      storage: isCloudinaryConfigured() ? 'cloudinary' : 'local'
     });
 
   } catch (error) {
@@ -116,7 +152,7 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
 
 // ========================================
 // DELETE /api/documents/delete/:type
-// Supprimer un document (domicile, rib, navigo)
+// Supprimer un document (domicile, rib, navigo) - Cloudinary ou local
 // ========================================
 router.delete('/delete/:type', authMiddleware, async (req, res) => {
   try {
@@ -142,35 +178,37 @@ router.delete('/delete/:type', authMiddleware, async (req, res) => {
     }
 
     // Récupérer le chemin du fichier selon le type
-    let filePath = null;
-    if (type === 'domicile') {
-      filePath = user.justificatifDomicile;
-    } else if (type === 'rib') {
-      filePath = user.justificatifRIB;
-    } else if (type === 'navigo') {
-      filePath = user.justificatifNavigo;
-    }
+    let fileUrl = null;
+    if (type === 'domicile') fileUrl = user.justificatifDomicile;
+    else if (type === 'rib') fileUrl = user.justificatifRIB;
+    else if (type === 'navigo') fileUrl = user.justificatifNavigo;
 
-    if (!filePath) {
+    if (!fileUrl) {
       return res.status(404).json({ error: 'Aucun document à supprimer' });
     }
 
-    // Supprimer le fichier
-    const fullPath = path.join(__dirname, '..', filePath);
-    if (fs.existsSync(fullPath)) {
-      fs.unlinkSync(fullPath);
-      console.log(`🗑️  Document supprimé: ${filePath}`);
+    // ☁️ CLOUDINARY : Supprimer du cloud si c'est une URL Cloudinary
+    if (isCloudinaryUrl(fileUrl)) {
+      const publicId = extractPublicIdFromUrl(fileUrl);
+      if (publicId) {
+        const resourceType = fileUrl.includes('/raw/') ? 'raw' : 'image';
+        await deleteFile(publicId, resourceType);
+        console.log(`☁️  Document Cloudinary supprimé: ${publicId}`);
+      }
+    } else {
+      // 📁 LOCAL : Supprimer le fichier local
+      const fullPath = path.join(__dirname, '..', fileUrl);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+        console.log(`🗑️  Document local supprimé: ${fileUrl}`);
+      }
     }
 
     // Mettre à jour la base
     const updateData = {};
-    if (type === 'domicile') {
-      updateData.justificatifDomicile = null;
-    } else if (type === 'rib') {
-      updateData.justificatifRIB = null;
-    } else if (type === 'navigo') {
-      updateData.justificatifNavigo = null;
-    }
+    if (type === 'domicile') updateData.justificatifDomicile = null;
+    else if (type === 'rib') updateData.justificatifRIB = null;
+    else if (type === 'navigo') updateData.justificatifNavigo = null;
 
     await prisma.user.update({
       where: { id: userId },

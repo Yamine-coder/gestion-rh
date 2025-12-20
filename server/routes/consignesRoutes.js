@@ -280,10 +280,10 @@ router.get('/stats/ponctualite', authMiddleware, async (req, res) => {
     // Les pointages hors planning ne comptent pas (problème de planification, pas de ponctualité)
     const anomaliesPonctualite = await prisma.anomalie.findMany({
       where: {
-        employe_id: userId,
-        date_anomalie: { gte: startOfMonth, lte: now },
+        employeId: userId,
+        date: { gte: startOfMonth, lte: now },
         type: { in: ['retard', 'depart_anticipe'] }, // Standard SIRH
-        status: { in: ['pending', 'validated'] } // Exclure les anomalies rejetées
+        statut: { in: ['en_attente', 'validee'] } // Exclure les anomalies rejetées
       }
     });
     
@@ -301,7 +301,7 @@ router.get('/stats/ponctualite', authMiddleware, async (req, res) => {
     
     // Identifier les shifts avec incidents de ponctualité
     for (const anomalie of anomaliesPonctualite) {
-      const anomalieDate = toLocalDateString(new Date(anomalie.date_anomalie));
+      const anomalieDate = toLocalDateString(new Date(anomalie.date));
       for (const shift of shifts) {
         const shiftDate = toLocalDateString(new Date(shift.date));
         if (shiftDate === anomalieDate) {

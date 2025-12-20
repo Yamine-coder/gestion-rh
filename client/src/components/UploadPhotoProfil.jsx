@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import { CameraIcon, TrashIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import API_URL from '../config/api';
+import { getImageUrl } from '../utils/imageUtils';
 
 const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
   const [uploading, setUploading] = useState(false);
@@ -106,7 +107,7 @@ const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
     }
   };
 
-  const currentPhoto = preview || (employe.photoProfil ? `${API_URL}${employe.photoProfil}` : null);
+  const currentPhoto = preview || getImageUrl(employe.photoProfil);
   const hasPhoto = !!employe.photoProfil;
 
   return (

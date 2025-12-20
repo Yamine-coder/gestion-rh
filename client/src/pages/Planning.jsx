@@ -11,6 +11,7 @@ import {
 import BottomNav from '../components/BottomNav';
 import { toLocalDateString } from '../utils/parisTimeUtils';
 import { getCreneauFromSegments, getCreneauStyle } from '../utils/creneauUtils';
+import { getImageUrl } from '../utils/imageUtils';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const brand = '#cf292c';
@@ -123,7 +124,7 @@ function EmployeAvatar({ employe, size = 'md' }) {
   
   if (employe?.photoProfil) {
     return (
-      <img src={`${API_BASE}${employe.photoProfil}`} alt={`${employe.prenom} ${employe.nom}`}
+      <img src={getImageUrl(employe.photoProfil)} alt={`${employe.prenom} ${employe.nom}`}
         className={`${sizeClasses[size]} rounded-full object-cover`} />
     );
   }

@@ -8,26 +8,35 @@ const isAdmin = require('../middlewares/isAdminMiddleware');
 const { demanderConge, getMesConges, mettreAJourStatutConge } = require('../controllers/congeController');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { 
+  uploadDocument, 
+  deleteFile, 
+  extractPublicIdFromUrl, 
+  isCloudinaryUrl,
+  isCloudinaryConfigured 
+} = require('../services/cloudinaryService');
 
 // ========================================
 // Configuration Multer pour les justificatifs de congés
 // ========================================
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, '../uploads/justificatifs');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const userId = req.user?.userId || 'unknown';
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname);
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_').substring(0, 50);
-    cb(null, `justificatif-${userId}-${timestamp}-${safeName}${ext}`);
-  }
-});
+const storage = isCloudinaryConfigured()
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, '../uploads/justificatifs');
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        const userId = req.user?.userId || 'unknown';
+        const timestamp = Date.now();
+        const ext = path.extname(file.originalname);
+        const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_').substring(0, 50);
+        cb(null, `justificatif-${userId}-${timestamp}-${safeName}${ext}`);
+      }
+    });
 
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -232,7 +241,7 @@ const requiresJustificatif = (type) => {
   return TYPES_JUSTIFICATIF_OBLIGATOIRE.some(t => typeNormalized?.includes(t));
 };
 
-// 📎 Upload justificatif lors de la création/modification d'un congé
+// 📎 Upload justificatif lors de la création/modification d'un congé (Cloudinary ou local)
 router.post('/:id/justificatif', authenticateToken, upload.single('justificatif'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -256,20 +265,50 @@ router.post('/:id/justificatif', authenticateToken, upload.single('justificatif'
       return res.status(403).json({ error: 'Non autorisé' });
     }
 
-    // Supprimer l'ancien justificatif s'il existe
-    if (conge.justificatif) {
-      const oldPath = path.join(__dirname, '..', conge.justificatif);
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
-      }
-    }
+    let fileUrl;
 
-    const filePath = `/uploads/justificatifs/${req.file.filename}`;
+    // ☁️ CLOUDINARY : Upload vers le cloud si configuré
+    if (isCloudinaryConfigured()) {
+      try {
+        // Supprimer l'ancien justificatif de Cloudinary
+        if (conge.justificatif && isCloudinaryUrl(conge.justificatif)) {
+          const oldPublicId = extractPublicIdFromUrl(conge.justificatif);
+          if (oldPublicId) {
+            const oldResourceType = conge.justificatif.includes('/raw/') ? 'raw' : 'image';
+            await deleteFile(oldPublicId, oldResourceType);
+          }
+        }
+
+        const resourceType = req.file.mimetype === 'application/pdf' ? 'raw' : 'image';
+        const result = await uploadDocument(
+          req.file.buffer,
+          'justificatifs',
+          `justificatif-conge-${id}-${Date.now()}`,
+          resourceType
+        );
+        fileUrl = result.url;
+        console.log(`☁️  Justificatif uploadé sur Cloudinary: ${fileUrl}`);
+      } catch (cloudinaryError) {
+        console.error('❌ Erreur Cloudinary:', cloudinaryError.message);
+        return res.status(500).json({ error: 'Erreur lors de l\'upload vers le cloud' });
+      }
+    } else {
+      // 📁 FALLBACK LOCAL
+      // Supprimer l'ancien justificatif local
+      if (conge.justificatif && !isCloudinaryUrl(conge.justificatif)) {
+        const oldPath = path.join(__dirname, '..', conge.justificatif);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      }
+      fileUrl = `/uploads/justificatifs/${req.file.filename}`;
+      console.log(`📁 Justificatif stocké localement: ${fileUrl}`);
+    }
 
     // Mettre à jour le congé avec le chemin du justificatif
     const updated = await prisma.conge.update({
       where: { id: parseInt(id) },
-      data: { justificatif: filePath }
+      data: { justificatif: fileUrl }
     });
 
     // 🔔 Notifier les managers/admins qu'un justificatif a été ajouté
@@ -306,8 +345,9 @@ router.post('/:id/justificatif', authenticateToken, upload.single('justificatif'
 
     res.json({ 
       message: 'Justificatif uploadé avec succès',
-      justificatif: filePath,
-      conge: updated
+      justificatif: fileUrl,
+      conge: updated,
+      storage: isCloudinaryConfigured() ? 'cloudinary' : 'local'
     });
   } catch (err) {
     console.error('Erreur upload justificatif:', err);
@@ -336,10 +376,20 @@ router.delete('/:id/justificatif', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Aucun justificatif à supprimer' });
     }
 
-    // Supprimer le fichier physique
-    const filePath = path.join(__dirname, '..', conge.justificatif);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // ☁️ CLOUDINARY ou 📁 LOCAL : Supprimer le fichier
+    if (isCloudinaryUrl(conge.justificatif)) {
+      const publicId = extractPublicIdFromUrl(conge.justificatif);
+      if (publicId) {
+        const resourceType = conge.justificatif.includes('/raw/') ? 'raw' : 'image';
+        await deleteFile(publicId, resourceType);
+        console.log(`☁️  Justificatif Cloudinary supprimé: ${publicId}`);
+      }
+    } else {
+      const filePath = path.join(__dirname, '..', conge.justificatif);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`🗑️  Justificatif local supprimé: ${conge.justificatif}`);
+      }
     }
 
     // Mettre à jour le congé

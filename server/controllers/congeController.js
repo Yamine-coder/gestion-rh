@@ -244,7 +244,7 @@ const mettreAJourStatutConge = async (req, res) => {
               data: collegues.map(collegue => ({
                 employe_id: collegue.id,
                 type: 'absence_equipe',
-                titre: '📅 Absence équipe',
+                titre: 'Absence équipe',
                 message: JSON.stringify({
                   text: `${nomComplet} sera absent(e) ${periodeText} (${conge.type})`,
                   congeId: conge.id,
