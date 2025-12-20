@@ -16,14 +16,26 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Sur la page login, ajouter login-page pour le fond rose
+  // Page login: fond rose + theme-color rose pour iOS home indicator
   useEffect(() => {
+    // Classes CSS
     document.documentElement.classList.add('login-page');
     document.body.classList.add('login-page');
-    document.documentElement.classList.remove('app-loaded');
+    
+    // Theme-color pour iOS (colore le home indicator)
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const prevColor = themeColorMeta?.getAttribute('content');
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute('content', '#fecaca');
+    }
+    
     return () => {
       document.documentElement.classList.remove('login-page');
       document.body.classList.remove('login-page');
+      // Remettre le theme-color blanc pour les autres pages
+      if (themeColorMeta) {
+        themeColorMeta.setAttribute('content', '#ffffff');
+      }
     };
   }, []);
 

@@ -6,15 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover" />
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#cf292c" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1e293b" media="(prefers-color-scheme: dark)" />
+    <!-- theme-color sera modifié dynamiquement par React pour le fond du home indicator iOS -->
+    <meta name="theme-color" id="theme-color-meta" content="#ffffff" />
     <meta name="description" content="Chez Antoine - Au service du bon. Gestion du planning et pointage." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="application-name" content="Chez Antoine" />
     
     <!-- iOS Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Chez Antoine" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/app-icon-512.png" />
     
@@ -40,15 +40,8 @@
     
     <style>
       /* ============================================
-         SPLASH SCREEN MODERNE - MonPlanning PWA
-         Style inspiré des apps iOS/Android modernes
+         SPLASH SCREEN & BASE STYLES
          ============================================ */
-      
-      :root {
-        --brand-primary: #cf292c;
-        --brand-dark: #a01f22;
-        --brand-light: #ff4145;
-      }
       
       * {
         margin: 0;
@@ -56,47 +49,29 @@
         box-sizing: border-box;
       }
 
-      /* Background blanc par défaut (évite le reveal blanc/bug iOS) */
+      /* Background blanc par défaut */
       html, body {
         height: 100%;
         width: 100%;
-        background: #ffffff;
+        background: #ffffff !important;
       }
 
-      /* iOS Safari / PWA: stabilise la hauteur du viewport (home indicator / barres dynamiques) */
+      /* iOS Safari PWA: stabilise la hauteur du viewport */
       @supports (-webkit-touch-callout: none) {
         html { height: -webkit-fill-available; }
         body { min-height: -webkit-fill-available; }
       }
 
-      /* Dark mode pour les pages app */
-      @media (prefers-color-scheme: dark) {
-        html.app-loaded,
-        html.app-loaded body {
-          background: #0f172a;
-        }
-      }
-
-      /* Page login: fond rose (activé via JS) */
+      /* Page login: fond rose */
       html.login-page,
       html.login-page body {
-        background: linear-gradient(to bottom right, #fee2e2, #fecaca) !important;
-      }
-
-      /* iOS peut "révéler" le fond lors de l'overscroll / resize: on surdimensionne le fond */
-      html.login-page body::before {
-        content: "";
-        position: fixed;
-        inset: -200px;
-        background: linear-gradient(to bottom right, #fee2e2, #fecaca);
-        z-index: -1;
-        pointer-events: none;
+        background: #fecaca !important;
       }
       
-      /* Splash screen - fond BLANC surdimensionné pour couvrir le home indicator iOS */
+      /* Splash screen - fond BLANC */
       #splash-screen {
         position: fixed;
-        inset: -200px;
+        inset: 0;
         background: #ffffff;
         display: flex;
         flex-direction: column;
