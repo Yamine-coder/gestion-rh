@@ -18,23 +18,25 @@ function LoginPage() {
 
   // Fond rose sur body pour iOS (le home indicator affiche le fond du body)
   useEffect(() => {
-    // Sauvegarder le style original
-    const originalBg = document.body.style.background;
+    // Couleur UNIE rose (pas de gradient) - iOS étend mieux les couleurs unies
+    const pinkColor = '#fecaca';
     
-    // Appliquer le fond rose directement sur body
-    document.body.style.background = 'linear-gradient(to bottom right, #fee2e2, #fecaca)';
-    document.documentElement.style.background = 'linear-gradient(to bottom right, #fee2e2, #fecaca)';
+    // Appliquer sur html ET body avec !important via style attribute
+    document.documentElement.style.cssText += `background: ${pinkColor} !important;`;
+    document.body.style.cssText += `background: ${pinkColor} !important;`;
     
-    // Theme-color pour la status bar iOS
+    // Theme-color pour iOS
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     if (themeColorMeta) {
-      themeColorMeta.setAttribute('content', '#fecaca');
+      themeColorMeta.setAttribute('content', pinkColor);
     }
     
     return () => {
       // Restaurer le fond blanc quand on quitte login
-      document.body.style.background = '#ffffff';
+      document.documentElement.style.cssText = document.documentElement.style.cssText.replace(/background:[^;]+!important;?/g, '');
+      document.body.style.cssText = document.body.style.cssText.replace(/background:[^;]+!important;?/g, '');
       document.documentElement.style.background = '#ffffff';
+      document.body.style.background = '#ffffff';
       if (themeColorMeta) {
         themeColorMeta.setAttribute('content', '#ffffff');
       }
