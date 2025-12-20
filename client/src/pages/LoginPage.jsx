@@ -16,17 +16,25 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Theme-color: rose sur login, blanc ailleurs
+  // Fond rose sur body pour iOS (le home indicator affiche le fond du body)
   useEffect(() => {
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    // Sauvegarder le style original
+    const originalBg = document.body.style.background;
     
-    // S'assurer que c'est rose sur la page login
+    // Appliquer le fond rose directement sur body
+    document.body.style.background = 'linear-gradient(to bottom right, #fee2e2, #fecaca)';
+    document.documentElement.style.background = 'linear-gradient(to bottom right, #fee2e2, #fecaca)';
+    
+    // Theme-color pour la status bar iOS
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     if (themeColorMeta) {
       themeColorMeta.setAttribute('content', '#fecaca');
     }
     
     return () => {
-      // Remettre blanc quand on quitte la page login
+      // Restaurer le fond blanc quand on quitte login
+      document.body.style.background = '#ffffff';
+      document.documentElement.style.background = '#ffffff';
       if (themeColorMeta) {
         themeColorMeta.setAttribute('content', '#ffffff');
       }
