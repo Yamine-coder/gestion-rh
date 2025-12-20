@@ -16,11 +16,12 @@ function LoginPage() {
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
 
-  // Ajouter la classe login-bg sur html pour le fond rose (couvre le home indicator iOS)
+  // Sur la page login, on retire app-loaded pour garder le fond rose
   useEffect(() => {
-    document.documentElement.classList.add('login-bg');
+    document.documentElement.classList.remove('app-loaded');
     return () => {
-      document.documentElement.classList.remove('login-bg');
+      // Quand on quitte la page login, on remet app-loaded
+      document.documentElement.classList.add('app-loaded');
     };
   }, []);
 

@@ -48,12 +48,35 @@
         --brand-primary: #cf292c;
         --brand-dark: #a01f22;
         --brand-light: #ff4145;
+        --login-bg-light: #fee2e2;
+        --login-bg-dark: #fecaca;
       }
       
       * {
         margin: 0;
         padding: 0;
         box-sizing: border-box;
+      }
+
+      /* Background rose par défaut sur html/body pour couvrir le home indicator iOS */
+      html, body {
+        min-height: 100%;
+        min-height: 100dvh;
+        background: linear-gradient(to bottom right, #fee2e2, #fecaca);
+      }
+
+      /* Quand l'app est chargée et qu'on n'est pas sur login, le JS mettra app-loaded */
+      html.app-loaded,
+      html.app-loaded body {
+        background: #ffffff;
+      }
+
+      /* Dark mode */
+      @media (prefers-color-scheme: dark) {
+        html.app-loaded,
+        html.app-loaded body {
+          background: #0f172a;
+        }
       }
       
       #splash-screen {
@@ -62,7 +85,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: #ffffff;
+        background: linear-gradient(to bottom right, #fee2e2, #fecaca);
         display: flex;
         flex-direction: column;
         align-items: center;

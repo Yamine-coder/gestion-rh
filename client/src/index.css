@@ -90,14 +90,6 @@
 html, body {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
-  min-height: 100%;
-  min-height: 100dvh;
-}
-
-/* Background pour couvrir le home indicator iOS sur la page login */
-html.login-bg,
-html.login-bg body {
-  background: linear-gradient(to bottom right, #fee2e2, #fecaca) !important;
 }
 
 /* ===== Empêcher le zoom automatique iOS sur les inputs ===== */
