@@ -139,13 +139,13 @@
 
           setTimeout(function () {
             if (!splash) return;
+            // Changer theme-color en rose DÈS le début du fade-out (synchronisé)
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', '#fecaca');
             splash.classList.add('fade-out');
             setTimeout(function () {
               if (splash && splash.parentNode) {
                 splash.parentNode.removeChild(splash);
-                // Changer theme-color en rose après suppression du splash
-                var meta = document.querySelector('meta[name="theme-color"]');
-                if (meta) meta.setAttribute('content', '#fecaca');
                 // Émettre l'événement APRÈS suppression du DOM
                 window.dispatchEvent(new Event('splash:removed'));
               }
