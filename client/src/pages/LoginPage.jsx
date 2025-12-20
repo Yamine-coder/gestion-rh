@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock } from "lucide-react"; // Icônes pour les champs
@@ -15,6 +15,14 @@ function LoginPage() {
   const [emailRecuperation, setEmailRecuperation] = useState("");
   const [isLoadingRecuperation, setIsLoadingRecuperation] = useState(false);
   const [messageRecuperation, setMessageRecuperation] = useState("");
+
+  // Ajouter la classe login-bg sur html pour le fond rose (couvre le home indicator iOS)
+  useEffect(() => {
+    document.documentElement.classList.add('login-bg');
+    return () => {
+      document.documentElement.classList.remove('login-bg');
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -91,12 +99,8 @@ function LoginPage() {
   };
 
   return (
-    <>
-      {/* Classe pour activer le background sur html/body via CSS */}
-      <div className="login-page-bg fixed inset-0 bg-gradient-to-br from-red-100 to-red-200" />
-      {/* Contenu centré */}
-      <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto z-10">
-        <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
+    <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto">
+      <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <img src={logo} alt="Logo Chez Antoine" className="h-28 w-auto object-contain" />
@@ -282,7 +286,6 @@ function LoginPage() {
         )}
       </div>
     </div>
-    </>
   );
 }
 

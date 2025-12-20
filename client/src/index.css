@@ -94,13 +94,10 @@ html, body {
   min-height: 100dvh;
 }
 
-/* Background pour la page de login - couvre tout y compris safe areas */
-html:has(.login-page-bg) {
-  background: linear-gradient(to bottom right, #fee2e2, #fecaca);
-}
-
-body:has(.login-page-bg) {
-  background: linear-gradient(to bottom right, #fee2e2, #fecaca);
+/* Background pour couvrir le home indicator iOS sur la page login */
+html.login-bg,
+html.login-bg body {
+  background: linear-gradient(to bottom right, #fee2e2, #fecaca) !important;
 }
 
 /* ===== Empêcher le zoom automatique iOS sur les inputs ===== */
