@@ -91,10 +91,20 @@ function LoginPage() {
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center px-4 overflow-auto"
-    >
-      <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
+    <>
+      {/* Background étendu pour couvrir toute la zone iOS incluant home indicator */}
+      <div 
+        className="fixed bg-gradient-to-br from-red-100 to-red-200"
+        style={{ 
+          top: '-50px',
+          left: 0,
+          right: 0,
+          bottom: '-50px',
+        }}
+      />
+      {/* Contenu centré */}
+      <div className="fixed inset-0 flex items-center justify-center px-4 overflow-auto z-10">
+        <div className="bg-white shadow-lg rounded-2xl p-8 max-w-md w-full my-4">
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <img src={logo} alt="Logo Chez Antoine" className="h-28 w-auto object-contain" />
@@ -280,6 +290,7 @@ function LoginPage() {
         )}
       </div>
     </div>
+    </>
   );
 }
 
