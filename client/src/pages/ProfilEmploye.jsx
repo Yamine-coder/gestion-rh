@@ -1466,8 +1466,9 @@ const ProfilEmploye = React.memo(() => {
     clearToken(); // Supprime token + timestamp de manière sécurisée
     localStorage.removeItem('role');
     localStorage.removeItem('prenom');
-    navigate('/');
-    window.location.reload();
+    localStorage.removeItem('userId');
+    // Pas de reload - navigation SPA simple
+    navigate('/', { replace: true });
   };
 
   // Téléchargement de la fiche de poste

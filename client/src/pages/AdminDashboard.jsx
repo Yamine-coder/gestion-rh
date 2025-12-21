@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCongesNotification } from "../hooks/useCongesNotification";
+import { clearToken } from "../utils/tokenManager";
 import "../styles/menu-animations.css";
 
 import TopNavAdmin from "../components/TopNavAdmin";
@@ -46,8 +47,10 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     clearNavigation();
-    localStorage.removeItem("token");
-    navigate("/");
+    clearToken(); // Utiliser clearToken au lieu de removeItem direct
+    localStorage.removeItem('role');
+    localStorage.removeItem('userId');
+    navigate('/', { replace: true });
   };
 
   return (
