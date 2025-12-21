@@ -21,13 +21,16 @@ function LoginPage() {
     // S'assurer que c'est rose (déjà fait par HTML mais au cas où)
     document.documentElement.style.backgroundColor = '#fecaca';
     document.body.style.backgroundColor = '#fecaca';
+    // Mettre à jour theme-color pour la status bar iOS
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', '#fecaca');
     
     return () => {
       // Changer en blanc quand on quitte login
       document.documentElement.style.backgroundColor = '#ffffff';
       document.body.style.backgroundColor = '#ffffff';
-      const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute('content', '#ffffff');
+      const metaCleanup = document.querySelector('meta[name="theme-color"]');
+      if (metaCleanup) metaCleanup.setAttribute('content', '#ffffff');
     };
   }, []);
 
