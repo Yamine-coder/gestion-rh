@@ -107,9 +107,9 @@ function LoginPage() {
 
   return (
     <>
-      {/* Fond rose qui couvre tout l'écran */}
+      {/* Fond rose uniforme qui couvre tout l'écran */}
       <div 
-        className="fixed inset-0 bg-gradient-to-br from-red-100 to-red-200" 
+        className="fixed inset-0 bg-red-200" 
         aria-hidden="true"
       />
       {/* Contenu centré - z-index pour être au-dessus du fond */}
