@@ -14,8 +14,8 @@ env:
   # Coordonnées exactes de Chez Antoine Vincennes (extrait du lien Google Maps)
   RESTAURANT_NAME: "Chez Antoine Vincennes"
   RESTAURANT_ADDRESS: "2 Avenue de la République 94300 Vincennes"
-  # Place ID correct (de https://maps.app.goo.gl/Px5Vyfvnw4zxLT4y5)
-  PLACE_ID: "ChIJnYJ5mZly5kcRgpLVpMN4Rus"
+  # Place ID correct (de https://search.google.com/local/writereview?placeid=...)
+  PLACE_ID: "ChIJnYLnmZly5kcRgpLV4MN4Rus"
 
 jobs:
   scrape:

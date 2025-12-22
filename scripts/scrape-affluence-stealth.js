@@ -14,17 +14,15 @@ const RESTAURANT_ADDRESS = process.env.RESTAURANT_ADDRESS || '2 Avenue de la Ré
 const LATITUDE = '48.8463257';
 const LONGITUDE = '2.4290377';
 
-// Place ID correct (extrait du lien Google Maps partagé)
-const PLACE_ID = process.env.PLACE_ID || 'ChIJnYJ5mZly5kcRgpLVpMN4Rus';
+// Place ID correct (de https://search.google.com/local/writereview?placeid=...)
+const PLACE_ID = process.env.PLACE_ID || 'ChIJnYLnmZly5kcRgpLV4MN4Rus';
 
-// URLs à tester (format qui fonctionne avec Place ID)
+// URLs à tester
 const URLS = [
-  // Format 1: URL avec query et place_id (RECOMMANDÉ)
-  `https://www.google.com/maps/search/?api=1&query=Chez+Antoine+Vincennes&query_place_id=${PLACE_ID}`,
-  // Format 2: Recherche simple par nom
-  `https://www.google.com/maps/search/Chez+Antoine+Vincennes+restaurant`,
-  // Format 3: Recherche avec adresse complète
-  `https://www.google.com/maps/search/Chez+Antoine+2+Avenue+de+la+République+Vincennes`,
+  // Format direct avec Place ID (LE PLUS FIABLE)
+  `https://www.google.com/maps/place/?q=place_id:${PLACE_ID}`,
+  // Recherche simple par nom (fallback)
+  `https://www.google.com/maps/search/Chez+Antoine+Vincennes+France`,
 ];
 
 // User agents mobiles réalistes (2024)
