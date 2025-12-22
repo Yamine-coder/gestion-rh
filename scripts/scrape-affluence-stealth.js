@@ -496,8 +496,9 @@ async function scrapeAffluence() {
         popularTimes: {},
         trend: null,
         pageTitle: document.title,
-        bodyTextSample: document.body.innerText.substring(0, 2000),
-        foundElements: []
+        bodyTextSample: '',
+        foundElements: [],
+        debugTexts: []
       };
 
       // Nom du lieu
@@ -505,20 +506,37 @@ async function scrapeAffluence() {
       if (nameEl) result.placeName = nameEl.textContent.trim();
 
       // Récupérer tout le texte de la page
-      const allText = document.body.innerText.toLowerCase();
+      const allText = document.body.innerText;
+      const allTextLower = allText.toLowerCase();
+      
+      // Debug: chercher la section "Horaires d'affluence"
+      const affluenceIndex = allTextLower.indexOf('horaires d');
+      if (affluenceIndex > -1) {
+        result.debugTexts.push('✅ Found "Horaires d\'affluence"');
+        // Extraire le contexte autour
+        const context = allText.substring(affluenceIndex, affluenceIndex + 200);
+        result.bodyTextSample = context;
+        result.foundElements.push(`Context: ${context.substring(0, 100)}`);
+      }
+      
+      // Debug: chercher "INFORMATIONS EN TEMPS RÉEL"
+      if (allTextLower.includes('informations en temps') || allTextLower.includes('temps réel')) {
+        result.debugTexts.push('✅ Found "INFORMATIONS EN TEMPS RÉEL"');
+      }
       
       // ═══════════════════════════════════════════════════════════
-      // 🔍 PATTERNS FRANÇAIS GOOGLE MAPS
+      // 🔍 PATTERNS FRANÇAIS GOOGLE MAPS (améliorés)
       // ═══════════════════════════════════════════════════════════
       
-      // Status en temps réel
+      // Status en temps réel - patterns plus flexibles
       const patterns = [
-        { regex: /très fréquenté/i, status: 'very_busy', percent: 85 },
-        { regex: /assez fréquenté/i, status: 'fairly_busy', percent: 65 },
-        { regex: /plutôt fréquenté/i, status: 'fairly_busy', percent: 60 },
-        { regex: /pas très fréquenté/i, status: 'not_busy', percent: 35 },
-        { regex: /peu fréquenté/i, status: 'not_busy', percent: 30 },
+        { regex: /tr[eè]s\s+fr[ée]quent[ée]/i, status: 'very_busy', percent: 85 },
+        { regex: /assez\s+fr[ée]quent[ée]/i, status: 'fairly_busy', percent: 65 },
+        { regex: /plut[oô]t\s+fr[ée]quent[ée]/i, status: 'fairly_busy', percent: 60 },
+        { regex: /pas\s+tr[eè]s\s+fr[ée]quent[ée]/i, status: 'not_busy', percent: 35 },
+        { regex: /peu\s+fr[ée]quent[ée]/i, status: 'not_busy', percent: 30 },
         { regex: /calme/i, status: 'not_busy', percent: 25 },
+        { regex: /ferm[ée]/i, status: 'closed', percent: 0 },
         // Anglais fallback
         { regex: /very busy/i, status: 'very_busy', percent: 85 },
         { regex: /fairly busy/i, status: 'fairly_busy', percent: 60 },
@@ -530,15 +548,32 @@ async function scrapeAffluence() {
         if (regex.test(allText)) {
           result.liveStatus = status;
           result.livePercentage = percent;
-          result.foundElements.push(`Pattern: ${regex.toString()}`);
+          result.debugTexts.push(`✅ Matched: ${regex.toString()} -> ${status}`);
           break;
+        }
+      }
+      
+      // Si pas trouvé avec regex, chercher le texte brut
+      if (!result.liveStatus) {
+        if (allText.includes('Très fréquenté')) {
+          result.liveStatus = 'very_busy';
+          result.livePercentage = 85;
+          result.debugTexts.push('✅ Found exact "Très fréquenté"');
+        } else if (allText.includes('Assez fréquenté')) {
+          result.liveStatus = 'fairly_busy';
+          result.livePercentage = 65;
+          result.debugTexts.push('✅ Found exact "Assez fréquenté"');
+        } else if (allText.includes('Peu fréquenté')) {
+          result.liveStatus = 'not_busy';
+          result.livePercentage = 35;
+          result.debugTexts.push('✅ Found exact "Peu fréquenté"');
         }
       }
 
       // Comparaison vs habituel
-      if (/plus.{0,10}fréquenté.{0,10}que.{0,10}d'habitude|busier than usual/i.test(allText)) {
+      if (/plus.{0,10}fr[ée]quent[ée].{0,10}que.{0,10}d'habitude|busier than usual/i.test(allText)) {
         result.trend = 'busier';
-      } else if (/moins.{0,10}fréquenté.{0,10}que.{0,10}d'habitude|less busy than usual/i.test(allText)) {
+      } else if (/moins.{0,10}fr[ée]quent[ée].{0,10}que.{0,10}d'habitude|less busy than usual/i.test(allText)) {
         result.trend = 'less_busy';
       }
 
@@ -606,9 +641,23 @@ async function scrapeAffluence() {
       pageTitle: extractedData.pageTitle,
       bodyTextSample: extractedData.bodyTextSample.substring(0, 500),
       foundElements: extractedData.foundElements,
+      debugTexts: extractedData.debugTexts,
       mode: isMobile ? 'mobile' : 'desktop',
       userAgent: userAgent.substring(0, 50)
     };
+
+    // Afficher les debug texts
+    if (extractedData.debugTexts && extractedData.debugTexts.length > 0) {
+      console.log('');
+      console.log('🔍 Debug détection:');
+      extractedData.debugTexts.forEach(t => console.log(`   ${t}`));
+    }
+    
+    if (extractedData.bodyTextSample) {
+      console.log('');
+      console.log('📝 Contexte trouvé:');
+      console.log(`   "${extractedData.bodyTextSample.substring(0, 150)}..."`);
+    }
 
     // ═══════════════════════════════════════════════════════════
     // 📊 CALCUL SCORE FINAL
