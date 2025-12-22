@@ -35,14 +35,15 @@ jobs:
         working-directory: scripts
         run: npm ci || npm install
       
-      - name: 🕵️ Scrape Google Popular Times (Stealth v2)
+      - name: 🕵️ Scrape Affluence (Robust avec fallback)
         id: scrape
         working-directory: scripts
-        run: node scrape-affluence-stealth.js
+        run: node scrape-affluence-robust.js
         env:
           RESTAURANT_NAME: ${{ env.RESTAURANT_NAME }}
           RESTAURANT_ADDRESS: ${{ env.RESTAURANT_ADDRESS }}
           PLACE_ID: ${{ env.PLACE_ID }}
+          BESTTIME_API_KEY: ${{ secrets.BESTTIME_API_KEY }}
       
       - name: 📤 Update Gist
         working-directory: scripts
@@ -57,7 +58,8 @@ jobs:
           name: affluence-debug-${{ github.run_id }}
           path: |
             scripts/affluence-data.json
-            scripts/debug-*.png
+            scripts/*.png
+            scripts/*.json
           retention-days: 7
         if: always()
       
