@@ -400,72 +400,78 @@ async function scrapeAffluence() {
     // ═══════════════════════════════════════════════════════════
     console.log('📜 Scroll dans le panneau latéral pour trouver Popular Times...');
     
-    // Scroller dans le panneau latéral de Google Maps (pas la page entière)
-    const scrollResult = await page.evaluate(async () => {
-      // Sélecteurs possibles pour le panneau latéral Google Maps
-      const panelSelectors = [
-        '[role="main"]',
-        '.m6QErb.DxyBCb',
-        '.m6QErb',
-        '.DxyBCb.kA9KIf.dS8AEf',
-        'div[aria-label*="Chez Antoine"]',
-        '.section-layout',
-        '.section-scrollbox',
-        '[data-attrid]'
-      ];
-      
-      let scrollContainer = null;
-      
-      // Trouver le bon conteneur scrollable
-      for (const selector of panelSelectors) {
-        const el = document.querySelector(selector);
-        if (el && el.scrollHeight > el.clientHeight) {
-          scrollContainer = el;
-          console.log('Found scroll container:', selector);
-          break;
-        }
-      }
-      
-      // Si pas trouvé, chercher tout élément scrollable avec du contenu
-      if (!scrollContainer) {
-        const allDivs = document.querySelectorAll('div');
-        for (const div of allDivs) {
-          if (div.scrollHeight > 500 && div.scrollHeight > div.clientHeight) {
-            scrollContainer = div;
-            break;
-          }
-        }
-      }
-      
-      if (scrollContainer) {
-        // Scroll progressif dans le panneau
-        let scrolled = 0;
-        const scrollStep = 400;
-        const maxScroll = 4000; // Augmenté à 4000px
-        
-        while (scrolled < maxScroll) {
-          scrollContainer.scrollTop += scrollStep;
-          scrolled += scrollStep;
-          await new Promise(r => setTimeout(r, 200));
-          
-          // Vérifier si on a trouvé "Popular Times" ou "Horaires d'affluence"
-          const pageText = document.body.innerText.toLowerCase();
-          if (pageText.includes('horaires d\'affluence') || 
-              pageText.includes('popular times') ||
-              pageText.includes('très fréquenté') ||
-              pageText.includes('assez fréquenté') ||
-              pageText.includes('informations en temps')) {
-            return { found: true, scrolled: scrolled };
-          }
-        }
-        return { found: false, scrolled: scrolled, container: 'panel' };
-      } else {
-        // Fallback: scroll sur window
-        window.scrollBy(0, 1000);
-        return { found: false, scrolled: 1000, container: 'window' };
-      }
-    });
+    // Méthode 1: Cliquer sur le panneau puis utiliser mouse wheel
+    // Le panneau Google Maps est généralement à gauche (x < 400)
+    await page.mouse.click(200, 400); // Cliquer au milieu du panneau
+    await new Promise(r => setTimeout(r, 500));
     
+    // Scroll avec la molette de souris
+    let scrolled = 0;
+    let found = false;
+    
+    for (let i = 0; i < 15; i++) { // 15 scrolls
+      await page.mouse.wheel({ deltaY: 500 }); // Scroll de 500px
+      scrolled += 500;
+      await new Promise(r => setTimeout(r, 400));
+      
+      // Vérifier si on a trouvé les données
+      const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
+      if (pageText.includes('horaires d\'affluence') || 
+          pageText.includes('très fréquenté') ||
+          pageText.includes('assez fréquenté') ||
+          pageText.includes('informations en temps réel')) {
+        found = true;
+        console.log(`✅ Section affluence trouvée après ${scrolled}px de scroll!`);
+        break;
+      }
+    }
+    
+    if (!found) {
+      console.log(`⚠️ Section affluence non trouvée après ${scrolled}px de scroll`);
+      
+      // Méthode 2: Essayer de cliquer sur l'onglet "À propos" puis revenir
+      console.log('📜 Tentative: clic sur onglet À propos...');
+      try {
+        const aboutClicked = await page.evaluate(() => {
+          const tabs = document.querySelectorAll('button[role="tab"], [role="tab"]');
+          for (const tab of tabs) {
+            if (tab.textContent.toLowerCase().includes('propos') || 
+                tab.textContent.toLowerCase().includes('about')) {
+              tab.click();
+              return true;
+            }
+          }
+          return false;
+        });
+        
+        if (aboutClicked) {
+          await new Promise(r => setTimeout(r, 1500));
+          // Revenir à Présentation
+          await page.evaluate(() => {
+            const tabs = document.querySelectorAll('button[role="tab"], [role="tab"]');
+            for (const tab of tabs) {
+              if (tab.textContent.toLowerCase().includes('présentation') || 
+                  tab.textContent.toLowerCase().includes('overview')) {
+                tab.click();
+                return true;
+              }
+            }
+          });
+          await new Promise(r => setTimeout(r, 1500));
+          
+          // Re-scroll
+          await page.mouse.click(200, 400);
+          for (let i = 0; i < 10; i++) {
+            await page.mouse.wheel({ deltaY: 500 });
+            await new Promise(r => setTimeout(r, 300));
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ Erreur onglet:', e.message);
+      }
+    }
+    
+    const scrollResult = { found, scrolled };
     console.log(`📜 Scroll result: ${JSON.stringify(scrollResult)}`);
     
     // Attendre que le contenu se charge
