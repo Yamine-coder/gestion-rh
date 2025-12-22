@@ -499,28 +499,42 @@ async function scrapeAffluence() {
     let scrolled = 0;
     let found = false;
     
-    for (let i = 0; i < 30; i++) { // Beaucoup plus de scrolls
-      // Méthode hybride: swipe + JavaScript scroll
-      
-      // 1. Swipe vers le haut dans la fiche
-      await page.mouse.move(195, 700);
+    // D'abord, faire plusieurs scrolls rapides pour descendre
+    console.log('📜 Scrolls rapides vers le bas...');
+    for (let i = 0; i < 15; i++) {
+      await page.evaluate(() => {
+        window.scrollBy(0, 400);
+        document.querySelectorAll('div').forEach(div => {
+          if (div.scrollHeight > div.clientHeight + 10) {
+            div.scrollTop += 300;
+          }
+        });
+      });
+      await new Promise(r => setTimeout(r, 200));
+    }
+    
+    await page.screenshot({ path: './debug-after-fast-scroll.png', fullPage: false });
+    
+    // Puis chercher la section affluence
+    for (let i = 0; i < 40; i++) { // Encore plus de scrolls
+      // Swipe vers le haut (scroll down dans la fiche)
+      await page.mouse.move(195, 650);
       await page.mouse.down();
-      await page.mouse.move(195, 400, { steps: 8 });
+      await page.mouse.move(195, 350, { steps: 10 });
       await page.mouse.up();
       
-      // 2. Aussi essayer scroll via JavaScript
+      // Aussi via JavaScript
       await page.evaluate(() => {
-        window.scrollBy(0, 300);
-        // Chercher tous les conteneurs scrollables
-        document.querySelectorAll('div').forEach(div => {
-          if (div.scrollHeight > div.clientHeight) {
-            div.scrollTop += 200;
+        window.scrollBy(0, 250);
+        document.querySelectorAll('div, section, [role="main"]').forEach(el => {
+          if (el.scrollHeight > el.clientHeight + 10) {
+            el.scrollTop += 200;
           }
         });
       });
       
       scrolled += 300;
-      await new Promise(r => setTimeout(r, 350));
+      await new Promise(r => setTimeout(r, 300));
       
       // Vérifier si on a trouvé les données
       const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
