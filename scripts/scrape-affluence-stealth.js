@@ -440,20 +440,21 @@ async function scrapeAffluence() {
       if (scrollContainer) {
         // Scroll progressif dans le panneau
         let scrolled = 0;
-        const scrollStep = 300;
-        const maxScroll = 2000;
+        const scrollStep = 400;
+        const maxScroll = 4000; // Augmenté à 4000px
         
         while (scrolled < maxScroll) {
           scrollContainer.scrollTop += scrollStep;
           scrolled += scrollStep;
-          await new Promise(r => setTimeout(r, 300));
+          await new Promise(r => setTimeout(r, 200));
           
           // Vérifier si on a trouvé "Popular Times" ou "Horaires d'affluence"
           const pageText = document.body.innerText.toLowerCase();
           if (pageText.includes('horaires d\'affluence') || 
               pageText.includes('popular times') ||
               pageText.includes('très fréquenté') ||
-              pageText.includes('assez fréquenté')) {
+              pageText.includes('assez fréquenté') ||
+              pageText.includes('informations en temps')) {
             return { found: true, scrolled: scrolled };
           }
         }
@@ -535,8 +536,9 @@ async function scrapeAffluence() {
         { regex: /plut[oô]t\s+fr[ée]quent[ée]/i, status: 'fairly_busy', percent: 60 },
         { regex: /pas\s+tr[eè]s\s+fr[ée]quent[ée]/i, status: 'not_busy', percent: 35 },
         { regex: /peu\s+fr[ée]quent[ée]/i, status: 'not_busy', percent: 30 },
-        { regex: /calme/i, status: 'not_busy', percent: 25 },
-        { regex: /ferm[ée]/i, status: 'closed', percent: 0 },
+        { regex: /habituellement\s+calme/i, status: 'not_busy', percent: 25 },
+        // NE PAS matcher "Ferme à" (horaires) - seulement "Actuellement fermé"
+        { regex: /actuellement\s+ferm[ée]/i, status: 'closed', percent: 0 },
         // Anglais fallback
         { regex: /very busy/i, status: 'very_busy', percent: 85 },
         { regex: /fairly busy/i, status: 'fairly_busy', percent: 60 },
