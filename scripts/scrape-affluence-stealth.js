@@ -469,41 +469,45 @@ async function scrapeAffluence() {
     await page.screenshot({ path: './debug-after-consent.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
-    // 📜 SCROLL POUR TROUVER "HORAIRES D'AFFLUENCE" (MODE MOBILE)
+    // 📜 OUVRIR LA FICHE LIEU ET SCROLLER (MODE MOBILE)
     // ═══════════════════════════════════════════════════════════
-    console.log('📜 Scroll pour trouver "Horaires d\'affluence"...');
+    console.log('📜 Ouverture de la fiche lieu...');
     
-    // En mode mobile, la fiche lieu prend tout l'écran
-    // On doit swiper vers le haut pour voir plus de contenu
-    
+    // En mode mobile, la fiche lieu est un "bottom sheet" qu'on doit faire glisser vers le haut
     // D'abord, attendre que la page soit chargée
     await new Promise(r => setTimeout(r, 2000));
     
-    // Scroll avec touch events (mobile) ou mouse wheel
+    // Cliquer sur la fiche pour l'ouvrir/l'agrandir
+    // La fiche est en bas de l'écran (viewport 390x844)
+    await page.mouse.click(195, 650); // Clic sur la fiche en bas
+    await new Promise(r => setTimeout(r, 1000));
+    
+    // Faire glisser la fiche vers le haut (swipe up) pour l'agrandir
+    console.log('📱 Swipe up pour agrandir la fiche...');
+    await page.mouse.move(195, 700);
+    await page.mouse.down();
+    await page.mouse.move(195, 200, { steps: 10 }); // Glisser vers le haut
+    await page.mouse.up();
+    await new Promise(r => setTimeout(r, 2000));
+    
+    // Screenshot après swipe
+    await page.screenshot({ path: './debug-after-swipe.png', fullPage: false });
+    
+    // Maintenant scroller dans la fiche pour trouver "Horaires d'affluence"
+    console.log('📜 Scroll pour trouver "Horaires d\'affluence"...');
+    
     let scrolled = 0;
     let found = false;
     
-    for (let i = 0; i < 20; i++) { // Plus de scrolls
-      // Scroll via JavaScript (plus fiable)
-      await page.evaluate(() => {
-        // Trouver le conteneur scrollable (en mobile c'est souvent le body ou un div principal)
-        const scrollContainers = [
-          document.querySelector('[role="main"]'),
-          document.querySelector('.section-layout'),
-          document.querySelector('[data-panel-id]'),
-          document.body
-        ];
-        
-        for (const container of scrollContainers) {
-          if (container) {
-            container.scrollTop += 300;
-            window.scrollBy(0, 300);
-          }
-        }
-      });
+    for (let i = 0; i < 25; i++) { // Plus de scrolls
+      // Swipe vers le haut dans la fiche (simuler touch scroll)
+      await page.mouse.move(195, 600);
+      await page.mouse.down();
+      await page.mouse.move(195, 400, { steps: 5 });
+      await page.mouse.up();
       
-      scrolled += 300;
-      await new Promise(r => setTimeout(r, 300));
+      scrolled += 200;
+      await new Promise(r => setTimeout(r, 400));
       
       // Vérifier si on a trouvé les données
       const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
@@ -517,7 +521,10 @@ async function scrapeAffluence() {
         found = true;
         console.log(`✅ Section affluence trouvée après ${scrolled}px de scroll!`);
         // Scroll un peu plus pour charger tout le graphique
-        await page.evaluate(() => window.scrollBy(0, 200));
+        await page.mouse.move(195, 500);
+        await page.mouse.down();
+        await page.mouse.move(195, 350, { steps: 3 });
+        await page.mouse.up();
         await new Promise(r => setTimeout(r, 500));
         break;
       }
