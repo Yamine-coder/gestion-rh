@@ -251,8 +251,11 @@ async function scrapeAffluence() {
           const text = el.textContent.trim().toLowerCase();
           console.log('Found clickable:', text.substring(0, 50));
           
-          // Textes français et anglais
-          if (text === 'rester sur le web' || 
+          // Textes français et anglais - MISE À JOUR avec "Revenir à la version Web"
+          if (text === 'revenir à la version web' ||
+              text.includes('revenir à la version') ||
+              text.includes('version web') ||
+              text === 'rester sur le web' || 
               text.includes('rester sur le') ||
               text === 'stay on web' ||
               text === 'use web version' ||
@@ -267,7 +270,7 @@ async function scrapeAffluence() {
         for (const div of allDivs) {
           if (div.children.length === 0) { // Div sans enfants = texte direct
             const text = div.textContent.trim().toLowerCase();
-            if (text === 'rester sur le web' || text.includes('rester sur le')) {
+            if (text.includes('version web') || text.includes('revenir') || text.includes('rester sur le')) {
               div.click();
               return { clicked: true, text: text };
             }
