@@ -236,86 +236,106 @@ async function scrapeAffluence() {
     await page.screenshot({ path: './debug-before-popup.png', fullPage: false });
     
     try {
-      // Méthode 1: XPath pour trouver le texte exact
-      const stayOnWebClicked = await page.evaluate(() => {
-        // Chercher dans tous les éléments cliquables
-        const allClickable = document.querySelectorAll('button, a, div[role="button"], span[role="button"]');
-        
-        for (const el of allClickable) {
-          const text = el.textContent.trim().toLowerCase().replace(/\s+/g, ' '); // Normalise les espaces
-          console.log('Found clickable:', text.substring(0, 50));
-          
-          // Textes français et anglais - Tous les variants possibles
-          if (text.includes('rester sur le web') ||
-              text.includes('rester sur le') ||
-              text.includes('revenir à la version web') ||
-              text.includes('version web') ||
-              text === 'stay on web' ||
-              text === 'use web version' ||
-              text === 'continuer sur le web') {
-            el.click();
-            return { clicked: true, text: text };
-          }
-        }
-        
-        // Chercher aussi dans les div avec du texte
-        const allDivs = document.querySelectorAll('div, span');
-        for (const div of allDivs) {
-          const text = div.textContent.trim().toLowerCase().replace(/\s+/g, ' ');
-          if (text.includes('rester sur le web') || text.includes('rester sur le') || text.includes('version web')) {
-            div.click();
-            return { clicked: true, text: text };
-          }
-        }
-        
-        return { clicked: false };
-      });
+      // MÉTHODE DIRECTE: Attendre et cliquer sur le bouton "Rester sur le Web"
+      console.log('🔍 Recherche du bouton "Rester sur le Web"...');
       
-      if (stayOnWebClicked.clicked) {
-        console.log(`✅ Popup fermé! Cliqué sur: "${stayOnWebClicked.text}"`);
-        await new Promise(r => setTimeout(r, 3000));
-      } else {
-        console.log('⚠️ Bouton non trouvé via texte, essai méthode 2 (sélecteur)...');
+      // Attendre que le popup apparaisse (max 5 secondes)
+      await new Promise(r => setTimeout(r, 2000));
+      
+      // Essayer plusieurs méthodes en séquence
+      let popupClosed = false;
+      
+      // Méthode 1: Clic direct via evaluate avec recherche de texte
+      popupClosed = await page.evaluate(() => {
+        // Chercher TOUS les éléments contenant "Rester"
+        const walker = document.createTreeWalker(
+          document.body,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false
+        );
         
-        // Méthode 2: Chercher le bouton avec bordure (pas le bleu "Continuer")
-        const clickedAlt = await page.evaluate(() => {
-          // Le bouton "Rester sur le Web" a généralement une bordure, pas un fond bleu
-          const allButtons = document.querySelectorAll('button');
-          for (const btn of allButtons) {
-            const style = window.getComputedStyle(btn);
-            const text = btn.textContent.trim().toLowerCase().replace(/\s+/g, ' ');
-            const bgColor = style.backgroundColor;
-            
-            // Chercher un bouton qui n'est PAS bleu (le bouton Continuer est bleu)
-            const isBlue = bgColor.includes('66, 133, 244') || bgColor.includes('26, 115, 232') || bgColor.includes('rgb(66');
-            
-            if (!isBlue && text.length > 0 && text.length < 40) {
-              // Éviter "Continuer" et "Ouvrir"
-              if (!text.includes('continuer') && !text.includes('ouvrir') && !text.includes('continue')) {
-                console.log('Clicking non-blue button:', text);
-                btn.click();
-                return { clicked: true, text: text };
+        let node;
+        while (node = walker.nextNode()) {
+          const text = node.textContent.trim().toLowerCase();
+          if (text.includes('rester') && text.includes('web')) {
+            // Trouver l'élément parent cliquable
+            let parent = node.parentElement;
+            while (parent) {
+              if (parent.tagName === 'BUTTON' || parent.tagName === 'A' || 
+                  parent.getAttribute('role') === 'button' ||
+                  parent.onclick || parent.style.cursor === 'pointer') {
+                parent.click();
+                return true;
               }
+              parent = parent.parentElement;
+            }
+            // Si pas de parent cliquable, cliquer sur le parent direct
+            if (node.parentElement) {
+              node.parentElement.click();
+              return true;
             }
           }
-          return { clicked: false };
+        }
+        return false;
+      });
+      
+      if (popupClosed) {
+        console.log('✅ Popup fermé via méthode 1 (TreeWalker)');
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        console.log('⚠️ Méthode 1 échouée, essai méthode 2...');
+        
+        // Méthode 2: Chercher le premier bouton qui n'est pas bleu
+        popupClosed = await page.evaluate(() => {
+          const buttons = document.querySelectorAll('button');
+          for (const btn of buttons) {
+            const text = btn.textContent.toLowerCase();
+            // Le bouton "Rester sur le Web" ne contient PAS "continuer"
+            if (!text.includes('continuer') && !text.includes('ouvrir') && text.length > 3) {
+              btn.click();
+              return true;
+            }
+          }
+          return false;
         });
         
-        if (clickedAlt.clicked) {
-          console.log(`✅ Méthode 2: Cliqué sur "${clickedAlt.text}"`);
-          await new Promise(r => setTimeout(r, 3000));
+        if (popupClosed) {
+          console.log('✅ Popup fermé via méthode 2 (bouton non-bleu)');
+          await new Promise(r => setTimeout(r, 2000));
         } else {
           console.log('⚠️ Méthode 2 échouée, essai méthode 3 (coordonnées)...');
           
-          // Méthode 3: Cliquer directement sur les coordonnées du bouton "Rester sur le Web"
-          // Sur mobile (390x844), le bouton est généralement à gauche du popup
-          await page.mouse.click(120, 530); // Position approximative du bouton gauche
-          await new Promise(r => setTimeout(r, 2000));
+          // Méthode 3: Cliquer sur les coordonnées approximatives du bouton gauche
+          // Le bouton "Rester sur le Web" est à gauche dans le popup
+          // Viewport 390x844, popup centré, bouton gauche environ à x=120
+          await page.mouse.click(115, 530);
+          await new Promise(r => setTimeout(r, 1000));
           
-          // Méthode 4: Touche Escape
+          // Méthode 4: Touche Escape pour fermer le popup
           await page.keyboard.press('Escape');
           await new Promise(r => setTimeout(r, 1000));
+          
+          // Méthode 5: Cliquer en dehors du popup
+          await page.mouse.click(195, 650); // En dessous du popup
+          await new Promise(r => setTimeout(r, 1000));
         }
+      }
+      
+      // Vérifier si le popup est toujours là
+      const stillHasPopup = await page.evaluate(() => {
+        const text = document.body.innerText.toLowerCase();
+        return text.includes('ouvrir l\'application google maps');
+      });
+      
+      if (stillHasPopup) {
+        console.log('⚠️ Popup toujours présent, tentative finale...');
+        // Dernier essai: recharger sans popup
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        console.log('✅ Popup fermé avec succès!');
       }
     } catch (e) {
       console.log('📱 Erreur popup:', e.message);
