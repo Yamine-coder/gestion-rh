@@ -105,21 +105,17 @@ async function scrapeAffluence() {
     // 🎭 CONFIGURATION STEALTH
     // ═══════════════════════════════════════════════════════════
     
-    // Choisir mode mobile ou desktop aléatoirement
-    const isMobile = Math.random() > 0.5;
-    const userAgent = isMobile ? randomChoice(MOBILE_USER_AGENTS) : randomChoice(DESKTOP_USER_AGENTS);
+    // FORCER MODE MOBILE - plus fiable pour le scraping des Popular Times
+    const isMobile = true;
+    const userAgent = randomChoice(MOBILE_USER_AGENTS);
     
-    console.log(`📱 Mode: ${isMobile ? 'Mobile' : 'Desktop'}`);
+    console.log(`📱 Mode: Mobile (forcé)`);
     console.log(`🎭 User-Agent: ${userAgent.substring(0, 50)}...`);
     
     await page.setUserAgent(userAgent);
     
-    // Viewport réaliste
-    if (isMobile) {
-      await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
-    } else {
-      await page.setViewport({ width: 1920, height: 1080, isMobile: false });
-    }
+    // Viewport mobile
+    await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
     
     // Headers HTTP réalistes
     await page.setExtraHTTPHeaders({
@@ -555,11 +551,29 @@ async function scrapeAffluence() {
         htmlStructure: []
       };
 
-      // Nom du lieu (vérification que c'est le bon)
-      const nameEl = document.querySelector('h1');
-      if (nameEl) {
-        result.placeName = nameEl.textContent.trim();
-        result.debugTexts.push(`📍 Lieu détecté: ${result.placeName}`);
+      // Nom du lieu - chercher le bon h1 (pas "Connexion" ou autres boutons)
+      const allH1 = document.querySelectorAll('h1');
+      for (const h1 of allH1) {
+        const text = h1.textContent.trim();
+        // Ignorer les h1 qui sont des boutons ou du UI
+        if (text && 
+            !text.toLowerCase().includes('connexion') && 
+            !text.toLowerCase().includes('login') &&
+            !text.toLowerCase().includes('google') &&
+            text.length > 3 && text.length < 100) {
+          result.placeName = text;
+          result.debugTexts.push(`📍 Lieu détecté: ${result.placeName}`);
+          break;
+        }
+      }
+      
+      // Fallback: chercher dans le titre de la page
+      if (!result.placeName && document.title) {
+        const titleMatch = document.title.match(/^([^-–]+)/);
+        if (titleMatch) {
+          result.placeName = titleMatch[1].trim();
+          result.debugTexts.push(`📍 Lieu (titre): ${result.placeName}`);
+        }
       }
 
       // Récupérer tout le texte de la page
