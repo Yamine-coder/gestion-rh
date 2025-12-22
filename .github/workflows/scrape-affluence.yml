@@ -31,10 +31,10 @@ jobs:
         working-directory: scripts
         run: npm ci || npm install
       
-      - name: 🔍 Scrape Google Popular Times
+      - name: �️ Scrape Google Popular Times (Stealth)
         id: scrape
         working-directory: scripts
-        run: node scrape-affluence.js
+        run: node scrape-affluence-stealth.js
         env:
           PLACE_ID: ${{ env.PLACE_ID }}
       
@@ -45,11 +45,13 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
         run: node update-gist.js
       
-      - name: 📊 Upload artifact (backup)
+      - name: 📊 Upload artifacts (data + screenshot)
         uses: actions/upload-artifact@v4
         with:
-          name: affluence-data-${{ github.run_id }}
-          path: scripts/affluence-data.json
+          name: affluence-debug-${{ github.run_id }}
+          path: |
+            scripts/affluence-data.json
+            scripts/debug-screenshot.png
           retention-days: 7
         if: always()
       
