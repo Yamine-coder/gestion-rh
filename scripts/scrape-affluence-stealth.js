@@ -1,24 +1,28 @@
 /**
- * 📊 Scraper Google Popular Times - Version STEALTH
+ * 📊 Scraper Google Popular Times - Version STEALTH v2
  * Techniques anti-détection pour contourner le blocage Google
+ * FIX: Recherche par nom + adresse au lieu de Place ID
  */
 
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 const fs = require('fs');
 
-// Configuration
-const PLACE_ID = process.env.PLACE_ID || 'ChIJnYLnmZly5kcRgpLV4MN4Rus';
-const PLACE_NAME = 'Chez Antoine Vincennes';
+// Configuration - COORDONNÉES EXACTES DE CHEZ ANTOINE VINCENNES
+const RESTAURANT_NAME = process.env.RESTAURANT_NAME || 'Chez Antoine Vincennes';
+const RESTAURANT_ADDRESS = process.env.RESTAURANT_ADDRESS || '2 Avenue de la République 94300 Vincennes';
+const LATITUDE = '48.8463257';
+const LONGITUDE = '2.4290377';
 
-// URLs à tester
+// Place ID correct (extrait du lien Google Maps partagé)
+const PLACE_ID = process.env.PLACE_ID || 'ChIJnYJ5mZly5kcRgpLVpMN4Rus';
+
+// URL DIRECTE avec coordonnées et Place ID (LE PLUS FIABLE)
 const URLS = [
-  // URL mobile (souvent moins bloquée)
-  `https://www.google.com/maps/place/?q=place_id:${PLACE_ID}`,
-  // Recherche directe
+  // URL directe avec place ID et coordonnées (MÉTHODE LA PLUS FIABLE)
+  `https://www.google.com/maps/place/Chez+Antoine+Vincennes/@${LATITUDE},${LONGITUDE},17z/data=!4m6!3m5!1s${PLACE_ID}!8m2!3d${LATITUDE}!4d${LONGITUDE}`,
+  // Fallback: recherche par nom
   `https://www.google.com/maps/search/Chez+Antoine+Vincennes`,
-  // URL avec coordonnées
-  `https://www.google.com/maps/search/?api=1&query=Chez+Antoine+Vincennes&query_place_id=${PLACE_ID}`
 ];
 
 // User agents mobiles réalistes (2024)
@@ -42,15 +46,19 @@ const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1)) + 
 const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 async function scrapeAffluence() {
-  console.log('🕵️ Démarrage scraping STEALTH...');
-  console.log(`📍 Restaurant: ${PLACE_NAME}`);
-  console.log(`🆔 Place ID: ${PLACE_ID}`);
+  console.log('🕵️ Démarrage scraping STEALTH v2...');
+  console.log(`📍 Restaurant: ${RESTAURANT_NAME}`);
+  console.log(`📫 Adresse: ${RESTAURANT_ADDRESS}`);
+  console.log(`🌍 Coordonnées: ${LATITUDE}, ${LONGITUDE}`);
+  console.log(`🔑 Place ID: ${PLACE_ID}`);
   console.log('');
 
   let browser;
   let data = {
     timestamp: new Date().toISOString(),
+    restaurantName: RESTAURANT_NAME,
     placeId: PLACE_ID,
+    coordinates: { lat: LATITUDE, lng: LONGITUDE },
     placeName: null,
     liveStatus: null,
     livePercentage: null,
@@ -490,7 +498,7 @@ async function scrapeAffluence() {
     });
 
     // ═══════════════════════════════════════════════════════════
-    // 🔍 EXTRACTION DONNÉES
+    // 🔍 EXTRACTION DONNÉES - VERSION 2025
     // ═══════════════════════════════════════════════════════════
     console.log('🔎 Recherche données affluence...');
 
@@ -501,28 +509,137 @@ async function scrapeAffluence() {
         livePercentage: null,
         usualPercentage: null,
         popularTimes: {},
+        currentHour: new Date().getHours(),
         trend: null,
         pageTitle: document.title,
         bodyTextSample: '',
         foundElements: [],
-        debugTexts: []
+        debugTexts: [],
+        htmlStructure: []
       };
 
-      // Nom du lieu
+      // Nom du lieu (vérification que c'est le bon)
       const nameEl = document.querySelector('h1');
-      if (nameEl) result.placeName = nameEl.textContent.trim();
+      if (nameEl) {
+        result.placeName = nameEl.textContent.trim();
+        result.debugTexts.push(`📍 Lieu détecté: ${result.placeName}`);
+      }
 
       // Récupérer tout le texte de la page
       const allText = document.body.innerText;
       const allTextLower = allText.toLowerCase();
       
-      // Debug: chercher la section "Horaires d'affluence"
-      const affluenceIndex = allTextLower.indexOf('horaires d');
-      if (affluenceIndex > -1) {
-        result.debugTexts.push('✅ Found "Horaires d\'affluence"');
-        // Extraire le contexte autour
-        const context = allText.substring(affluenceIndex, affluenceIndex + 200);
-        result.bodyTextSample = context;
+      // ═══════════════════════════════════════════════════════════
+      // 🎯 MÉTHODE 1: Chercher les sections "Horaires d'affluence" / "Popular times"
+      // ═══════════════════════════════════════════════════════════
+      
+      // Chercher le texte exact de la section
+      const popularTimesPatterns = [
+        'horaires d\'affluence',
+        'popular times',
+        'heures de pointe',
+        'affluence'
+      ];
+      
+      for (const pattern of popularTimesPatterns) {
+        if (allTextLower.includes(pattern)) {
+          result.debugTexts.push(`✅ Section trouvée: "${pattern}"`);
+          const idx = allTextLower.indexOf(pattern);
+          result.bodyTextSample = allText.substring(idx, idx + 300);
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // 🎯 MÉTHODE 2: Chercher le status en temps réel via aria-label
+      // ═══════════════════════════════════════════════════════════
+      
+      // Google Maps utilise des aria-labels descriptifs
+      document.querySelectorAll('[aria-label]').forEach(el => {
+        const label = el.getAttribute('aria-label') || '';
+        const labelLower = label.toLowerCase();
+        
+        // Détecter le status actuel
+        if (labelLower.includes('actuellement') || labelLower.includes('currently') || 
+            labelLower.includes('en ce moment') || labelLower.includes('live')) {
+          result.debugTexts.push(`🔴 Live label: ${label.substring(0, 80)}`);
+          
+          // Extraire le pourcentage si présent
+          const percentMatch = label.match(/(\d{1,3})\s*%/);
+          if (percentMatch) {
+            result.livePercentage = parseInt(percentMatch[1]);
+          }
+          
+          // Détecter le status
+          if (labelLower.includes('très fréquenté') || labelLower.includes('very busy')) {
+            result.liveStatus = 'very_busy';
+          } else if (labelLower.includes('assez fréquenté') || labelLower.includes('fairly busy') || labelLower.includes('plutôt fréquenté')) {
+            result.liveStatus = 'fairly_busy';
+          } else if (labelLower.includes('peu fréquenté') || labelLower.includes('not busy') || labelLower.includes('calme')) {
+            result.liveStatus = 'not_busy';
+          }
+        }
+        
+        // Chercher les données horaires (ex: "12 h. 45 % d'affluence")
+        const hourPercentMatch = label.match(/(\d{1,2})\s*[h:]\s*(?:00)?\s*[\.\s]*(\d{1,3})\s*%/i);
+        if (hourPercentMatch) {
+          const hour = parseInt(hourPercentMatch[1]);
+          const percent = parseInt(hourPercentMatch[2]);
+          if (hour >= 0 && hour <= 23 && percent >= 0 && percent <= 100) {
+            result.popularTimes[hour] = percent;
+            result.foundElements.push(`Hour ${hour}: ${percent}%`);
+          }
+        }
+      });
+      
+      // ═══════════════════════════════════════════════════════════
+      // 🎯 MÉTHODE 3: Analyser les barres du graphique via CSS/style
+      // ═══════════════════════════════════════════════════════════
+      
+      // Google utilise des divs avec des hauteurs en % pour les barres
+      // Chercher dans les conteneurs potentiels
+      const barSelectors = [
+        '[data-value]',                    // Attribut data-value
+        '[role="img"] > div',              // Divs dans un role="img"
+        '[class*="bar"]',                  // Classes contenant "bar"
+        '[class*="progress"]',             // Classes contenant "progress"
+        'g rect',                          // SVG rectangles
+        '[style*="height:"][style*="%"]',  // Hauteur en pourcentage
+      ];
+      
+      for (const selector of barSelectors) {
+        try {
+          document.querySelectorAll(selector).forEach(el => {
+            // Vérifier si c'est une barre du graphique
+            const style = el.getAttribute('style') || '';
+            const dataValue = el.getAttribute('data-value');
+            
+            if (dataValue) {
+              const val = parseInt(dataValue);
+              if (val >= 0 && val <= 100) {
+                result.foundElements.push(`data-value: ${val}`);
+              }
+            }
+            
+            // Extraire la hauteur du style
+            const heightMatch = style.match(/height:\s*(\d+(?:\.\d+)?)\s*(%|px)/i);
+            if (heightMatch) {
+              const height = parseFloat(heightMatch[1]);
+              const unit = heightMatch[2];
+              // Ignorer les hauteurs de 100% ou très petites (UI elements)
+              if (unit === '%' && height > 5 && height < 100) {
+                result.foundElements.push(`Bar %: ${height}`);
+              }
+            }
+          });
+        } catch (e) {}
+      }
+      
+      // ═══════════════════════════════════════════════════════════
+      // 🎯 MÉTHODE 4: Regex sur le texte brut pour extraire le contexte
+      // ═══════════════════════════════════════════════════════════
+      const affluenceMatch = allText.match(/(?:horaires d'affluence|popular times)[^]*?(?=avis|reviews|ferme|closes|\n\n)/i);
+      if (affluenceMatch) {
+        const context = affluenceMatch[0];
         result.foundElements.push(`Context: ${context.substring(0, 100)}`);
       }
       

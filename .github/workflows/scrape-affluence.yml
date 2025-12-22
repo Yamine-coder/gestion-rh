@@ -11,7 +11,11 @@ on:
   workflow_dispatch:  # Permet de lancer manuellement
 
 env:
-  PLACE_ID: ChIJnYLnmZly5kcRgpLV4MN4Rus
+  # Coordonnées exactes de Chez Antoine Vincennes (extrait du lien Google Maps)
+  RESTAURANT_NAME: "Chez Antoine Vincennes"
+  RESTAURANT_ADDRESS: "2 Avenue de la République 94300 Vincennes"
+  # Place ID correct (de https://maps.app.goo.gl/Px5Vyfvnw4zxLT4y5)
+  PLACE_ID: "ChIJnYJ5mZly5kcRgpLVpMN4Rus"
 
 jobs:
   scrape:
@@ -31,11 +35,13 @@ jobs:
         working-directory: scripts
         run: npm ci || npm install
       
-      - name: �️ Scrape Google Popular Times (Stealth)
+      - name: 🕵️ Scrape Google Popular Times (Stealth v2)
         id: scrape
         working-directory: scripts
         run: node scrape-affluence-stealth.js
         env:
+          RESTAURANT_NAME: ${{ env.RESTAURANT_NAME }}
+          RESTAURANT_ADDRESS: ${{ env.RESTAURANT_ADDRESS }}
           PLACE_ID: ${{ env.PLACE_ID }}
       
       - name: 📤 Update Gist
