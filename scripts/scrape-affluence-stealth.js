@@ -248,15 +248,14 @@ async function scrapeAffluence() {
         const allClickable = document.querySelectorAll('button, a, div[role="button"], span[role="button"]');
         
         for (const el of allClickable) {
-          const text = el.textContent.trim().toLowerCase();
+          const text = el.textContent.trim().toLowerCase().replace(/\s+/g, ' '); // Normalise les espaces
           console.log('Found clickable:', text.substring(0, 50));
           
-          // Textes français et anglais - MISE À JOUR avec "Revenir à la version Web"
-          if (text === 'revenir à la version web' ||
-              text.includes('revenir à la version') ||
-              text.includes('version web') ||
-              text === 'rester sur le web' || 
+          // Textes français et anglais - Tous les variants possibles
+          if (text.includes('rester sur le web') ||
               text.includes('rester sur le') ||
+              text.includes('revenir à la version web') ||
+              text.includes('version web') ||
               text === 'stay on web' ||
               text === 'use web version' ||
               text === 'continuer sur le web') {
@@ -266,14 +265,12 @@ async function scrapeAffluence() {
         }
         
         // Chercher aussi dans les div avec du texte
-        const allDivs = document.querySelectorAll('div');
+        const allDivs = document.querySelectorAll('div, span');
         for (const div of allDivs) {
-          if (div.children.length === 0) { // Div sans enfants = texte direct
-            const text = div.textContent.trim().toLowerCase();
-            if (text.includes('version web') || text.includes('revenir') || text.includes('rester sur le')) {
-              div.click();
-              return { clicked: true, text: text };
-            }
+          const text = div.textContent.trim().toLowerCase().replace(/\s+/g, ' ');
+          if (text.includes('rester sur le web') || text.includes('rester sur le') || text.includes('version web')) {
+            div.click();
+            return { clicked: true, text: text };
           }
         }
         
