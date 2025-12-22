@@ -102,20 +102,20 @@ async function scrapeAffluence() {
     const page = await browser.newPage();
 
     // ═══════════════════════════════════════════════════════════
-    // 🎭 CONFIGURATION STEALTH
+    // 🎭 CONFIGURATION STEALTH - MODE DESKTOP (plus fiable pour scroll)
     // ═══════════════════════════════════════════════════════════
     
-    // FORCER MODE MOBILE - plus fiable pour le scraping des Popular Times
-    const isMobile = true;
-    const userAgent = randomChoice(MOBILE_USER_AGENTS);
+    // MODE DESKTOP - le panneau latéral est plus facile à scroller
+    const isMobile = false;
+    const userAgent = randomChoice(DESKTOP_USER_AGENTS);
     
-    console.log(`📱 Mode: Mobile (forcé)`);
+    console.log(`🖥️ Mode: Desktop (pour meilleur scroll)`);
     console.log(`🎭 User-Agent: ${userAgent.substring(0, 50)}...`);
     
     await page.setUserAgent(userAgent);
     
-    // Viewport mobile
-    await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
+    // Viewport desktop
+    await page.setViewport({ width: 1280, height: 900, isMobile: false });
     
     // Headers HTTP réalistes
     await page.setExtraHTTPHeaders({
@@ -126,8 +126,8 @@ async function scrapeAffluence() {
       'Upgrade-Insecure-Requests': '1',
       'Cache-Control': 'max-age=0',
       'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-      'sec-ch-ua-mobile': isMobile ? '?1' : '?0',
-      'sec-ch-ua-platform': isMobile ? '"Android"' : '"Windows"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
       'Sec-Fetch-Dest': 'document',
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'none',
@@ -469,55 +469,44 @@ async function scrapeAffluence() {
     await page.screenshot({ path: './debug-after-consent.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
-    // 📜 OUVRIR LA FICHE LIEU ET SCROLLER (MODE MOBILE)
+    // 📜 SCROLL DANS LE PANNEAU LATÉRAL (MODE DESKTOP)
     // ═══════════════════════════════════════════════════════════
-    console.log('📜 Ouverture de la fiche lieu...');
+    console.log('📜 Scroll dans le panneau latéral Google Maps...');
     
-    // En mode mobile, la fiche lieu est un "bottom sheet" qu'on doit faire glisser vers le haut
-    // D'abord, attendre que la page soit chargée
-    await new Promise(r => setTimeout(r, 2000));
+    // Attendre que la page soit chargée
+    await new Promise(r => setTimeout(r, 3000));
     
-    // Cliquer sur la fiche pour l'ouvrir/l'agrandir
-    // La fiche est en bas de l'écran (viewport 390x844)
-    await page.mouse.click(195, 650); // Clic sur la fiche en bas
-    await new Promise(r => setTimeout(r, 1000));
+    // En mode desktop, le panneau latéral est à gauche (environ x=200)
+    // Il faut cliquer dessus puis utiliser la molette ou keyboard
     
-    // Faire glisser la fiche vers le haut (swipe up) pour l'agrandir
-    console.log('📱 Swipe up pour agrandir la fiche...');
-    await page.mouse.move(195, 700);
-    await page.mouse.down();
-    await page.mouse.move(195, 200, { steps: 10 }); // Glisser vers le haut
-    await page.mouse.up();
-    await new Promise(r => setTimeout(r, 2000));
+    // Cliquer dans le panneau pour le focus
+    await page.mouse.click(200, 400);
+    await new Promise(r => setTimeout(r, 500));
     
-    // Screenshot après swipe
-    await page.screenshot({ path: './debug-after-swipe.png', fullPage: false });
+    // Screenshot initial
+    await page.screenshot({ path: './debug-before-scroll.png', fullPage: false });
     
-    // Maintenant scroller dans la fiche pour trouver "Horaires d'affluence"
+    // Scroller dans le panneau avec la molette de souris
     console.log('📜 Scroll pour trouver "Horaires d\'affluence"...');
     
     let scrolled = 0;
     let found = false;
     
-    // Utiliser UNIQUEMENT des swipes doux (pas de JavaScript scroll qui casse la page)
-    for (let i = 0; i < 50; i++) { // Plus de scrolls
-      // Swipe plus long vers le haut (scroll down)
-      await page.mouse.move(195, 750); // Partir de plus bas
-      await page.mouse.down();
-      await page.mouse.move(195, 250, { steps: 20 }); // Aller plus haut = plus de distance
-      await page.mouse.up();
+    for (let i = 0; i < 40; i++) {
+      // Utiliser la molette de souris (fonctionne bien en desktop)
+      await page.mouse.wheel({ deltaY: 400 });
       
-      scrolled += 500;
-      await new Promise(r => setTimeout(r, 350));
+      scrolled += 400;
+      await new Promise(r => setTimeout(r, 400));
       
-      // Screenshot intermédiaire tous les 15 scrolls
-      if (i === 15) {
-        await page.screenshot({ path: './debug-scroll-15.png', fullPage: false });
-        console.log('📸 Screenshot à 15 scrolls');
+      // Screenshot intermédiaires
+      if (i === 10) {
+        await page.screenshot({ path: './debug-scroll-10.png', fullPage: false });
+        console.log('📸 Screenshot à 10 scrolls');
       }
-      if (i === 30) {
-        await page.screenshot({ path: './debug-scroll-30.png', fullPage: false });
-        console.log('📸 Screenshot à 30 scrolls');
+      if (i === 20) {
+        await page.screenshot({ path: './debug-scroll-20.png', fullPage: false });
+        console.log('📸 Screenshot à 20 scrolls');
       }
       
       // Vérifier si on a trouvé les données
@@ -532,11 +521,8 @@ async function scrapeAffluence() {
         found = true;
         console.log(`✅ Section affluence trouvée après scroll ${i}!`);
         await page.screenshot({ path: './debug-affluence-found.png', fullPage: false });
-        // Scroll un peu plus pour charger tout le graphique
-        await page.mouse.move(195, 600);
-        await page.mouse.down();
-        await page.mouse.move(195, 450, { steps: 5 });
-        await page.mouse.up();
+        // Scroll un peu plus pour charger le graphique complet
+        await page.mouse.wheel({ deltaY: 200 });
         await new Promise(r => setTimeout(r, 500));
         break;
       }
@@ -544,6 +530,9 @@ async function scrapeAffluence() {
     
     if (!found) {
       console.log(`⚠️ Section affluence non trouvée après ${scrolled}px de scroll`);
+      
+      // Screenshot final même si pas trouvé
+      await page.screenshot({ path: './debug-scroll-final.png', fullPage: false });
       
       // Méthode 2: Essayer de cliquer sur l'onglet "À propos" puis revenir
       console.log('📜 Tentative: clic sur onglet À propos...');
