@@ -17,10 +17,9 @@ const LONGITUDE = '2.4290377';
 // Place ID correct (de https://search.google.com/local/writereview?placeid=...)
 const PLACE_ID = process.env.PLACE_ID || 'ChIJnYLnmZly5kcRgpLV4MN4Rus';
 
-// URL DIRECTE vers la fiche - format simple qui fonctionne
+// URL avec place_id (fonctionne bien - trouvait le resto avant)
 const URLS = [
-  // Format search avec nom exact (FONCTIONNE)
-  `https://www.google.com/maps/search/Chez+Antoine+Vincennes+2+Avenue+de+la+République`,
+  `https://www.google.com/maps/place/?q=place_id:${PLACE_ID}`,
 ];
 
 // User agents mobiles réalistes (2024)
