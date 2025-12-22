@@ -247,7 +247,7 @@ async function scrapeAffluence() {
       
       // Méthode 1: Clic direct via evaluate avec recherche de texte
       popupClosed = await page.evaluate(() => {
-        // Chercher TOUS les éléments contenant "Rester"
+        // Chercher TOUS les éléments contenant "Rester" ou "Revenir"
         const walker = document.createTreeWalker(
           document.body,
           NodeFilter.SHOW_TEXT,
@@ -258,7 +258,10 @@ async function scrapeAffluence() {
         let node;
         while (node = walker.nextNode()) {
           const text = node.textContent.trim().toLowerCase();
-          if (text.includes('rester') && text.includes('web')) {
+          // "Rester sur le Web" OU "Revenir à la version Web"
+          if ((text.includes('rester') && text.includes('web')) ||
+              (text.includes('revenir') && text.includes('version')) ||
+              (text.includes('revenir') && text.includes('web'))) {
             // Trouver l'élément parent cliquable
             let parent = node.parentElement;
             while (parent) {
