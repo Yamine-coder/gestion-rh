@@ -17,12 +17,10 @@ const LONGITUDE = '2.4290377';
 // Place ID correct (de https://search.google.com/local/writereview?placeid=...)
 const PLACE_ID = process.env.PLACE_ID || 'ChIJnYLnmZly5kcRgpLV4MN4Rus';
 
-// URLs à tester
+// URL DIRECTE vers la fiche (pas de recherche qui montre une liste)
 const URLS = [
-  // Format direct avec Place ID (LE PLUS FIABLE)
-  `https://www.google.com/maps/place/?q=place_id:${PLACE_ID}`,
-  // Recherche simple par nom (fallback)
-  `https://www.google.com/maps/search/Chez+Antoine+Vincennes+France`,
+  // Format avec data qui force l'ouverture de la fiche
+  `https://www.google.com/maps/place/Chez+Antoine+Vincennes/@${LATITUDE},${LONGITUDE},17z/data=!4m5!3m4!1s${PLACE_ID}!8m2!3d${LATITUDE}!4d${LONGITUDE}`,
 ];
 
 // User agents mobiles réalistes (2024)
@@ -469,34 +467,43 @@ async function scrapeAffluence() {
     await page.screenshot({ path: './debug-after-consent.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
-    // 📜 SCROLL DANS LE PANNEAU LATÉRAL (MODE DESKTOP)
+    // 📜 SCROLL DANS LE PANNEAU DE LA FICHE (MODE DESKTOP)
     // ═══════════════════════════════════════════════════════════
-    console.log('📜 Scroll dans le panneau latéral Google Maps...');
+    console.log('📜 Scroll dans le panneau de la fiche Google Maps...');
     
     // Attendre que la page soit chargée
     await new Promise(r => setTimeout(r, 3000));
     
-    // En mode desktop, le panneau latéral est à gauche (environ x=200)
-    // Il faut cliquer dessus puis utiliser la molette ou keyboard
+    // Vérifier qu'on est sur la bonne fiche
+    const placeName = await page.evaluate(() => {
+      const h1 = document.querySelector('h1');
+      return h1 ? h1.textContent.trim() : 'inconnu';
+    });
+    console.log(`📍 Fiche ouverte: ${placeName}`);
     
-    // Cliquer dans le panneau pour le focus
-    await page.mouse.click(200, 400);
-    await new Promise(r => setTimeout(r, 500));
+    // En mode desktop, la fiche est dans un panneau à droite ou au centre
+    // Viewport 1280x900 - le panneau fiche est généralement vers x=600-800
     
     // Screenshot initial
     await page.screenshot({ path: './debug-before-scroll.png', fullPage: false });
     
-    // Scroller dans le panneau avec la molette de souris
+    // Trouver et cliquer sur le panneau de la fiche (pas la liste à gauche)
+    // Le panneau de la fiche contient généralement "Itinéraires", "Enregistrer"
+    await page.mouse.click(600, 450); // Centre-droit où se trouve la fiche
+    await new Promise(r => setTimeout(r, 500));
+    
+    // Scroller avec la molette
     console.log('📜 Scroll pour trouver "Horaires d\'affluence"...');
     
     let scrolled = 0;
     let found = false;
     
     for (let i = 0; i < 40; i++) {
-      // Utiliser la molette de souris (fonctionne bien en desktop)
-      await page.mouse.wheel({ deltaY: 400 });
+      // Scroll avec molette dans la fiche (position x=600 pour éviter la liste à gauche)
+      await page.mouse.move(600, 450);
+      await page.mouse.wheel({ deltaY: 350 });
       
-      scrolled += 400;
+      scrolled += 350;
       await new Promise(r => setTimeout(r, 400));
       
       // Screenshot intermédiaires
