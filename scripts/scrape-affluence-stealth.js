@@ -275,16 +275,24 @@ async function scrapeAffluence() {
         console.log(`✅ Popup fermé! Cliqué sur: "${stayOnWebClicked.text}"`);
         await new Promise(r => setTimeout(r, 3000));
       } else {
-        console.log('⚠️ Bouton "Rester sur le Web" non trouvé, essai méthode 2...');
+        console.log('⚠️ Bouton non trouvé via texte, essai méthode 2 (sélecteur)...');
         
-        // Méthode 2: Cliquer sur le premier bouton qui n'est PAS "Continuer" (bleu)
+        // Méthode 2: Chercher le bouton avec bordure (pas le bleu "Continuer")
         const clickedAlt = await page.evaluate(() => {
-          const buttons = document.querySelectorAll('button');
-          for (const btn of buttons) {
-            const text = btn.textContent.trim().toLowerCase();
-            // Éviter le bouton "Continuer" qui ouvre l'app
-            if (!text.includes('continuer') && !text.includes('continue') && !text.includes('ouvrir')) {
-              if (text.length > 0 && text.length < 30) {
+          // Le bouton "Rester sur le Web" a généralement une bordure, pas un fond bleu
+          const allButtons = document.querySelectorAll('button');
+          for (const btn of allButtons) {
+            const style = window.getComputedStyle(btn);
+            const text = btn.textContent.trim().toLowerCase().replace(/\s+/g, ' ');
+            const bgColor = style.backgroundColor;
+            
+            // Chercher un bouton qui n'est PAS bleu (le bouton Continuer est bleu)
+            const isBlue = bgColor.includes('66, 133, 244') || bgColor.includes('26, 115, 232') || bgColor.includes('rgb(66');
+            
+            if (!isBlue && text.length > 0 && text.length < 40) {
+              // Éviter "Continuer" et "Ouvrir"
+              if (!text.includes('continuer') && !text.includes('ouvrir') && !text.includes('continue')) {
+                console.log('Clicking non-blue button:', text);
                 btn.click();
                 return { clicked: true, text: text };
               }
@@ -297,11 +305,12 @@ async function scrapeAffluence() {
           console.log(`✅ Méthode 2: Cliqué sur "${clickedAlt.text}"`);
           await new Promise(r => setTimeout(r, 3000));
         } else {
-          console.log('⚠️ Méthode 2 échouée, essai méthode 3 (dismiss)...');
+          console.log('⚠️ Méthode 2 échouée, essai méthode 3 (coordonnées)...');
           
-          // Méthode 3: Cliquer en dehors du popup pour le fermer
-          await page.mouse.click(10, 10);
-          await new Promise(r => setTimeout(r, 1000));
+          // Méthode 3: Cliquer directement sur les coordonnées du bouton "Rester sur le Web"
+          // Sur mobile (390x844), le bouton est généralement à gauche du popup
+          await page.mouse.click(120, 530); // Position approximative du bouton gauche
+          await new Promise(r => setTimeout(r, 2000));
           
           // Méthode 4: Touche Escape
           await page.keyboard.press('Escape');
