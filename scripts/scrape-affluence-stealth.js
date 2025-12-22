@@ -500,26 +500,24 @@ async function scrapeAffluence() {
     let found = false;
     
     // Utiliser UNIQUEMENT des swipes doux (pas de JavaScript scroll qui casse la page)
-    for (let i = 0; i < 35; i++) {
-      // Swipe doux vers le haut (scroll down)
-      await page.touchscreen.tap(195, 600);
-      await new Promise(r => setTimeout(r, 100));
-      
-      // Simuler un swipe avec la souris
-      await page.mouse.move(195, 600);
+    for (let i = 0; i < 50; i++) { // Plus de scrolls
+      // Swipe plus long vers le haut (scroll down)
+      await page.mouse.move(195, 750); // Partir de plus bas
       await page.mouse.down();
-      await page.mouse.move(195, 400, { steps: 15 }); // Plus de steps = plus doux
+      await page.mouse.move(195, 250, { steps: 20 }); // Aller plus haut = plus de distance
       await page.mouse.up();
       
-      scrolled += 200;
-      await new Promise(r => setTimeout(r, 400));
+      scrolled += 500;
+      await new Promise(r => setTimeout(r, 350));
       
-      // Screenshot intermédiaire tous les 10 scrolls
-      if (i === 10) {
-        await page.screenshot({ path: './debug-scroll-10.png', fullPage: false });
+      // Screenshot intermédiaire tous les 15 scrolls
+      if (i === 15) {
+        await page.screenshot({ path: './debug-scroll-15.png', fullPage: false });
+        console.log('📸 Screenshot à 15 scrolls');
       }
-      if (i === 20) {
-        await page.screenshot({ path: './debug-scroll-20.png', fullPage: false });
+      if (i === 30) {
+        await page.screenshot({ path: './debug-scroll-30.png', fullPage: false });
+        console.log('📸 Screenshot à 30 scrolls');
       }
       
       // Vérifier si on a trouvé les données
@@ -532,11 +530,12 @@ async function scrapeAffluence() {
           pageText.includes('très fréquenté') ||
           pageText.includes('assez fréquenté')) {
         found = true;
-        console.log(`✅ Section affluence trouvée après ${scrolled}px de scroll!`);
+        console.log(`✅ Section affluence trouvée après scroll ${i}!`);
+        await page.screenshot({ path: './debug-affluence-found.png', fullPage: false });
         // Scroll un peu plus pour charger tout le graphique
-        await page.mouse.move(195, 500);
+        await page.mouse.move(195, 600);
         await page.mouse.down();
-        await page.mouse.move(195, 400, { steps: 5 });
+        await page.mouse.move(195, 450, { steps: 5 });
         await page.mouse.up();
         await new Promise(r => setTimeout(r, 500));
         break;
