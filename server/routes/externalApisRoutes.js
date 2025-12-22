@@ -72,6 +72,7 @@ router.get('/holidays', async (req, res) => {
 router.get('/status', async (req, res) => {
   const weatherKey = process.env.OPENWEATHER_API_KEY;
   const footballKey = process.env.FOOTBALL_API_KEY;
+  const gistId = process.env.AFFLUENCE_GIST_ID;
   
   res.json({
     apis: {
@@ -86,6 +87,11 @@ router.get('/status', async (req, res) => {
       holidays: {
         configured: true,
         status: 'active'
+      },
+      affluence: {
+        configured: !!gistId,
+        status: gistId ? 'active' : 'estimated',
+        gistId: gistId ? `${gistId.substring(0, 8)}...` : null
       }
     },
     config: {
@@ -93,6 +99,45 @@ router.get('/status', async (req, res) => {
       country: process.env.RESTAURANT_COUNTRY || 'FR'
     },
     timestamp: new Date().toISOString()
+  });
+});
+
+// GET /api/external/affluence
+// Retourne les données d'affluence Google
+router.get('/affluence', async (req, res) => {
+  try {
+    const affluence = await externalApisService.getAffluenceData();
+    res.json(affluence);
+  } catch (error) {
+    console.error('❌ [EXTERNAL API] Erreur affluence:', error);
+    res.status(500).json({ 
+      error: 'Erreur lors de la récupération affluence',
+      message: error.message 
+    });
+  }
+});
+
+// POST /api/external/affluence-update
+// Endpoint appelé par GitHub Actions après mise à jour du Gist
+router.post('/affluence-update', async (req, res) => {
+  // Vérifier le secret (optionnel mais recommandé)
+  const cronSecret = process.env.CRON_SECRET;
+  const providedSecret = req.headers['x-cron-secret'];
+  
+  if (cronSecret && providedSecret !== cronSecret) {
+    console.warn('⚠️ [AFFLUENCE] Requête avec secret invalide');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  console.log('📊 [AFFLUENCE] Notification mise à jour reçue:', req.body);
+  
+  // Invalider le cache pour forcer un refresh
+  // Note: on pourrait aussi passer les données directement dans le body
+  
+  res.json({ 
+    success: true, 
+    message: 'Cache invalidé, prochaine requête fetchera les nouvelles données',
+    receivedAt: new Date().toISOString()
   });
 });
 

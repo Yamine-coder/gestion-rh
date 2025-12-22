@@ -520,8 +520,8 @@ async function getUpcomingMatches() {
   try {
     const today = new Date();
     const dateFrom = today.toISOString().split('T')[0];
-    // Chercher sur 30 jours pour voir les gros matchs à venir
-    const dateTo = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Chercher sur 45 jours pour voir les gros matchs à venir (CL incluse)
+    const dateTo = new Date(today.getTime() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // Compétitions gratuites pertinentes:
     // FL1 = Ligue 1, CL = Champions League, SA = Serie A, EC = Euro
@@ -568,6 +568,13 @@ async function getUpcomingMatches() {
       }
     }
 
+    // === AJOUTER MATCHS CAN (manuels car API gratuite ne couvre pas) ===
+    const canMatches = getCANMatches();
+    if (canMatches.length > 0) {
+      allMatches.push(...canMatches);
+      console.log(`🌍 [CAN] ${canMatches.length} matchs CAN ajoutés`);
+    }
+
     // Trier par date et importance
     allMatches.sort((a, b) => {
       if (a.importance !== b.importance) return b.importance - a.importance;
@@ -575,16 +582,16 @@ async function getUpcomingMatches() {
     });
 
     const result = {
-      matches: allMatches.slice(0, 10), // Max 10 matchs
+      matches: allMatches.slice(0, 15), // Max 15 matchs (augmenté pour inclure CAN)
       lastUpdate: new Date().toISOString(),
-      source: 'football-data.org'
+      source: 'football-data.org + CAN manuel'
     };
 
     // Mettre en cache
     cache.matches.data = result;
     cache.matches.lastFetch = Date.now();
 
-    console.log(`⚽ [FOOTBALL] ${allMatches.length} matchs importants trouvés`);
+    console.log(`⚽ [FOOTBALL] ${allMatches.length} matchs importants trouvés (dont CAN)`);
     return result;
 
   } catch (error) {
@@ -593,63 +600,63 @@ async function getUpcomingMatches() {
   }
 }
 
-// Vérifier si c'est un match important pour un resto à VINCENNES (clientèle jeune, diverse)
+// Vérifier si c'est un match important pour CHEZ ANTOINE VINCENNES (94)
+// Public : Région parisienne, communauté diverse (maghrébine, africaine)
 function isImportantMatch(match, competition) {
   const homeTeam = match.homeTeam?.name || '';
   const awayTeam = match.awayTeam?.name || '';
   const teams = `${homeTeam} ${awayTeam}`.toLowerCase();
+  
+  // Helper pour détecter le PSG (pas Paris FC qui est un autre club!)
+  const hasPSG = teams.includes('paris saint-germain') || 
+                 teams.includes('psg') || 
+                 teams.includes('paris sg') ||
+                 homeTeam.toLowerCase().includes('paris saint-germain') ||
+                 awayTeam.toLowerCase().includes('paris saint-germain');
 
-  // === PRIORITÉ 1: Équipe de France === (TOUJOURS important)
-  if (teams.includes('france')) return true;
+  // === PRIORITÉ 1: PSG === (On est à VINCENNES, région parisienne!)
+  // ATTENTION: Paris FC ≠ PSG ! Paris FC est un autre club parisien
+  if (hasPSG) return true;
 
-  // === PRIORITÉ 2: PSG === (On est en région parisienne!)
-  if (teams.includes('paris saint-germain') || teams.includes('psg')) return true;
+  // === PRIORITÉ 2: Équipe de France === (TOUJOURS important)
+  if (teams.includes('france') && !teams.includes('frankfurt')) return true;
 
-  // === PRIORITÉ 3: Ligue 1 - Gros matchs ===
+  // === PRIORITÉ 3: LE CLASSIQUE (PSG vs OM) ===
+  if (hasPSG && teams.includes('marseille')) return true;
+
+  // === PRIORITÉ 4: Ligue 1 - Gros matchs et rivalités ===
   if (competition === 'FL1') {
+    // PSG déjà couvert. Autres gros clubs L1 :
     const grosClubesL1 = [
-      'paris', 'psg', 'marseille', 'olympique marseille', 
+      'marseille', 'olympique marseille', 
       'lyon', 'olympique lyon', 'monaco', 'as monaco',
-      'lille', 'lens', 'rennes', 'nice', 'nantes', 'strasbourg'
+      'lille', 'lens', 'rennes', 'nice', 'nantes'
     ];
     return grosClubesL1.some(club => teams.includes(club));
   }
 
-  // === PRIORITÉ 4: Champions League === (Toutes les grosses affiches!)
+  // === PRIORITÉ 5: Champions League ===
   if (competition === 'CL') {
+    // PSG en CL = toujours
+    if (teams.includes('paris') || teams.includes('psg')) return true;
     // Phases finales = TOUJOURS
     if (match.stage && (match.stage.includes('FINAL') || match.stage.includes('SEMI') || match.stage.includes('QUARTER'))) return true;
-    // Gros clubs européens
+    // Gros clubs européens que les gens regardent
     const grosCLubs = [
       'real madrid', 'barcelona', 'bayern', 'manchester united', 'manchester city',
-      'liverpool', 'chelsea', 'arsenal', 'tottenham',
-      'juventus', 'milan', 'inter', 'napoli', 'roma',
-      'psg', 'paris', 'marseille',
-      'atletico', 'dortmund', 'benfica', 'porto'
+      'liverpool', 'chelsea', 'arsenal', 'juventus', 'milan', 'inter'
     ];
     return grosCLubs.some(club => teams.includes(club));
   }
 
-  // === PRIORITÉ 5: DERBYS EUROPÉENS LÉGENDAIRES ===
+  // === PRIORITÉ 6: DERBYS EUROPÉENS LÉGENDAIRES ===
   const derbysEuropeens = [
-    // El Clasico
     { teams: ['real madrid', 'barcelona'], name: 'El Clasico' },
-    // Derby de Milan
     { teams: ['ac milan', 'inter'], name: 'Derby della Madonnina' },
-    // Derby de Manchester
     { teams: ['manchester united', 'manchester city'], name: 'Manchester Derby' },
-    // North West Derby
     { teams: ['liverpool', 'manchester united'], name: 'North West Derby' },
-    // Derby de Londres
     { teams: ['arsenal', 'tottenham'], name: 'North London Derby' },
-    { teams: ['chelsea', 'arsenal'], name: 'London Derby' },
-    // Classique français
     { teams: ['paris', 'marseille'], name: 'Le Classique' },
-    // Derby de Rome
-    { teams: ['roma', 'lazio'], name: 'Derby della Capitale' },
-    // Derby de Turin  
-    { teams: ['juventus', 'torino'], name: 'Derby della Mole' },
-    // Der Klassiker
     { teams: ['bayern', 'dortmund'], name: 'Der Klassiker' },
   ];
   
@@ -660,78 +667,93 @@ function isImportantMatch(match, competition) {
     }
   }
 
-  // === PRIORITÉ 6: Coupe du Monde ===
-  if (competition === 'WC') return true;
+  // === PRIORITÉ 7: Coupe du Monde / Euro ===
+  if (competition === 'WC' || competition === 'EC') return true;
 
-  // === PRIORITÉ 7: Euro ===
-  if (competition === 'EC') return true;
+  // === PRIORITÉ 8: CAN (Coupe d'Afrique) ===
+  // TRÈS IMPORTANT pour Vincennes - grosse communauté maghrébine et africaine
+  if (competition === 'CAN' || competition === 'AFCON' || competition === 'CAF') return true;
 
-  // === PRIORITÉ 8: CAN (Coupe d'Afrique des Nations) ===
-  // Très important pour clientèle diverse!
-  if (competition === 'AFCON' || competition === 'CAF') return true;
-
-  // === BONUS: Serie A - Matchs avec au moins 1 gros club ===
-  if (competition === 'SA') {
-    const grosClubs = ['juventus', 'milan', 'inter', 'roma', 'napoli', 'lazio', 'atalanta', 'fiorentina'];
-    const matchingClubs = grosClubs.filter(club => teams.includes(club));
-    return matchingClubs.length >= 1; // Au moins 1 gros club
-  }
-
-  // === BONUS: Premier League (PL) - Gros clubs ===
+  // === BONUS: Premier League - Gros matchs seulement ===
   if (competition === 'PL') {
-    const grosClubsPL = [
-      'manchester united', 'manchester city', 'liverpool', 'chelsea', 
-      'arsenal', 'tottenham', 'newcastle', 'west ham', 'aston villa'
-    ];
+    const grosClubsPL = ['manchester united', 'manchester city', 'liverpool', 'chelsea', 'arsenal'];
     return grosClubsPL.some(club => teams.includes(club));
-  }
-
-  // === BONUS: Bundesliga (BL1) - Gros clubs ===
-  if (competition === 'BL1') {
-    const grosClubsBL = ['bayern', 'dortmund', 'leipzig', 'leverkusen'];
-    return grosClubsBL.some(club => teams.includes(club));
-  }
-
-  // === BONUS: La Liga (PD) - Gros clubs ===
-  if (competition === 'PD') {
-    const grosClubsPD = ['real madrid', 'barcelona', 'atletico madrid', 'sevilla', 'valencia'];
-    return grosClubsPD.some(club => teams.includes(club));
   }
 
   return false;
 }
 
 // ============================================
-// LOGIQUE D'IMPACT POUR RESTAURANT À PARIS
+// LOGIQUE D'IMPACT POUR CHEZ ANTOINE VINCENNES (94)
 // ============================================
-// Priorité : 
-// 1. PSG, Équipe de France = TOUT LE MONDE regarde = livraisons +++
-// 2. Ligue 1 (OM, Lyon, Monaco) = rivalité = beaucoup regardent
-// 3. Champions League avec clubs français = intérêt fort
-// 4. Coupe du Monde, Euro avec France = événement national
-// 5. Gros derbys européens (El Clasico, etc.) = fans hardcore
-// 6. Autres championnats étrangers = impact faible à Paris
+// Public cible : Région parisienne, communauté diverse
+// Priorités : 
+// 1. PSG = LOCAL = TOUT LE MONDE regarde = livraisons +++
+// 2. Équipe de France = Événement national
+// 3. Le Classique (PSG-OM) = Énorme
+// 4. CAN avec équipes maghrébines/africaines = Grosse communauté locale
+// 5. Ligue 1 gros matchs
+// 6. Champions League (surtout PSG)
+// 7. Coupe du Monde, Euro avec France
 
 function getMatchImportance(match, competition) {
   const homeTeam = match.homeTeam?.name || '';
   const awayTeam = match.awayTeam?.name || '';
   const teams = `${homeTeam} ${awayTeam}`.toLowerCase();
+  
+  // Helper pour détecter le PSG (pas Paris FC!)
+  const hasPSG = teams.includes('paris saint-germain') || 
+                 teams.includes('psg') || 
+                 teams.includes('paris sg') ||
+                 homeTeam.toLowerCase().includes('paris saint-germain') ||
+                 awayTeam.toLowerCase().includes('paris saint-germain');
 
-  // === NIVEAU 5 : ÉVÉNEMENTS NATIONAUX (tout le monde regarde) ===
+  // === NIVEAU 5 : ÉVÉNEMENTS MAJEURS ===
   
-  // PSG = On est à Paris !
-  if (teams.includes('paris saint-germain') || teams.includes('psg')) {
+  // PSG = On est à VINCENNES, c'est LOCAL !
+  // ATTENTION: Paris FC ≠ PSG !
+  if (hasPSG) {
     return 5;
   }
   
-  // Équipe de France
-  if (teams.includes('france')) {
+  // Équipe de France (éviter confusion avec Frankfurt)
+  if (teams.includes('france') && !teams.includes('frankfurt')) {
     return 5;
   }
   
-  // Le Classique PSG-OM (même si PSG déjà couvert)
-  if ((teams.includes('paris') || teams.includes('psg')) && teams.includes('marseille')) {
+  // Le Classique PSG-OM
+  if (hasPSG && teams.includes('marseille')) {
     return 5;
+  }
+
+  // === NIVEAU 4-5 : CAN - TRÈS IMPORTANT POUR VINCENNES ===
+  // Grosse communauté maghrébine et africaine en région parisienne
+  if (competition === 'CAN' || competition === 'AFCON' || competition === 'CAF') {
+    // Équipes les plus suivies par la communauté locale
+    const equipesAfricainesPrioritaires = [
+      'algerie', 'algeria', 'الجزائر',
+      'maroc', 'morocco', 'المغرب',
+      'tunisie', 'tunisia', 'تونس',
+      'senegal', 'sénégal',
+      'cameroun', 'cameroon',
+      'cote d\'ivoire', 'ivory coast', 'côte d\'ivoire',
+      'mali',
+      'guinee', 'guinea', 'guinée',
+      'egypte', 'egypt',
+      'nigeria'
+    ];
+    
+    const hasEquipePrioritaire = equipesAfricainesPrioritaires.some(eq => teams.includes(eq));
+    
+    // Finale/Demi CAN = Niveau 5
+    if (match.stage && (match.stage.includes('FINAL') || match.stage.includes('SEMI'))) {
+      return 5;
+    }
+    // Équipe prioritaire = Niveau 4
+    if (hasEquipePrioritaire) {
+      return 4;
+    }
+    return 3; // Autres matchs CAN
   }
 
   // === NIVEAU 4 : LIGUE 1 GROS MATCHS ===
@@ -744,13 +766,27 @@ function getMatchImportance(match, competition) {
     return 3; // Autres matchs L1
   }
 
-  // === NIVEAU 4 : CHAMPIONS LEAGUE AVEC CLUBS FRANÇAIS ===
+  // === NIVEAU 4 : CHAMPIONS LEAGUE ===
   if (competition === 'CL') {
     // PSG en CL = déjà couvert niveau 5
-    // Finales CL = événement
-    if (match.stage && (match.stage.includes('FINAL') || match.stage.includes('SEMI'))) {
+    
+    // 🏆 FINALE CL = événement majeur
+    if (match.stage && match.stage.includes('FINAL') && !match.stage.includes('SEMI')) {
+      return 5; // La finale c'est un événement !
+    }
+    // Demi-finales CL
+    if (match.stage && match.stage.includes('SEMI')) {
       return 4;
     }
+    // Quarts de finale CL
+    if (match.stage && match.stage.includes('QUARTER')) {
+      return 4;
+    }
+    // 8èmes de finale CL
+    if (match.stage && (match.stage.includes('LAST_16') || match.stage.includes('ROUND_16') || match.stage.includes('KNOCKOUT'))) {
+      return 4;
+    }
+    
     // Gros derbys européens
     const derbysEuropeens = [
       ['real madrid', 'barcelona'],
@@ -764,13 +800,18 @@ function getMatchImportance(match, competition) {
         return 4;
       }
     }
-    return 3; // Autres matchs CL
+    return 3; // Poules ou autres matchs CL
   }
 
   // === NIVEAU 4-5 : COUPE DU MONDE / EURO ===
   if (competition === 'WC' || competition === 'EC') {
-    if (teams.includes('france')) {
+    if (teams.includes('france') && !teams.includes('frankfurt')) {
       return 5;
+    }
+    // Équipes africaines/maghrébines en Coupe du Monde aussi !
+    const equipesAfricaines = ['algerie', 'algeria', 'maroc', 'morocco', 'tunisie', 'tunisia', 'senegal', 'cameroun', 'cameroon'];
+    if (equipesAfricaines.some(eq => teams.includes(eq))) {
+      return 4;
     }
     if (match.stage && (match.stage.includes('FINAL') || match.stage.includes('SEMI'))) {
       return 4;
@@ -778,37 +819,22 @@ function getMatchImportance(match, competition) {
     return 3;
   }
 
-  // === NIVEAU 3 : CAN (Coupe d'Afrique) ===
-  // Important pour clientèle diverse en région parisienne
-  if (competition === 'AFCON' || competition === 'CAF') {
-    const equipesSuivies = ['senegal', 'algerie', 'algeria', 'maroc', 'morocco', 
-                            'cameroun', 'cameroon', 'cote d\'ivoire', 'mali', 'tunisie', 'tunisia'];
-    if (equipesSuivies.some(eq => teams.includes(eq))) {
-      return 4;
-    }
-    return 3;
-  }
-
-  // === NIVEAU 2 : CHAMPIONNATS ÉTRANGERS (impact limité à Paris) ===
-  // Serie A, Premier League, Bundesliga, La Liga
-  // Seuls les gros derbys peuvent intéresser les fans
-  if (competition === 'SA' || competition === 'PL' || competition === 'BL1' || competition === 'PD') {
+  // === NIVEAU 2-3 : CHAMPIONNATS ÉTRANGERS ===
+  if (competition === 'PL' || competition === 'SA' || competition === 'BL1' || competition === 'PD') {
     const derbysInteressants = [
       ['real madrid', 'barcelona'],      // El Clasico
       ['ac milan', 'inter'],             // Derby Milan
       ['manchester united', 'manchester city'],
       ['liverpool', 'manchester'],
       ['arsenal', 'tottenham'],
-      ['juventus', 'inter'],
-      ['roma', 'lazio'],
       ['bayern', 'dortmund'],
     ];
     for (const derby of derbysInteressants) {
       if (derby.every(team => teams.includes(team))) {
-        return 3; // Derby = un peu d'intérêt
+        return 3; // Derby = intérêt modéré
       }
     }
-    return 1; // Autres matchs étrangers = très faible impact à Paris
+    return 1; // Autres matchs étrangers = faible impact local
   }
 
   return 1; // Par défaut
@@ -860,6 +886,83 @@ function getFallbackMatches() {
     source: 'fallback',
     message: 'Configurez FOOTBALL_API_KEY pour voir les matchs'
   };
+}
+
+// ============================================
+// CAN 2025 - MATCHS MANUELS (API gratuite ne couvre pas)
+// ============================================
+// CAN 2025 au Maroc : 21 décembre 2024 - 18 janvier 2025
+// On ajoute les matchs des équipes les plus suivies à Vincennes
+function getCANMatches() {
+  const now = new Date();
+  const canMatches = [];
+  
+  // === CAN 2025 (Maroc) - 21 décembre 2025 au 18 janvier 2026 ===
+  // Phases de groupes : 21 déc - 6 jan
+  // Huitièmes : 8-11 jan
+  // Quarts : 13-14 jan
+  // Demis : 16-17 jan
+  // Finale : 18 jan 2026
+  
+  // Équipes prioritaires pour Vincennes : Maroc (hôte), Algérie, Tunisie, Sénégal, Cameroun, Côte d'Ivoire
+  const canEvents = [
+    // 🏠 MAROC (pays hôte - priorité max pour la communauté)
+    { date: '2025-12-21', homeTeam: 'Maroc', awayTeam: 'Comores', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-25', homeTeam: 'Maroc', awayTeam: 'Mali', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-29', homeTeam: 'Maroc', awayTeam: 'Zambie', stage: 'GROUP_STAGE', importance: 5 },
+    
+    // 🇩🇿 ALGÉRIE
+    { date: '2025-12-22', homeTeam: 'Algérie', awayTeam: 'Angola', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-26', homeTeam: 'Burkina Faso', awayTeam: 'Algérie', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-30', homeTeam: 'Algérie', awayTeam: 'Guinée Équatoriale', stage: 'GROUP_STAGE', importance: 5 },
+    
+    // 🇹🇳 TUNISIE  
+    { date: '2025-12-23', homeTeam: 'Tunisie', awayTeam: 'Soudan', stage: 'GROUP_STAGE', importance: 4 },
+    { date: '2025-12-27', homeTeam: 'Tunisie', awayTeam: 'Nigéria', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-31', homeTeam: 'Ouganda', awayTeam: 'Tunisie', stage: 'GROUP_STAGE', importance: 4 },
+    
+    // 🇸🇳 SÉNÉGAL (champion en titre 2022)
+    { date: '2025-12-22', homeTeam: 'Sénégal', awayTeam: 'RD Congo', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-26', homeTeam: 'Bénin', awayTeam: 'Sénégal', stage: 'GROUP_STAGE', importance: 4 },
+    { date: '2025-12-30', homeTeam: 'Sénégal', awayTeam: 'Botswana', stage: 'GROUP_STAGE', importance: 4 },
+    
+    // 🇨🇮 CÔTE D'IVOIRE (champion 2024)
+    { date: '2025-12-23', homeTeam: 'Côte d\'Ivoire', awayTeam: 'Mozambique', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-27', homeTeam: 'Cameroun', awayTeam: 'Côte d\'Ivoire', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-31', homeTeam: 'Côte d\'Ivoire', awayTeam: 'Gabon', stage: 'GROUP_STAGE', importance: 4 },
+    
+    // 🇨🇲 CAMEROUN
+    { date: '2025-12-23', homeTeam: 'Cameroun', awayTeam: 'Gabon', stage: 'GROUP_STAGE', importance: 4 },
+    { date: '2025-12-27', homeTeam: 'Cameroun', awayTeam: 'Côte d\'Ivoire', stage: 'GROUP_STAGE', importance: 5 },
+    { date: '2025-12-31', homeTeam: 'Mozambique', awayTeam: 'Cameroun', stage: 'GROUP_STAGE', importance: 4 },
+    
+    // 🏆 PHASES FINALES (toutes importantes)
+    { date: '2026-01-16', homeTeam: 'Demi-finale 1', awayTeam: 'CAN 2025', stage: 'SEMI_FINALS', importance: 5 },
+    { date: '2026-01-17', homeTeam: 'Demi-finale 2', awayTeam: 'CAN 2025', stage: 'SEMI_FINALS', importance: 5 },
+    { date: '2026-01-18', homeTeam: 'FINALE CAN', awayTeam: 'Maroc 2025', stage: 'FINAL', importance: 5 },
+  ];
+  
+  // Filtrer les matchs futurs
+  for (const event of canEvents) {
+    const matchDate = new Date(event.date);
+    if (matchDate >= now) {
+      canMatches.push({
+        id: `can-${event.date}`,
+        competition: 'CAN 2025',
+        competitionCode: 'CAN',
+        homeTeam: event.homeTeam,
+        awayTeam: event.awayTeam,
+        date: event.date + 'T20:00:00Z', // 21h heure de Paris
+        status: 'SCHEDULED',
+        importance: event.importance,
+        impact: event.importance >= 4 ? 'élevé' : 'moyen',
+        stage: event.stage,
+        isCANManual: true
+      });
+    }
+  }
+  
+  return canMatches;
 }
 
 // ============================================
@@ -1224,10 +1327,148 @@ async function getSmartAnalysis() {
   };
 }
 
+// ============================================
+// 📊 AFFLUENCE GOOGLE (depuis Gist GitHub)
+// ============================================
+
+// Cache affluence (durée plus longue car données statiques du Gist)
+const affluenceCache = {
+  data: null,
+  lastFetch: null,
+  ttl: 5 * 60 * 1000 // 5 minutes
+};
+
+/**
+ * Récupère les données d'affluence depuis le Gist GitHub
+ * Ces données sont mises à jour 4x/jour par GitHub Actions
+ */
+async function getAffluenceData() {
+  const gistId = process.env.AFFLUENCE_GIST_ID;
+  
+  // Vérifier le cache
+  if (affluenceCache.data && affluenceCache.lastFetch) {
+    const age = Date.now() - affluenceCache.lastFetch;
+    if (age < affluenceCache.ttl) {
+      console.log('📊 [AFFLUENCE] Retour cache');
+      return affluenceCache.data;
+    }
+  }
+  
+  // Pas de Gist configuré → retourner données simulées
+  if (!gistId) {
+    console.log('📊 [AFFLUENCE] Pas de AFFLUENCE_GIST_ID configuré - données estimées');
+    return getEstimatedAffluence();
+  }
+  
+  try {
+    // URL raw du Gist (sans authentification)
+    const gistRawUrl = `https://gist.githubusercontent.com/raw/${gistId}/affluence.json`;
+    
+    const response = await axios.get(gistRawUrl, { 
+      timeout: 5000,
+      headers: {
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    const data = response.data;
+    
+    // Valider les données
+    if (!data || typeof data !== 'object') {
+      throw new Error('Données Gist invalides');
+    }
+    
+    // Enrichir avec contexte temps réel
+    const enriched = {
+      ...data,
+      source: 'google-gist',
+      fetchedAt: new Date().toISOString(),
+      dataAge: data.scrapedAt ? getDataAge(data.scrapedAt) : 'unknown'
+    };
+    
+    // Mettre en cache
+    affluenceCache.data = enriched;
+    affluenceCache.lastFetch = Date.now();
+    
+    console.log(`📊 [AFFLUENCE] Données récupérées - Score: ${enriched.score || 'N/A'}%`);
+    return enriched;
+    
+  } catch (error) {
+    console.error('📊 [AFFLUENCE] Erreur fetch Gist:', error.message);
+    
+    // Retourner le cache même expiré si disponible
+    if (affluenceCache.data) {
+      console.log('📊 [AFFLUENCE] Utilisation cache expiré');
+      return { ...affluenceCache.data, stale: true };
+    }
+    
+    // Sinon estimation
+    return getEstimatedAffluence();
+  }
+}
+
+/**
+ * Calcule l'âge des données en format humain
+ */
+function getDataAge(scrapedAt) {
+  const diff = Date.now() - new Date(scrapedAt).getTime();
+  const minutes = Math.floor(diff / 60000);
+  
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}j`;
+}
+
+/**
+ * Estimation basée sur l'heure et le jour (si pas de données Google)
+ */
+function getEstimatedAffluence() {
+  const now = new Date();
+  const hour = now.getHours();
+  const dayOfWeek = now.getDay(); // 0 = dimanche
+  
+  // Patterns typiques restaurant
+  let baseScore = 30;
+  
+  // Rush midi (12h-14h)
+  if (hour >= 12 && hour <= 14) {
+    baseScore = dayOfWeek === 0 ? 75 : 65; // Dimanche plus chargé
+  }
+  // Rush soir (19h-21h30)
+  else if (hour >= 19 && hour <= 21) {
+    baseScore = 70;
+    // Vendredi/Samedi soir
+    if (dayOfWeek === 5 || dayOfWeek === 6) {
+      baseScore = 85;
+    }
+  }
+  // Après-midi calme
+  else if (hour >= 15 && hour <= 18) {
+    baseScore = 20;
+  }
+  // Fin de soirée
+  else if (hour >= 22) {
+    baseScore = 25;
+  }
+  
+  return {
+    source: 'estimated',
+    score: baseScore,
+    trend: 'stable',
+    message: `📊 Affluence estimée (~${baseScore}%)`,
+    liveStatus: null,
+    timestamp: now.toISOString(),
+    note: 'Données estimées - Configurez AFFLUENCE_GIST_ID pour données réelles'
+  };
+}
+
 module.exports = {
   getWeather,
   getUpcomingMatches,
   getJoursFeries,
   checkUpcomingHolidays,
-  getSmartAnalysis
+  getSmartAnalysis,
+  getAffluenceData
 };

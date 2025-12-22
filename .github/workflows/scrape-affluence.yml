@@ -1,0 +1,67 @@
+name: 📊 Scrape Affluence Google
+
+on:
+  schedule:
+    # Heures clés pour la restauration (UTC → +1h pour Paris hiver, +2h été)
+    - cron: '30 10 * * *'  # 11h30 Paris - avant rush midi
+    - cron: '30 11 * * *'  # 12h30 Paris - rush déjeuner
+    - cron: '0 18 * * *'   # 19h00 Paris - début service soir
+    - cron: '30 19 * * *'  # 20h30 Paris - rush dîner
+  
+  workflow_dispatch:  # Permet de lancer manuellement
+
+env:
+  PLACE_ID: ChIJnYLnmZly5kcRgpLV4MN4Rus
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: 📦 Install dependencies
+        working-directory: scripts
+        run: npm ci || npm install
+      
+      - name: 🔍 Scrape Google Popular Times
+        id: scrape
+        working-directory: scripts
+        run: node scrape-affluence.js
+        env:
+          PLACE_ID: ${{ env.PLACE_ID }}
+      
+      - name: 📤 Update Gist
+        working-directory: scripts
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+        run: node update-gist.js
+        if: ${{ secrets.GIST_TOKEN != '' }}
+      
+      - name: 📊 Upload artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: affluence-data-${{ github.run_id }}
+          path: scripts/affluence-data.json
+          retention-days: 7
+        if: always()
+      
+      - name: 🔔 Notify server (optional)
+        if: success()
+        run: |
+          if [ -n "${{ secrets.API_URL }}" ]; then
+            curl -X POST "${{ secrets.API_URL }}/api/external/affluence-update" \
+              -H "Content-Type: application/json" \
+              -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+              -d '{"source":"github-actions","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
+              --max-time 10 || true
+          fi
+        continue-on-error: true

@@ -1,0 +1,13 @@
+{
+  "name": "affluence-scraper",
+  "version": "1.0.0",
+  "description": "Scraper Google Popular Times pour GitHub Actions",
+  "scripts": {
+    "scrape": "node scrape-affluence.js",
+    "test": "node scrape-affluence.js --test"
+  },
+  "dependencies": {
+    "puppeteer-core": "^21.6.0",
+    "@sparticuz/chromium": "^119.0.2"
+  }
+}

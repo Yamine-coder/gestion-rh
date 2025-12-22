@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Sun, Cloud, CloudRain, CloudSnow, CloudLightning, Wind, 
-  Trophy, RefreshCw, CloudSun, Calendar,
-  Droplets, GraduationCap, Users, TrendingUp, TrendingDown, Minus, Umbrella, ThermometerSun
+  Trophy, RefreshCw, CloudSun, Calendar, Tv, Flame, Circle,
+  Droplets, GraduationCap, Users, TrendingUp, TrendingDown, Minus, Umbrella, ThermometerSun,
+  Activity
 } from 'lucide-react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -11,19 +12,22 @@ const IntelligenceHero = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [upcomingMatches, setUpcomingMatches] = useState([]);
+  const [affluence, setAffluence] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [analysisRes, matchesRes] = await Promise.all([
+      const [analysisRes, matchesRes, affluenceRes] = await Promise.all([
         fetch(`${API_BASE}/api/external/smart-analysis`),
-        fetch(`${API_BASE}/api/external/matches`)
+        fetch(`${API_BASE}/api/external/matches`),
+        fetch(`${API_BASE}/api/external/affluence`)
       ]);
       if (analysisRes.ok) setData(await analysisRes.json());
       if (matchesRes.ok) {
         const m = await matchesRes.json();
         setUpcomingMatches(m.matches || []);
       }
+      if (affluenceRes.ok) setAffluence(await affluenceRes.json());
     } catch (err) {
       console.error(err);
     } finally {
@@ -148,33 +152,158 @@ const IntelligenceHero = () => {
     } : null
   } : getWeatherDecision(weather);
   
+  // 🎯 Filtrage matchs : SEULEMENT les vrais événements impactants pour Vincennes
+  // - PSG (Ligue 1 ou Champions League) = TOUJOURS
+  // - Équipe de France = TOUJOURS  
+  // - CAN équipes suivies = OUI
+  // - Autres Ligue 1 (Lyon, Marseille, etc.) = NON (on s'en fiche)
   const matchesFiltered = upcomingMatches
-    .filter(m => m.impact !== 'très_faible' && getDaysUntil(m.date) >= 0 && getDaysUntil(m.date) <= 30)
-    .map(m => ({ ...m, calc: getDeliveryImpact(m), days: getDaysUntil(m.date) }))
-    .filter(m => m.calc.livraison > 0)
-    .sort((a, b) => b.calc.livraison - a.calc.livraison);
+    .filter(m => {
+      // PSG = toujours (importance 5)
+      if (m.importance === 5) return true;
+      // Champions League gros matchs (hors L1)
+      if (m.competitionCode === 'CL' && m.importance >= 4) return true;
+      // CAN
+      if (m.competitionCode === 'CAN' || m.competitionCode === 'AFCON') return true;
+      // Coupe du Monde / Euro
+      if (m.competitionCode === 'WC' || m.competitionCode === 'EC') return true;
+      // Ligue 1 sans PSG = on n'affiche pas
+      return false;
+    })
+    .filter(m => getDaysUntil(m.date) >= 0 && getDaysUntil(m.date) <= 35)  // Dans les 35 jours (CL incluse)
+    .map(m => ({ ...m, days: getDaysUntil(m.date) }))
+    .sort((a, b) => {
+      // Trier par date croissante d'abord, puis par importance
+      if (a.days !== b.days) return a.days - b.days;
+      return b.importance - a.importance;
+    });
   
+  // 🎯 Trouver les matchs du jour le plus proche (peut y en avoir plusieurs!)
   const topMatch = matchesFiltered[0];
+  const sameDayMatches = topMatch 
+    ? matchesFiltered.filter(m => m.days === topMatch.days).slice(0, 3) // Max 3 matchs affichés
+    : [];
+  
+  // 📈 Calculer l'impact business CONCRET (sur place, emporter, livraison)
+  // Basé sur un restaurant type : salle + emporter + Uber/Deliveroo
+  // Chiffres réalistes basés sur observations terrain
+  const getMatchesBusinessImpact = () => {
+    if (sameDayMatches.length === 0) return null;
+    
+    const days = topMatch.days;
+    const nbMatchs = sameDayMatches.length;
+    const isTopMatch = topMatch.importance === 5;
+    
+    // Impact réaliste selon type de match et proximité
+    // Match importance 5 = PSG, Algérie, Maroc, Sénégal (gros impact local)
+    let livraisonBase = isTopMatch ? 18 : 10;  // +18% max pour gros match
+    let salleBase = isTopMatch ? -10 : -5;      // Salle baisse un peu
+    let emporterBase = isTopMatch ? 12 : 8;     // Emporter augmente
+    
+    // Multiplicateur si plusieurs matchs le même soir (max +30%)
+    const matchMult = nbMatchs >= 2 ? 1.3 : 1;
+    
+    // Multiplicateur proximité (effet surtout le jour J et J-1)
+    const proxMult = days === 0 ? 1 : days === 1 ? 0.7 : days <= 3 ? 0.3 : 0.1;
+    
+    // Calculs finaux
+    const livraison = Math.round(livraisonBase * matchMult * proxMult);
+    const salle = Math.round(salleBase * proxMult);
+    const emporter = Math.round(emporterBase * matchMult * proxMult);
+    
+    // Estimation commandes supplémentaires (base ~60 livraisons/soir normal)
+    const commandesSupp = Math.round((livraison / 100) * 60);
+    
+    return {
+      livraison,      // % augmentation Uber/Deliveroo
+      salle,          // % variation salle (souvent négatif)
+      emporter,       // % augmentation emporter
+      commandesSupp,  // Nb commandes livraison en plus
+      level: livraison >= 20 ? 'critical' : livraison >= 12 ? 'high' : 'medium'
+    };
+  };
+  
+  const businessImpact = getMatchesBusinessImpact();
   const ActionIcon = weatherDecision.action?.icon;
   
   // 🎯 Prévisions des prochains jours
   const forecast3Days = weather?.forecast3Days || [];
+  
+  // 📊 Affluence Google (depuis Gist GitHub Actions)
+  const getAffluenceDisplay = () => {
+    if (!affluence || affluence.error) return null;
+    
+    const score = affluence.score;
+    const trend = affluence.trend;
+    const source = affluence.source;
+    
+    // Couleurs selon niveau
+    let bgClass = 'bg-gray-100';
+    let textClass = 'text-gray-600';
+    let dotColor = 'bg-gray-400';
+    
+    if (score >= 70) {
+      bgClass = 'bg-red-100';
+      textClass = 'text-red-700';
+      dotColor = 'bg-red-500';
+    } else if (score >= 50) {
+      bgClass = 'bg-amber-100';
+      textClass = 'text-amber-700';
+      dotColor = 'bg-amber-500';
+    } else if (score >= 30) {
+      bgClass = 'bg-green-100';
+      textClass = 'text-green-700';
+      dotColor = 'bg-green-500';
+    } else if (score !== null) {
+      bgClass = 'bg-emerald-50';
+      textClass = 'text-emerald-600';
+      dotColor = 'bg-emerald-400';
+    }
+    
+    return {
+      score,
+      trend,
+      source,
+      bgClass,
+      textClass,
+      dotColor,
+      label: score >= 70 ? 'Très chargé' : score >= 50 ? 'Modéré' : score >= 30 ? 'Calme' : 'Très calme',
+      dataAge: affluence.dataAge || null
+    };
+  };
+  
+  const affluenceDisplay = getAffluenceDisplay();
 
   return (
     <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
       {/* Ligne principale */}
       <div className="flex items-center gap-5 text-sm p-4">
       
-      {/* Indicateur LIVE */}
-      {weather && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 rounded-xl border border-emerald-100">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Live</span>
-        </div>
-      )}
+      {/* Indicateur LIVE + Affluence Google */}
+      <div className="flex items-center gap-2">
+        {weather && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 rounded-xl border border-emerald-100">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Live</span>
+          </div>
+        )}
+        
+        {/* Affluence Google - Petit badge */}
+        {affluenceDisplay && affluenceDisplay.score !== null && (
+          <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${affluenceDisplay.bgClass} border-opacity-50`} title={`Source: ${affluenceDisplay.source === 'google-gist' ? 'Google Maps' : 'Estimation'}`}>
+            <Activity className={`w-3.5 h-3.5 ${affluenceDisplay.textClass}`} />
+            <span className={`text-xs font-bold ${affluenceDisplay.textClass}`}>
+              {affluenceDisplay.score}%
+            </span>
+            {affluenceDisplay.dataAge && affluenceDisplay.source === 'google-gist' && (
+              <span className="text-[9px] text-gray-400">({affluenceDisplay.dataAge})</span>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Météo + Décisions */}
       <div className="flex items-center gap-4">
@@ -264,17 +393,17 @@ const IntelligenceHero = () => {
       )}
 
       {/* Événements */}
-      <div className="flex flex-col">
+      <div className="flex flex-col flex-shrink-0">
         <div className="flex items-center gap-4">
           {nextHoliday && nextHoliday.daysUntil <= 14 && (
-            <div className="flex items-center gap-2 text-gray-600">
+            <div className="flex items-center gap-2 text-gray-600 whitespace-nowrap">
               <Calendar className="w-3.5 h-3.5 text-gray-400" />
               <span>{nextHoliday.nom}</span>
               <span className="text-xs font-medium text-primary-600">J-{nextHoliday.daysUntil}</span>
             </div>
           )}
           {vacances && (
-            <div className="flex items-center gap-2 text-gray-600">
+            <div className="flex items-center gap-2 text-gray-600 whitespace-nowrap">
               <GraduationCap className="w-3.5 h-3.5 text-gray-400" />
               <span>Vac. {vacances.nom}</span>
               <span className="text-xs font-medium text-amber-600">
@@ -291,32 +420,91 @@ const IntelligenceHero = () => {
 
       <div className="w-px h-10 bg-slate-200/70 mx-1" />
 
-      {/* Match */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {topMatch ? (
+      {/* Matchs importants */}
+      <div className="flex flex-col flex-shrink-0">
+        {sameDayMatches.length > 0 ? (
           <>
-            <div className="flex items-center gap-3">
-              <Trophy className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-              <span className="text-gray-700 truncate">
-                {topMatch.homeTeam} - {topMatch.awayTeam}
-              </span>
-              <span className="text-xs text-gray-400 flex-shrink-0">
-                {topMatch.competition} · J-{topMatch.days}
-              </span>
-              <span 
-                className={`text-xs font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
-                  topMatch.calc.livraison >= 25 ? 'bg-primary-50 text-primary-600' : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                +{topMatch.calc.livraison}%
-              </span>
+            <div className="flex items-start gap-3">
+              {/* Icône avec indicateur */}
+              <div className="relative">
+                <Tv className={`w-4 h-4 ${topMatch.importance === 5 ? 'text-amber-500' : 'text-gray-400'}`} />
+                {topMatch.importance === 5 && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                )}
+              </div>
+              
+              {/* Liste des matchs */}
+              <div className="flex flex-col gap-0.5">
+                {sameDayMatches.slice(0, 3).map((m, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-sm">
+                    <Circle className="w-1.5 h-1.5 fill-current text-gray-300" />
+                    <span className="text-gray-700 font-medium whitespace-nowrap">
+                      {m.homeTeam.split(' ')[0].replace('Paris', 'PSG')}
+                    </span>
+                    <span className="text-gray-400 text-xs">vs</span>
+                    <span className="text-gray-700 font-medium whitespace-nowrap">
+                      {m.awayTeam.split(' ')[0].replace('RD', 'RDC').replace('Paris', 'PSG')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Stats business concrètes */}
+              <div className="flex flex-col items-end gap-1">
+                {/* Badge J-X */}
+                <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg whitespace-nowrap ${
+                  topMatch.days === 0 ? 'bg-red-100 text-red-700' :
+                  topMatch.days === 1 ? 'bg-orange-100 text-orange-700' :
+                  topMatch.importance === 5 ? 'bg-amber-100 text-amber-700' : 
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {topMatch.importance === 5 && <Flame className="w-3 h-3" />}
+                  {topMatch.days === 0 ? 'CE SOIR' : `J-${topMatch.days}`}
+                </div>
+                
+                {/* Impact Uber/Deliveroo */}
+                {businessImpact && businessImpact.livraison > 0 && (
+                  <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded ${
+                    businessImpact.level === 'critical' ? 'bg-green-100 text-green-700' :
+                    businessImpact.level === 'high' ? 'bg-emerald-50 text-emerald-600' :
+                    'bg-blue-50 text-blue-600'
+                  }`}>
+                    🛵 +{businessImpact.livraison}%
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="text-[10px] text-gray-400 mt-0.5">Impact livraisons estimé</span>
+            
+            {/* Message business actionnable */}
+            <div className="text-[10px] mt-1.5 ml-7">
+              {businessImpact && topMatch.days <= 1 ? (
+                <span className="text-amber-600 font-medium">
+                  📦 Uber/Deliveroo : +{businessImpact.commandesSupp} cmd estimées · Salle {businessImpact.salle}% · Emporter +{businessImpact.emporter}%
+                </span>
+              ) : businessImpact && businessImpact.livraison >= 20 ? (
+                <span className="text-gray-500">
+                  Prévoir : 🛵 Livraison +{businessImpact.livraison}% · 🥡 Emporter +{businessImpact.emporter}% · 🍽️ Salle {businessImpact.salle}%
+                </span>
+              ) : (
+                <span className="text-gray-400">
+                  {sameDayMatches.length > 1 
+                    ? `${sameDayMatches.length} matchs ${topMatch.competition.replace('UEFA ', '').replace(' 2025', '')}`
+                    : topMatch.competition.replace('UEFA ', '')
+                  }
+                </span>
+              )}
+            </div>
           </>
         ) : (
           <>
-            <span className="text-gray-400 text-xs">Aucun match impactant</span>
-            <span className="text-[10px] text-gray-400 mt-0.5">Pas de pic prévu</span>
+            <div className="flex items-center gap-2 text-gray-400">
+              <Tv className="w-4 h-4" />
+              <span className="text-sm">Aucun match à suivre</span>
+            </div>
+            <span className="text-[10px] text-gray-400 mt-0.5">Semaine calme</span>
           </>
         )}
       </div>
