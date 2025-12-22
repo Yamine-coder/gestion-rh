@@ -188,36 +188,92 @@ async function scrapeAffluence() {
     // ═══════════════════════════════════════════════════════════
     console.log('📱 Recherche popup "Ouvrir l\'application"...');
     
+    // Attendre que la page soit bien chargée
+    await new Promise(r => setTimeout(r, 2000));
+    
+    // Screenshot AVANT tentative de fermeture
+    await page.screenshot({ path: './debug-before-popup.png', fullPage: false });
+    
     try {
-      // Chercher le bouton "Rester sur le Web"
+      // Méthode 1: XPath pour trouver le texte exact
       const stayOnWebClicked = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        for (const btn of buttons) {
-          const text = btn.textContent.toLowerCase();
-          if (text.includes('rester sur le web') || text.includes('stay on web') || text.includes('rester')) {
-            btn.click();
-            return true;
+        // Chercher dans tous les éléments cliquables
+        const allClickable = document.querySelectorAll('button, a, div[role="button"], span[role="button"]');
+        
+        for (const el of allClickable) {
+          const text = el.textContent.trim().toLowerCase();
+          console.log('Found clickable:', text.substring(0, 50));
+          
+          // Textes français et anglais
+          if (text === 'rester sur le web' || 
+              text.includes('rester sur le') ||
+              text === 'stay on web' ||
+              text === 'use web version' ||
+              text === 'continuer sur le web') {
+            el.click();
+            return { clicked: true, text: text };
           }
         }
-        // Essayer aussi les liens
-        const links = Array.from(document.querySelectorAll('a'));
-        for (const link of links) {
-          const text = link.textContent.toLowerCase();
-          if (text.includes('rester sur le web') || text.includes('stay on web')) {
-            link.click();
-            return true;
+        
+        // Chercher aussi dans les div avec du texte
+        const allDivs = document.querySelectorAll('div');
+        for (const div of allDivs) {
+          if (div.children.length === 0) { // Div sans enfants = texte direct
+            const text = div.textContent.trim().toLowerCase();
+            if (text === 'rester sur le web' || text.includes('rester sur le')) {
+              div.click();
+              return { clicked: true, text: text };
+            }
           }
         }
-        return false;
+        
+        return { clicked: false };
       });
       
-      if (stayOnWebClicked) {
-        console.log('✅ Popup "Ouvrir l\'app" fermé - Resté sur le Web');
-        await new Promise(r => setTimeout(r, 2000));
+      if (stayOnWebClicked.clicked) {
+        console.log(`✅ Popup fermé! Cliqué sur: "${stayOnWebClicked.text}"`);
+        await new Promise(r => setTimeout(r, 3000));
+      } else {
+        console.log('⚠️ Bouton "Rester sur le Web" non trouvé, essai méthode 2...');
+        
+        // Méthode 2: Cliquer sur le premier bouton qui n'est PAS "Continuer" (bleu)
+        const clickedAlt = await page.evaluate(() => {
+          const buttons = document.querySelectorAll('button');
+          for (const btn of buttons) {
+            const text = btn.textContent.trim().toLowerCase();
+            // Éviter le bouton "Continuer" qui ouvre l'app
+            if (!text.includes('continuer') && !text.includes('continue') && !text.includes('ouvrir')) {
+              if (text.length > 0 && text.length < 30) {
+                btn.click();
+                return { clicked: true, text: text };
+              }
+            }
+          }
+          return { clicked: false };
+        });
+        
+        if (clickedAlt.clicked) {
+          console.log(`✅ Méthode 2: Cliqué sur "${clickedAlt.text}"`);
+          await new Promise(r => setTimeout(r, 3000));
+        } else {
+          console.log('⚠️ Méthode 2 échouée, essai méthode 3 (dismiss)...');
+          
+          // Méthode 3: Cliquer en dehors du popup pour le fermer
+          await page.mouse.click(10, 10);
+          await new Promise(r => setTimeout(r, 1000));
+          
+          // Méthode 4: Touche Escape
+          await page.keyboard.press('Escape');
+          await new Promise(r => setTimeout(r, 1000));
+        }
       }
     } catch (e) {
-      console.log('📱 Pas de popup app ou erreur:', e.message);
+      console.log('📱 Erreur popup:', e.message);
     }
+    
+    // Screenshot APRÈS tentative
+    await page.screenshot({ path: './debug-after-popup.png', fullPage: false });
+    console.log('📸 Screenshots popup sauvegardés');
 
     // ═══════════════════════════════════════════════════════════
     // 🍪 GESTION CONSENTEMENT GOOGLE (GDPR)

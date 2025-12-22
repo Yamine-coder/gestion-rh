@@ -51,8 +51,7 @@ jobs:
           name: affluence-debug-${{ github.run_id }}
           path: |
             scripts/affluence-data.json
-            scripts/debug-screenshot.png
-            scripts/debug-after-consent.png
+            scripts/debug-*.png
           retention-days: 7
         if: always()
       
