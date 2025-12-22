@@ -17,12 +17,14 @@ const LONGITUDE = '2.4290377';
 // Place ID correct (extrait du lien Google Maps partagé)
 const PLACE_ID = process.env.PLACE_ID || 'ChIJnYJ5mZly5kcRgpLVpMN4Rus';
 
-// URL DIRECTE avec coordonnées et Place ID (LE PLUS FIABLE)
+// URLs à tester (format qui fonctionne avec Place ID)
 const URLS = [
-  // URL directe avec place ID et coordonnées (MÉTHODE LA PLUS FIABLE)
-  `https://www.google.com/maps/place/Chez+Antoine+Vincennes/@${LATITUDE},${LONGITUDE},17z/data=!4m6!3m5!1s${PLACE_ID}!8m2!3d${LATITUDE}!4d${LONGITUDE}`,
-  // Fallback: recherche par nom
-  `https://www.google.com/maps/search/Chez+Antoine+Vincennes`,
+  // Format 1: URL avec query et place_id (RECOMMANDÉ)
+  `https://www.google.com/maps/search/?api=1&query=Chez+Antoine+Vincennes&query_place_id=${PLACE_ID}`,
+  // Format 2: Recherche simple par nom
+  `https://www.google.com/maps/search/Chez+Antoine+Vincennes+restaurant`,
+  // Format 3: Recherche avec adresse complète
+  `https://www.google.com/maps/search/Chez+Antoine+2+Avenue+de+la+République+Vincennes`,
 ];
 
 // User agents mobiles réalistes (2024)
@@ -192,7 +194,44 @@ async function scrapeAffluence() {
     await new Promise(r => setTimeout(r, randomDelay(2000, 3000)));
 
     // ═══════════════════════════════════════════════════════════
-    // 📱 FERMER POPUP "OUVRIR L'APPLICATION"
+    // � CLIQUER SUR LE PREMIER RÉSULTAT DE RECHERCHE
+    // ═══════════════════════════════════════════════════════════
+    console.log('🔍 Recherche du premier résultat...');
+    
+    try {
+      // Attendre que les résultats apparaissent
+      await page.waitForSelector('a[href*="/maps/place/"]', { timeout: 10000 });
+      
+      // Cliquer sur le premier résultat qui contient "Antoine"
+      const clicked = await page.evaluate(() => {
+        const links = document.querySelectorAll('a[href*="/maps/place/"]');
+        for (const link of links) {
+          const text = link.textContent.toLowerCase();
+          if (text.includes('antoine') || text.includes('chez')) {
+            link.click();
+            return { clicked: true, text: link.textContent.substring(0, 50) };
+          }
+        }
+        // Sinon cliquer sur le premier résultat
+        if (links.length > 0) {
+          links[0].click();
+          return { clicked: true, text: links[0].textContent.substring(0, 50) };
+        }
+        return { clicked: false };
+      });
+      
+      if (clicked.clicked) {
+        console.log(`✅ Cliqué sur: "${clicked.text}"`);
+        await new Promise(r => setTimeout(r, 3000));
+      } else {
+        console.log('⚠️ Aucun résultat trouvé, la page est peut-être déjà sur le lieu');
+      }
+    } catch (e) {
+      console.log('📍 Page de lieu directe (pas de résultats de recherche)');
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // �📱 FERMER POPUP "OUVRIR L'APPLICATION"
     // ═══════════════════════════════════════════════════════════
     console.log('📱 Recherche popup "Ouvrir l\'application"...');
     
