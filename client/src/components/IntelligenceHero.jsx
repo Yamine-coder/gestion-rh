@@ -275,44 +275,29 @@ const IntelligenceHero = () => {
   const affluenceDisplay = getAffluenceDisplay();
 
   return (
-    <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
-      {/* Ligne principale */}
-      <div className="flex items-center gap-5 text-sm p-4">
+    <div className="bg-white border border-slate-200/70 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200 h-full overflow-hidden">
+      {/* Ligne principale - Météo & Stats */}
+      <div className="flex flex-wrap items-center gap-3 lg:gap-4 text-sm p-3 lg:p-4">
       
-      {/* Indicateur LIVE + Affluence Google */}
-      <div className="flex items-center gap-2">
-        {weather && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 rounded-xl border border-emerald-100">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Live</span>
-          </div>
-        )}
-        
-        {/* Affluence Google - Petit badge */}
-        {affluenceDisplay && affluenceDisplay.score !== null && (
-          <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border ${affluenceDisplay.bgClass} border-opacity-50`} title={`Source: ${affluenceDisplay.source === 'google-gist' ? 'Google Maps' : 'Estimation'}`}>
-            <Activity className={`w-3.5 h-3.5 ${affluenceDisplay.textClass}`} />
-            <span className={`text-xs font-bold ${affluenceDisplay.textClass}`}>
-              {affluenceDisplay.score}%
-            </span>
-            {affluenceDisplay.dataAge && affluenceDisplay.source === 'google-gist' && (
-              <span className="text-[9px] text-gray-400">({affluenceDisplay.dataAge})</span>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Indicateur LIVE */}
+      {weather && (
+        <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 rounded-xl border border-emerald-100">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Live</span>
+        </div>
+      )}
 
       {/* Météo + Décisions */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
         {/* Conditions */}
         <div className="flex flex-col">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <WeatherIcon className="w-4 h-4 text-gray-400" />
             <span className="font-medium text-gray-900">{weather?.temperature ?? '--'}°</span>
-            <span className="text-gray-400 text-xs">({feelsLike}°)</span>
+            <span className="text-gray-400 text-[10px]">({feelsLike}°)</span>
           </div>
           <span className="text-[10px] text-gray-400 mt-0.5">Ressenti</span>
         </div>
@@ -320,65 +305,42 @@ const IntelligenceHero = () => {
         {/* Terrasse */}
         <div className="flex flex-col items-center">
           <span 
-            className={`text-xs px-2 py-1 rounded ${
+            className={`text-[10px] lg:text-xs px-1.5 lg:px-2 py-0.5 lg:py-1 rounded whitespace-nowrap ${
               terrasseConfort?.niveau === 'bon' ? 'bg-green-50 text-green-600' :
               terrasseConfort?.niveau === 'moyen' ? 'bg-amber-50 text-amber-600' :
               'bg-red-50 text-red-600'
             }`}
           >
-            {terrasseConfort?.niveau === 'bon' ? '✓ Terrasse' : terrasseConfort?.niveau === 'moyen' ? '~ Limite' : '✗ Fermée'}
+            {terrasseConfort?.niveau === 'bon' ? '✓' : terrasseConfort?.niveau === 'moyen' ? '~' : '✗'} 
+            <span className="hidden sm:inline ml-0.5">{terrasseConfort?.niveau === 'bon' ? 'Terrasse' : terrasseConfort?.niveau === 'moyen' ? 'Limite' : 'Fermée'}</span>
           </span>
           <span className="text-[10px] text-gray-400 mt-0.5">Extérieur</span>
         </div>
 
-        {/* Impact affluence - Mis en avant */}
+        {/* Impact affluence */}
         <div className="flex flex-col items-center">
-          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg border ${
+          <div className={`flex items-center gap-0.5 text-[10px] lg:text-xs font-bold px-1.5 lg:px-2 py-1 rounded-lg border ${
             weatherDecision.affluence >= 15 ? 'bg-green-100 text-green-700 border-green-200' :
             weatherDecision.affluence >= 5 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
             weatherDecision.affluence > -10 ? 'bg-gray-100 text-gray-600 border-gray-200' :
             weatherDecision.affluence > -20 ? 'bg-orange-100 text-orange-700 border-orange-200' :
             'bg-red-100 text-red-700 border-red-200'
           }`}>
-            {weatherDecision.affluence > 0 ? <TrendingUp className="w-3.5 h-3.5" /> :
-             weatherDecision.affluence < 0 ? <TrendingDown className="w-3.5 h-3.5" /> :
-             <Minus className="w-3.5 h-3.5" />}
+            {weatherDecision.affluence > 0 ? <TrendingUp className="w-3 h-3" /> :
+             weatherDecision.affluence < 0 ? <TrendingDown className="w-3 h-3" /> :
+             <Minus className="w-3 h-3" />}
             {weatherDecision.affluence > 0 ? '+' : ''}{weatherDecision.affluence}%
           </div>
           <span className="text-[10px] text-gray-400 mt-0.5">Affluence</span>
         </div>
-
-        {/* Alerte pluie ou action */}
-        {rainForecast?.pluieDans !== null && rainForecast?.pluieDans <= 60 ? (
-          <div className="flex flex-col items-center">
-            <span className="flex items-center gap-1 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
-              <Droplets className="w-3 h-3" />
-              {rainForecast.pluieDans === 0 ? 'Pluie !' : `${rainForecast.pluieDans}min`}
-            </span>
-            <span className="text-[10px] text-gray-400 mt-0.5">Prévision</span>
-          </div>
-        ) : weatherDecision.action && (
-          <div className="flex flex-col items-center">
-            <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${
-              weatherDecision.action.type === 'success' ? 'bg-green-50 text-green-600' :
-              weatherDecision.action.type === 'warning' ? 'bg-amber-50 text-amber-600' :
-              'bg-gray-50 text-gray-500'
-            }`}>
-              {ActionIcon && <ActionIcon className="w-3 h-3" />}
-              {weatherDecision.action.text}
-            </span>
-            <span className="text-[10px] text-gray-400 mt-0.5">Action</span>
-          </div>
-        )}
       </div>
-
-      <div className="w-px h-10 bg-slate-200/70 mx-1" />
 
       {/* Recommandation Staffing */}
       {staffing && (
         <>
+          <div className="hidden lg:block w-px h-8 bg-slate-200/70" />
           <div className="flex flex-col">
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded ${
+            <span className={`text-[10px] lg:text-xs font-semibold px-2 py-1 rounded whitespace-nowrap ${
               staffing.alertLevel === 'alerte' ? 'bg-red-100 text-red-700' :
               staffing.alertLevel === 'attention' ? 'bg-amber-100 text-amber-700' :
               weatherDecision.affluence >= 10 ? 'bg-green-100 text-green-700' :
@@ -388,131 +350,87 @@ const IntelligenceHero = () => {
             </span>
             <span className="text-[10px] text-gray-400 mt-0.5">Recommandation</span>
           </div>
-          <div className="w-px h-10 bg-slate-200/70 mx-1" />
         </>
       )}
 
+      <div className="hidden lg:block w-px h-8 bg-slate-200/70" />
+
       {/* Événements */}
       <div className="flex flex-col flex-shrink-0">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 lg:gap-3 flex-wrap">
           {nextHoliday && nextHoliday.daysUntil <= 14 && (
-            <div className="flex items-center gap-2 text-gray-600 whitespace-nowrap">
-              <Calendar className="w-3.5 h-3.5 text-gray-400" />
-              <span>{nextHoliday.nom}</span>
-              <span className="text-xs font-medium text-primary-600">J-{nextHoliday.daysUntil}</span>
+            <div className="flex items-center gap-1 text-gray-600 whitespace-nowrap text-xs">
+              <Calendar className="w-3 h-3 text-gray-400" />
+              <span className="hidden sm:inline">{nextHoliday.nom}</span>
+              <span className="text-[10px] font-medium text-primary-600">J-{nextHoliday.daysUntil}</span>
             </div>
           )}
           {vacances && (
-            <div className="flex items-center gap-2 text-gray-600 whitespace-nowrap">
-              <GraduationCap className="w-3.5 h-3.5 text-gray-400" />
-              <span>Vac. {vacances.nom}</span>
-              <span className="text-xs font-medium text-amber-600">
-                {vacances.enCours ? `${vacances.jours}j` : `J-${vacances.jours}`}
+            <div className="flex items-center gap-1 text-gray-600 whitespace-nowrap text-xs">
+              <GraduationCap className="w-3 h-3 text-gray-400" />
+              <span className="hidden sm:inline">Vac. {vacances.nom}</span>
+              <span className="text-[10px] font-medium text-amber-600">
+                {vacances.enCours ? `${vacances.jours}j` : `${vacances.jours}j`}
               </span>
             </div>
-          )}
-          {!(nextHoliday?.daysUntil <= 14) && !vacances && (
-            <span className="text-gray-400 text-xs">—</span>
           )}
         </div>
         <span className="text-[10px] text-gray-400 mt-0.5">Anticiper le planning</span>
       </div>
 
-      <div className="w-px h-10 bg-slate-200/70 mx-1" />
+      <div className="hidden lg:block w-px h-8 bg-slate-200/70" />
 
-      {/* Matchs importants */}
-      <div className="flex flex-col flex-shrink-0">
+      {/* Matchs importants - Compacté */}
+      <div className="flex flex-col flex-shrink-0 min-w-0">
         {sameDayMatches.length > 0 ? (
           <>
-            <div className="flex items-start gap-3">
-              {/* Icône avec indicateur */}
-              <div className="relative">
-                <Tv className={`w-4 h-4 ${topMatch.importance === 5 ? 'text-amber-500' : 'text-gray-400'}`} />
-                {topMatch.importance === 5 && (
-                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                  </span>
-                )}
+            <div className="flex items-center gap-2">
+              {/* Icône */}
+              <div className="relative flex-shrink-0">
+                <Tv className={`w-3.5 h-3.5 ${topMatch.importance === 5 ? 'text-amber-500' : 'text-gray-400'}`} />
               </div>
               
-              {/* Liste des matchs */}
-              <div className="flex flex-col gap-0.5">
-                {sameDayMatches.slice(0, 3).map((m, i) => (
-                  <div key={i} className="flex items-center gap-1.5 text-sm">
-                    <Circle className="w-1.5 h-1.5 fill-current text-gray-300" />
-                    <span className="text-gray-700 font-medium whitespace-nowrap">
-                      {m.homeTeam.split(' ')[0].replace('Paris', 'PSG')}
-                    </span>
-                    <span className="text-gray-400 text-xs">vs</span>
-                    <span className="text-gray-700 font-medium whitespace-nowrap">
-                      {m.awayTeam.split(' ')[0].replace('RD', 'RDC').replace('Paris', 'PSG')}
-                    </span>
-                  </div>
-                ))}
+              {/* Match principal seulement */}
+              <div className="flex items-center gap-1 text-xs min-w-0">
+                <span className="text-gray-700 font-medium truncate">
+                  {sameDayMatches[0].homeTeam.split(' ')[0].replace('Paris', 'PSG')}
+                </span>
+                <span className="text-gray-400 text-[10px]">vs</span>
+                <span className="text-gray-700 font-medium truncate">
+                  {sameDayMatches[0].awayTeam.split(' ')[0].replace('RD', 'RDC')}
+                </span>
               </div>
               
-              {/* Stats business concrètes */}
-              <div className="flex flex-col items-end gap-1">
-                {/* Badge J-X */}
-                <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-lg whitespace-nowrap ${
-                  topMatch.days === 0 ? 'bg-red-100 text-red-700' :
-                  topMatch.days === 1 ? 'bg-orange-100 text-orange-700' :
-                  topMatch.importance === 5 ? 'bg-amber-100 text-amber-700' : 
-                  'bg-gray-100 text-gray-600'
-                }`}>
-                  {topMatch.importance === 5 && <Flame className="w-3 h-3" />}
-                  {topMatch.days === 0 ? 'CE SOIR' : `J-${topMatch.days}`}
-                </div>
-                
-                {/* Impact Uber/Deliveroo */}
-                {businessImpact && businessImpact.livraison > 0 && (
-                  <div className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded ${
-                    businessImpact.level === 'critical' ? 'bg-green-100 text-green-700' :
-                    businessImpact.level === 'high' ? 'bg-emerald-50 text-emerald-600' :
-                    'bg-blue-50 text-blue-600'
-                  }`}>
-                    🛵 +{businessImpact.livraison}%
-                  </div>
-                )}
+              {/* Badge J-X */}
+              <div className={`flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                topMatch.days === 0 ? 'bg-red-100 text-red-700' :
+                topMatch.days === 1 ? 'bg-orange-100 text-orange-700' :
+                topMatch.importance === 5 ? 'bg-amber-100 text-amber-700' : 
+                'bg-gray-100 text-gray-600'
+              }`}>
+                {topMatch.days === 0 ? 'CE SOIR' : `J-${topMatch.days}`}
               </div>
             </div>
             
-            {/* Message business actionnable */}
-            <div className="text-[10px] mt-1.5 ml-7">
-              {businessImpact && topMatch.days <= 1 ? (
-                <span className="text-amber-600 font-medium">
-                  📦 Uber/Deliveroo : +{businessImpact.commandesSupp} cmd estimées · Salle {businessImpact.salle}% · Emporter +{businessImpact.emporter}%
-                </span>
-              ) : businessImpact && businessImpact.livraison >= 20 ? (
-                <span className="text-gray-500">
-                  Prévoir : 🛵 Livraison +{businessImpact.livraison}% · 🥡 Emporter +{businessImpact.emporter}% · 🍽️ Salle {businessImpact.salle}%
-                </span>
-              ) : (
-                <span className="text-gray-400">
-                  {sameDayMatches.length > 1 
-                    ? `${sameDayMatches.length} matchs ${topMatch.competition.replace('UEFA ', '').replace(' 2025', '')}`
-                    : topMatch.competition.replace('UEFA ', '')
-                  }
-                </span>
-              )}
-            </div>
+            {/* Impact Uber */}
+            {businessImpact && businessImpact.commandesSupp > 0 && (
+              <span className="text-[10px] text-green-600 mt-0.5">
+                🛵 Uber/Deliveroo : +{businessImpact.commandesSupp} cmd estimées
+              </span>
+            )}
           </>
         ) : (
-          <>
-            <div className="flex items-center gap-2 text-gray-400">
-              <Tv className="w-4 h-4" />
-              <span className="text-sm">Aucun match à suivre</span>
-            </div>
-            <span className="text-[10px] text-gray-400 mt-0.5">Semaine calme</span>
-          </>
+          <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+            <Tv className="w-3.5 h-3.5" />
+            <span>Aucun match</span>
+          </div>
         )}
       </div>
 
       {/* Refresh */}
       <button 
         onClick={fetchData} 
-        className="p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
+        className="p-1.5 lg:p-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0 ml-auto"
       >
         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
       </button>
@@ -520,27 +438,19 @@ const IntelligenceHero = () => {
       
       {/* 🎯 Ligne secondaire : Prévisions + Alertes */}
       {(forecast3Days.length > 0 || staffing?.tomorrowAlert || staffing?.detailedRecommendations?.length > 0) && (
-        <div className="px-4 py-2.5 bg-slate-50/50 border-t border-slate-100 flex items-center gap-4 text-xs">
+        <div className="px-3 lg:px-4 py-2 bg-slate-50/50 border-t border-slate-100 flex flex-wrap items-center gap-2 lg:gap-4 text-xs overflow-hidden">
           
           {/* Prévisions 2-3 jours */}
           {forecast3Days.length > 0 && (
-            <div className="flex items-center gap-3">
-              <span className="text-gray-400 font-medium">Prévisions:</span>
-              {forecast3Days.map((day, i) => {
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-gray-400 font-medium text-[10px]">Prévisions:</span>
+              {forecast3Days.slice(0, 2).map((day, i) => {
                 const DayIcon = getWeatherIcon(day.condition);
                 return (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <span className="text-gray-500">{day.jour}</span>
-                    <DayIcon className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-gray-600">{day.tempMax}°</span>
-                    <span className={`font-medium px-1 py-0.5 rounded text-[10px] ${
-                      day.impact.color === 'green' ? 'bg-green-100 text-green-700' :
-                      day.impact.color === 'red' ? 'bg-red-100 text-red-700' :
-                      day.impact.color === 'orange' ? 'bg-orange-100 text-orange-700' :
-                      'text-gray-400'
-                    }`}>
-                      {day.impact.label}
-                    </span>
+                  <div key={i} className="flex items-center gap-1">
+                    <span className="text-gray-500 text-[10px]">{day.jour}</span>
+                    <DayIcon className="w-3 h-3 text-gray-400" />
+                    <span className="text-gray-600 text-[10px]">{day.tempMax}°</span>
                   </div>
                 );
               })}
@@ -550,20 +460,9 @@ const IntelligenceHero = () => {
           {/* Alerte demain */}
           {staffing?.tomorrowAlert && (
             <>
-              <div className="w-px h-5 bg-slate-200" />
-              <div className="flex items-center gap-2 text-amber-700 bg-amber-50 px-2 py-1 rounded">
+              <div className="hidden sm:block w-px h-4 bg-slate-200" />
+              <div className="flex items-center gap-1 text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px]">
                 <span className="font-medium">⚠️ {staffing.tomorrowAlert.message}</span>
-              </div>
-            </>
-          )}
-          
-          {/* Actions suggérées */}
-          {staffing?.detailedRecommendations?.length > 0 && !staffing?.tomorrowAlert && (
-            <>
-              <div className="w-px h-5 bg-slate-200" />
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">💡</span>
-                <span className="text-gray-600">{staffing.detailedRecommendations.join(' • ')}</span>
               </div>
             </>
           )}

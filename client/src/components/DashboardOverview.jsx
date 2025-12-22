@@ -3,7 +3,9 @@ import { HiUsers } from 'react-icons/hi';
 import axios from 'axios';
 import { computeKPIs } from '../utils/kpiHelpers';
 import AlertesTempsReel from './AlertesTempsReel';
-import IntelligenceHero from './IntelligenceHero';
+// Nouveaux widgets Dashboard refactorisés
+import ConditionsDuJour from './dashboard/ConditionsDuJour';
+import EvenementsCalendrier from './dashboard/EvenementsCalendrier';
 import { 
   Megaphone, Plus, Edit2, Trash2, X, AlertTriangle, AlertCircle, Info, Check, 
   Bell, Calendar, Clock, Zap, FileText, Send, PartyPopper, Users, Coffee,
@@ -1131,8 +1133,20 @@ function DashboardOverview({ onGoToConges }) {
   return (
     <div className='p-4 sm:p-6 lg:p-8 space-y-5 bg-slate-50 min-h-screen'>
 
-      {/* Section Hero Intelligence du jour */}
-      <IntelligenceHero />
+      {/* ═══════════════════════════════════════════════════════════════
+          📊 SECTION INTELLIGENCE : Conditions + Événements
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Conditions du jour (Météo + Affluence fusionnés) */}
+        <div className="h-full">
+          <ConditionsDuJour />
+        </div>
+        
+        {/* Événements à venir */}
+        <div className="h-full">
+          <EvenementsCalendrier />
+        </div>
+      </div>
 
       {/* KPIs - Vue rapide */}
       <div className='grid grid-cols-2 lg:grid-cols-4 gap-3'>

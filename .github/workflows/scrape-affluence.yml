@@ -45,13 +45,14 @@ jobs:
           GIST_ID: ${{ secrets.GIST_ID }}
         run: node update-gist.js
       
-      - name: 📊 Upload artifacts (data + screenshot)
+      - name: 📊 Upload artifacts (data + screenshots)
         uses: actions/upload-artifact@v4
         with:
           name: affluence-debug-${{ github.run_id }}
           path: |
             scripts/affluence-data.json
             scripts/debug-screenshot.png
+            scripts/debug-after-consent.png
           retention-days: 7
         if: always()
       

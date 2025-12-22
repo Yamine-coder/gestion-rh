@@ -176,41 +176,168 @@ async function scrapeAffluence() {
     await new Promise(r => setTimeout(r, randomDelay(500, 1500)));
     
     await page.goto(url, { 
-      waitUntil: 'domcontentloaded',
-      timeout: 30000 
+      waitUntil: 'networkidle0',
+      timeout: 45000 
     });
 
     // Attendre un peu
-    await new Promise(r => setTimeout(r, randomDelay(2000, 4000)));
+    await new Promise(r => setTimeout(r, randomDelay(2000, 3000)));
 
     // ═══════════════════════════════════════════════════════════
-    // 🍪 ACCEPTER COOKIES
+    // 📱 FERMER POPUP "OUVRIR L'APPLICATION"
     // ═══════════════════════════════════════════════════════════
+    console.log('📱 Recherche popup "Ouvrir l\'application"...');
+    
     try {
-      // Sélecteurs possibles pour le bouton accepter
-      const cookieSelectors = [
-        'button[aria-label*="Accepter"]',
-        'button[aria-label*="Accept"]',
-        'button:has-text("Tout accepter")',
-        'button:has-text("Accept all")',
-        '[data-ved] button:first-child',
-        '.VfPpkd-LgbsSe'
-      ];
-      
-      for (const selector of cookieSelectors) {
-        try {
-          const btn = await page.$(selector);
-          if (btn) {
-            console.log('🍪 Cookie popup trouvé, click...');
-            await btn.click();
-            await new Promise(r => setTimeout(r, randomDelay(1000, 2000)));
-            break;
+      // Chercher le bouton "Rester sur le Web"
+      const stayOnWebClicked = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button'));
+        for (const btn of buttons) {
+          const text = btn.textContent.toLowerCase();
+          if (text.includes('rester sur le web') || text.includes('stay on web') || text.includes('rester')) {
+            btn.click();
+            return true;
           }
-        } catch (e) {}
+        }
+        // Essayer aussi les liens
+        const links = Array.from(document.querySelectorAll('a'));
+        for (const link of links) {
+          const text = link.textContent.toLowerCase();
+          if (text.includes('rester sur le web') || text.includes('stay on web')) {
+            link.click();
+            return true;
+          }
+        }
+        return false;
+      });
+      
+      if (stayOnWebClicked) {
+        console.log('✅ Popup "Ouvrir l\'app" fermé - Resté sur le Web');
+        await new Promise(r => setTimeout(r, 2000));
       }
     } catch (e) {
-      console.log('🍪 Pas de popup cookies');
+      console.log('📱 Pas de popup app ou erreur:', e.message);
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // 🍪 GESTION CONSENTEMENT GOOGLE (GDPR)
+    // ═══════════════════════════════════════════════════════════
+    console.log('🍪 Recherche popup consentement...');
+    
+    // Vérifier si on est sur une page de consentement
+    const currentUrl = page.url();
+    console.log(`📍 URL actuelle: ${currentUrl}`);
+    
+    if (currentUrl.includes('consent.google') || currentUrl.includes('consent')) {
+      console.log('🍪 Page de consentement détectée!');
+    }
+
+    // Essayer plusieurs méthodes pour accepter
+    const consentMethods = [
+      // Méthode 1: Boutons avec texte français
+      async () => {
+        const buttons = await page.$$('button');
+        for (const btn of buttons) {
+          const text = await btn.evaluate(el => el.textContent.toLowerCase());
+          if (text.includes('tout accepter') || text.includes('accept all') || text.includes('accepter')) {
+            console.log('🍪 Bouton "Accepter" trouvé (texte)');
+            await btn.click();
+            return true;
+          }
+        }
+        return false;
+      },
+      // Méthode 2: aria-label
+      async () => {
+        const selectors = [
+          'button[aria-label*="Accepter"]',
+          'button[aria-label*="Accept"]',
+          'button[aria-label*="accepter"]',
+          '[aria-label*="Tout accepter"]'
+        ];
+        for (const sel of selectors) {
+          const btn = await page.$(sel);
+          if (btn) {
+            console.log(`🍪 Bouton trouvé: ${sel}`);
+            await btn.click();
+            return true;
+          }
+        }
+        return false;
+      },
+      // Méthode 3: Premier bouton principal
+      async () => {
+        // Google consent a souvent le bouton accepter comme premier bouton bleu
+        const btn = await page.$('button.VfPpkd-LgbsSe-OWXEXe-k8QpJ');
+        if (btn) {
+          console.log('🍪 Bouton principal Google trouvé');
+          await btn.click();
+          return true;
+        }
+        return false;
+      },
+      // Méthode 4: Form submit
+      async () => {
+        const form = await page.$('form[action*="consent"]');
+        if (form) {
+          const submitBtn = await form.$('button[type="submit"], button');
+          if (submitBtn) {
+            console.log('🍪 Form consent trouvé');
+            await submitBtn.click();
+            return true;
+          }
+        }
+        return false;
+      },
+      // Méthode 5: JavaScript direct
+      async () => {
+        const clicked = await page.evaluate(() => {
+          // Chercher tous les boutons
+          const buttons = Array.from(document.querySelectorAll('button'));
+          for (const btn of buttons) {
+            const text = btn.textContent.toLowerCase();
+            const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+            if (text.includes('accept') || text.includes('accepter') || 
+                label.includes('accept') || label.includes('accepter')) {
+              btn.click();
+              return true;
+            }
+          }
+          return false;
+        });
+        if (clicked) console.log('🍪 Click via JS');
+        return clicked;
+      }
+    ];
+
+    // Essayer chaque méthode
+    for (const method of consentMethods) {
+      try {
+        const success = await method();
+        if (success) {
+          console.log('✅ Consentement accepté!');
+          await new Promise(r => setTimeout(r, 3000));
+          
+          // Vérifier qu'on est bien sur Maps maintenant
+          const newUrl = page.url();
+          console.log(`📍 Nouvelle URL: ${newUrl}`);
+          
+          if (!newUrl.includes('maps')) {
+            // Recharger la page Maps
+            console.log('🔄 Rechargement page Maps...');
+            await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+            await new Promise(r => setTimeout(r, 3000));
+          }
+          break;
+        }
+      } catch (e) {
+        // Continuer avec la méthode suivante
+      }
+    }
+
+    // Screenshot après consentement
+    console.log('📸 Screenshot après consentement...');
+    await page.screenshot({ path: './debug-after-consent.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
     // 📜 SCROLL POUR CHARGER LE CONTENU
