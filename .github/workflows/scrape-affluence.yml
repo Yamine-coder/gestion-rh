@@ -44,7 +44,6 @@ jobs:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
         run: node update-gist.js
-        if: ${{ secrets.GIST_TOKEN != '' }}
       
       - name: 📊 Upload artifact (backup)
         uses: actions/upload-artifact@v4
