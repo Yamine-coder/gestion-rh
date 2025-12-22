@@ -437,32 +437,56 @@ async function scrapeAffluence() {
     await page.screenshot({ path: './debug-after-consent.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
-    // 📜 SCROLL DANS LE PANNEAU LATÉRAL GOOGLE MAPS
+    // 📜 SCROLL POUR TROUVER "HORAIRES D'AFFLUENCE" (MODE MOBILE)
     // ═══════════════════════════════════════════════════════════
-    console.log('📜 Scroll dans le panneau latéral pour trouver Popular Times...');
+    console.log('📜 Scroll pour trouver "Horaires d\'affluence"...');
     
-    // Méthode 1: Cliquer sur le panneau puis utiliser mouse wheel
-    // Le panneau Google Maps est généralement à gauche (x < 400)
-    await page.mouse.click(200, 400); // Cliquer au milieu du panneau
-    await new Promise(r => setTimeout(r, 500));
+    // En mode mobile, la fiche lieu prend tout l'écran
+    // On doit swiper vers le haut pour voir plus de contenu
     
-    // Scroll avec la molette de souris
+    // D'abord, attendre que la page soit chargée
+    await new Promise(r => setTimeout(r, 2000));
+    
+    // Scroll avec touch events (mobile) ou mouse wheel
     let scrolled = 0;
     let found = false;
     
-    for (let i = 0; i < 15; i++) { // 15 scrolls
-      await page.mouse.wheel({ deltaY: 500 }); // Scroll de 500px
-      scrolled += 500;
-      await new Promise(r => setTimeout(r, 400));
+    for (let i = 0; i < 20; i++) { // Plus de scrolls
+      // Scroll via JavaScript (plus fiable)
+      await page.evaluate(() => {
+        // Trouver le conteneur scrollable (en mobile c'est souvent le body ou un div principal)
+        const scrollContainers = [
+          document.querySelector('[role="main"]'),
+          document.querySelector('.section-layout'),
+          document.querySelector('[data-panel-id]'),
+          document.body
+        ];
+        
+        for (const container of scrollContainers) {
+          if (container) {
+            container.scrollTop += 300;
+            window.scrollBy(0, 300);
+          }
+        }
+      });
+      
+      scrolled += 300;
+      await new Promise(r => setTimeout(r, 300));
       
       // Vérifier si on a trouvé les données
       const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
       if (pageText.includes('horaires d\'affluence') || 
+          pageText.includes('temps réel') ||
+          pageText.includes('assez animé') ||
+          pageText.includes('très animé') ||
+          pageText.includes('peu animé') ||
           pageText.includes('très fréquenté') ||
-          pageText.includes('assez fréquenté') ||
-          pageText.includes('informations en temps réel')) {
+          pageText.includes('assez fréquenté')) {
         found = true;
         console.log(`✅ Section affluence trouvée après ${scrolled}px de scroll!`);
+        // Scroll un peu plus pour charger tout le graphique
+        await page.evaluate(() => window.scrollBy(0, 200));
+        await new Promise(r => setTimeout(r, 500));
         break;
       }
     }
@@ -696,15 +720,21 @@ async function scrapeAffluence() {
       
       // Debug: chercher "INFORMATIONS EN TEMPS RÉEL"
       if (allTextLower.includes('informations en temps') || allTextLower.includes('temps réel')) {
-        result.debugTexts.push('✅ Found "INFORMATIONS EN TEMPS RÉEL"');
+        result.debugTexts.push('✅ Found "Temps réel"');
       }
       
       // ═══════════════════════════════════════════════════════════
-      // 🔍 PATTERNS FRANÇAIS GOOGLE MAPS (améliorés)
+      // 🔍 PATTERNS FRANÇAIS GOOGLE MAPS 2025 (améliorés)
       // ═══════════════════════════════════════════════════════════
       
-      // Status en temps réel - patterns plus flexibles
+      // Status en temps réel - NOUVEAUX patterns du screenshot
       const patterns = [
+        // Patterns 2025 (screenshot téléphone)
+        { regex: /assez\s+anim[ée]/i, status: 'fairly_busy', percent: 65 },
+        { regex: /tr[eè]s\s+anim[ée]/i, status: 'very_busy', percent: 85 },
+        { regex: /peu\s+anim[ée]/i, status: 'not_busy', percent: 30 },
+        { regex: /calme/i, status: 'not_busy', percent: 25 },
+        // Anciens patterns
         { regex: /tr[eè]s\s+fr[ée]quent[ée]/i, status: 'very_busy', percent: 85 },
         { regex: /assez\s+fr[ée]quent[ée]/i, status: 'fairly_busy', percent: 65 },
         { regex: /plut[oô]t\s+fr[ée]quent[ée]/i, status: 'fairly_busy', percent: 60 },
