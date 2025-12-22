@@ -499,15 +499,28 @@ async function scrapeAffluence() {
     let scrolled = 0;
     let found = false;
     
-    for (let i = 0; i < 25; i++) { // Plus de scrolls
-      // Swipe vers le haut dans la fiche (simuler touch scroll)
-      await page.mouse.move(195, 600);
+    for (let i = 0; i < 30; i++) { // Beaucoup plus de scrolls
+      // Méthode hybride: swipe + JavaScript scroll
+      
+      // 1. Swipe vers le haut dans la fiche
+      await page.mouse.move(195, 700);
       await page.mouse.down();
-      await page.mouse.move(195, 400, { steps: 5 });
+      await page.mouse.move(195, 400, { steps: 8 });
       await page.mouse.up();
       
-      scrolled += 200;
-      await new Promise(r => setTimeout(r, 400));
+      // 2. Aussi essayer scroll via JavaScript
+      await page.evaluate(() => {
+        window.scrollBy(0, 300);
+        // Chercher tous les conteneurs scrollables
+        document.querySelectorAll('div').forEach(div => {
+          if (div.scrollHeight > div.clientHeight) {
+            div.scrollTop += 200;
+          }
+        });
+      });
+      
+      scrolled += 300;
+      await new Promise(r => setTimeout(r, 350));
       
       // Vérifier si on a trouvé les données
       const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
