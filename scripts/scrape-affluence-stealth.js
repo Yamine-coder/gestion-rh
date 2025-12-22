@@ -499,42 +499,28 @@ async function scrapeAffluence() {
     let scrolled = 0;
     let found = false;
     
-    // D'abord, faire plusieurs scrolls rapides pour descendre
-    console.log('📜 Scrolls rapides vers le bas...');
-    for (let i = 0; i < 15; i++) {
-      await page.evaluate(() => {
-        window.scrollBy(0, 400);
-        document.querySelectorAll('div').forEach(div => {
-          if (div.scrollHeight > div.clientHeight + 10) {
-            div.scrollTop += 300;
-          }
-        });
-      });
-      await new Promise(r => setTimeout(r, 200));
-    }
-    
-    await page.screenshot({ path: './debug-after-fast-scroll.png', fullPage: false });
-    
-    // Puis chercher la section affluence
-    for (let i = 0; i < 40; i++) { // Encore plus de scrolls
-      // Swipe vers le haut (scroll down dans la fiche)
-      await page.mouse.move(195, 650);
+    // Utiliser UNIQUEMENT des swipes doux (pas de JavaScript scroll qui casse la page)
+    for (let i = 0; i < 35; i++) {
+      // Swipe doux vers le haut (scroll down)
+      await page.touchscreen.tap(195, 600);
+      await new Promise(r => setTimeout(r, 100));
+      
+      // Simuler un swipe avec la souris
+      await page.mouse.move(195, 600);
       await page.mouse.down();
-      await page.mouse.move(195, 350, { steps: 10 });
+      await page.mouse.move(195, 400, { steps: 15 }); // Plus de steps = plus doux
       await page.mouse.up();
       
-      // Aussi via JavaScript
-      await page.evaluate(() => {
-        window.scrollBy(0, 250);
-        document.querySelectorAll('div, section, [role="main"]').forEach(el => {
-          if (el.scrollHeight > el.clientHeight + 10) {
-            el.scrollTop += 200;
-          }
-        });
-      });
+      scrolled += 200;
+      await new Promise(r => setTimeout(r, 400));
       
-      scrolled += 300;
-      await new Promise(r => setTimeout(r, 300));
+      // Screenshot intermédiaire tous les 10 scrolls
+      if (i === 10) {
+        await page.screenshot({ path: './debug-scroll-10.png', fullPage: false });
+      }
+      if (i === 20) {
+        await page.screenshot({ path: './debug-scroll-20.png', fullPage: false });
+      }
       
       // Vérifier si on a trouvé les données
       const pageText = await page.evaluate(() => document.body.innerText.toLowerCase());
@@ -550,7 +536,7 @@ async function scrapeAffluence() {
         // Scroll un peu plus pour charger tout le graphique
         await page.mouse.move(195, 500);
         await page.mouse.down();
-        await page.mouse.move(195, 350, { steps: 3 });
+        await page.mouse.move(195, 400, { steps: 5 });
         await page.mouse.up();
         await new Promise(r => setTimeout(r, 500));
         break;
