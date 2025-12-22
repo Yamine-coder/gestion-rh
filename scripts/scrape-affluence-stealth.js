@@ -396,32 +396,87 @@ async function scrapeAffluence() {
     await page.screenshot({ path: './debug-after-consent.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
-    // 📜 SCROLL POUR CHARGER LE CONTENU
+    // 📜 SCROLL DANS LE PANNEAU LATÉRAL GOOGLE MAPS
     // ═══════════════════════════════════════════════════════════
-    console.log('📜 Scroll pour charger le contenu...');
+    console.log('📜 Scroll dans le panneau latéral pour trouver Popular Times...');
     
-    // Simuler un scroll humain
-    await page.evaluate(async () => {
-      await new Promise((resolve) => {
-        let totalHeight = 0;
-        const distance = 100;
-        const timer = setInterval(() => {
-          window.scrollBy(0, distance);
-          totalHeight += distance;
-          if (totalHeight >= 1000) {
-            clearInterval(timer);
-            resolve();
+    // Scroller dans le panneau latéral de Google Maps (pas la page entière)
+    const scrollResult = await page.evaluate(async () => {
+      // Sélecteurs possibles pour le panneau latéral Google Maps
+      const panelSelectors = [
+        '[role="main"]',
+        '.m6QErb.DxyBCb',
+        '.m6QErb',
+        '.DxyBCb.kA9KIf.dS8AEf',
+        'div[aria-label*="Chez Antoine"]',
+        '.section-layout',
+        '.section-scrollbox',
+        '[data-attrid]'
+      ];
+      
+      let scrollContainer = null;
+      
+      // Trouver le bon conteneur scrollable
+      for (const selector of panelSelectors) {
+        const el = document.querySelector(selector);
+        if (el && el.scrollHeight > el.clientHeight) {
+          scrollContainer = el;
+          console.log('Found scroll container:', selector);
+          break;
+        }
+      }
+      
+      // Si pas trouvé, chercher tout élément scrollable avec du contenu
+      if (!scrollContainer) {
+        const allDivs = document.querySelectorAll('div');
+        for (const div of allDivs) {
+          if (div.scrollHeight > 500 && div.scrollHeight > div.clientHeight) {
+            scrollContainer = div;
+            break;
           }
-        }, 100);
-      });
+        }
+      }
+      
+      if (scrollContainer) {
+        // Scroll progressif dans le panneau
+        let scrolled = 0;
+        const scrollStep = 300;
+        const maxScroll = 2000;
+        
+        while (scrolled < maxScroll) {
+          scrollContainer.scrollTop += scrollStep;
+          scrolled += scrollStep;
+          await new Promise(r => setTimeout(r, 300));
+          
+          // Vérifier si on a trouvé "Popular Times" ou "Horaires d'affluence"
+          const pageText = document.body.innerText.toLowerCase();
+          if (pageText.includes('horaires d\'affluence') || 
+              pageText.includes('popular times') ||
+              pageText.includes('très fréquenté') ||
+              pageText.includes('assez fréquenté')) {
+            return { found: true, scrolled: scrolled };
+          }
+        }
+        return { found: false, scrolled: scrolled, container: 'panel' };
+      } else {
+        // Fallback: scroll sur window
+        window.scrollBy(0, 1000);
+        return { found: false, scrolled: 1000, container: 'window' };
+      }
     });
     
-    await new Promise(r => setTimeout(r, randomDelay(2000, 3000)));
+    console.log(`📜 Scroll result: ${JSON.stringify(scrollResult)}`);
+    
+    // Attendre que le contenu se charge
+    await new Promise(r => setTimeout(r, 2000));
+    
+    // Screenshot après scroll
+    await page.screenshot({ path: './debug-after-scroll.png', fullPage: false });
 
     // ═══════════════════════════════════════════════════════════
-    // 📸 SCREENSHOT DEBUG
+    // 📸 SCREENSHOT DEBUG FINAL
     // ═══════════════════════════════════════════════════════════
-    console.log('📸 Capture screenshot debug...');
+    console.log('📸 Capture screenshot debug final...');
     await page.screenshot({ 
       path: './debug-screenshot.png',
       fullPage: false
