@@ -17,10 +17,10 @@ const LONGITUDE = '2.4290377';
 // Place ID correct (de https://search.google.com/local/writereview?placeid=...)
 const PLACE_ID = process.env.PLACE_ID || 'ChIJnYLnmZly5kcRgpLV4MN4Rus';
 
-// URL DIRECTE vers la fiche (pas de recherche qui montre une liste)
+// URL DIRECTE vers la fiche - format simple qui fonctionne
 const URLS = [
-  // Format avec data qui force l'ouverture de la fiche
-  `https://www.google.com/maps/place/Chez+Antoine+Vincennes/@${LATITUDE},${LONGITUDE},17z/data=!4m5!3m4!1s${PLACE_ID}!8m2!3d${LATITUDE}!4d${LONGITUDE}`,
+  // Format search avec nom exact (FONCTIONNE)
+  `https://www.google.com/maps/search/Chez+Antoine+Vincennes+2+Avenue+de+la+République`,
 ];
 
 // User agents mobiles réalistes (2024)
