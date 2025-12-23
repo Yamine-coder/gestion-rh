@@ -35,15 +35,14 @@ jobs:
         working-directory: scripts
         run: npm ci || npm install
       
-      - name: 🕵️ Scrape Affluence (Robust avec fallback)
+      - name: 🕵️ Scrape Affluence via SerpAPI
         id: scrape
         working-directory: scripts
-        run: node scrape-affluence-robust.js
+        run: node scrape-affluence-serpapi.js
         env:
           RESTAURANT_NAME: ${{ env.RESTAURANT_NAME }}
-          RESTAURANT_ADDRESS: ${{ env.RESTAURANT_ADDRESS }}
           PLACE_ID: ${{ env.PLACE_ID }}
-          BESTTIME_API_KEY: ${{ secrets.BESTTIME_API_KEY }}
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
       
       - name: 📤 Update Gist
         working-directory: scripts

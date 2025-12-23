@@ -200,11 +200,10 @@ function getSmartEstimate() {
   const hour = now.getHours();
   const minutes = now.getMinutes();
   
-  // Profil typique d'un restaurant français
-  // Fermé dimanche/lundi, service midi (12-14h) et soir (19-22h)
+  // Horaires Chez Antoine: 11h - 23h30, 7j/7
   
-  // Jours fermés
-  if (day === 0 || day === 1) {
+  // Fermé (avant 11h ou après 23h30)
+  if (hour < 11 || (hour === 23 && minutes > 30) || hour >= 24) {
     return {
       status: 'closed',
       score: 0,
@@ -213,37 +212,40 @@ function getSmartEstimate() {
     };
   }
   
-  // En dehors des heures d'ouverture
-  if (hour < 11 || (hour >= 15 && hour < 19) || hour >= 23) {
+  // Rush du midi (12h30 - 14h)
+  if ((hour === 12 && minutes >= 30) || hour === 13 || (hour === 14 && minutes === 0)) {
+    const isWeekend = day === 0 || day === 6; // Dimanche ou samedi
+    const baseScore = isWeekend ? 80 : 70;
     return {
-      status: 'closed',
-      score: 0,
-      message: '⚫ Fermé',
+      status: 'very_busy',
+      score: baseScore + Math.floor(Math.random() * 15),
+      message: '🔴 Très fréquenté (estimation)',
       estimation: true
     };
   }
   
-  // Service du midi
-  if (hour >= 12 && hour <= 14) {
-    if (hour === 12 && minutes >= 30 || hour === 13 && minutes <= 30) {
-      // Rush du midi
-      return {
-        status: 'very_busy',
-        score: 80 + Math.floor(Math.random() * 15),
-        message: '🔴 Très fréquenté (estimation)',
-        estimation: true
-      };
-    }
+  // Début service midi (11h - 12h30)
+  if (hour === 11 || (hour === 12 && minutes < 30)) {
     return {
-      status: 'fairly_busy',
-      score: 50 + Math.floor(Math.random() * 20),
-      message: '🟠 Assez fréquenté (estimation)',
+      status: 'not_busy',
+      score: 25 + Math.floor(Math.random() * 20),
+      message: '🟢 Peu fréquenté (estimation)',
       estimation: true
     };
   }
   
-  // Début de soirée
-  if (hour >= 19 && hour < 20) {
+  // Après-midi creux (14h - 18h)
+  if (hour >= 14 && hour < 18) {
+    return {
+      status: 'not_busy',
+      score: 20 + Math.floor(Math.random() * 20),
+      message: '🟢 Peu fréquenté (estimation)',
+      estimation: true
+    };
+  }
+  
+  // Début de soirée (18h - 19h30)
+  if (hour === 18 || (hour === 19 && minutes < 30)) {
     return {
       status: 'fairly_busy',
       score: 40 + Math.floor(Math.random() * 20),
@@ -252,34 +254,33 @@ function getSmartEstimate() {
     };
   }
   
-  // Rush du soir
-  if (hour >= 20 && hour <= 21) {
-    // Vendredi et samedi encore plus chargés
-    const isWeekend = day === 5 || day === 6;
-    const baseScore = isWeekend ? 75 : 65;
+  // Rush du soir (19h30 - 21h30)
+  if ((hour === 19 && minutes >= 30) || hour === 20 || (hour === 21 && minutes < 30)) {
+    const isWeekend = day === 5 || day === 6; // Vendredi ou samedi
+    const baseScore = isWeekend ? 85 : 75;
     return {
       status: 'very_busy',
-      score: baseScore + Math.floor(Math.random() * 20),
+      score: baseScore + Math.floor(Math.random() * 12),
       message: '🔴 Très fréquenté (estimation)',
       estimation: true
     };
   }
   
-  // Fin de service
-  if (hour >= 22) {
+  // Fin de soirée (21h30 - 23h30)
+  if ((hour === 21 && minutes >= 30) || hour === 22 || hour === 23) {
     return {
-      status: 'not_busy',
-      score: 20 + Math.floor(Math.random() * 15),
-      message: '🟢 Peu fréquenté (estimation)',
+      status: 'fairly_busy',
+      score: 35 + Math.floor(Math.random() * 20),
+      message: '🟠 Assez fréquenté (estimation)',
       estimation: true
     };
   }
   
-  // Autres heures (11h, 15-19h selon ouverture)
+  // Fallback
   return {
-    status: 'not_busy',
-    score: 25 + Math.floor(Math.random() * 20),
-    message: '🟢 Peu fréquenté (estimation)',
+    status: 'fairly_busy',
+    score: 40 + Math.floor(Math.random() * 20),
+    message: '🟠 Assez fréquenté (estimation)',
     estimation: true
   };
 }
