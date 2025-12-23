@@ -1,20 +1,626 @@
 {
-  "timestamp": "2025-12-22T15:35:31.320Z",
-  "restaurantName": "Chez Antoine Vincennes",
-  "placeId": "ChIJnYJ5mZly5kcRgpLVpMN4Rus",
-  "coordinates": {
-    "lat": "48.8463257",
-    "lng": "2.4290377"
+  "timestamp": "2025-12-23T00:41:08.029Z",
+  "restaurant": "Chez Antoine",
+  "placeId": "ChIJnYLnmZly5kcRgpLV4MN4Rus",
+  "status": "closed",
+  "score": 0,
+  "message": "⚫ Fermé",
+  "source": "estimation",
+  "popularTimes": {
+    "sunday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 36
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 65
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 63
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 54
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 56
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 71
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 73
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 72
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 53
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 42
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 30
+      }
+    ],
+    "monday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 34
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 60
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 63
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 42
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 31
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 29
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 36
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 48
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 56
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 50
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 39
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 29
+      }
+    ],
+    "tuesday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 30
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 50
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 50
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 39
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 27
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 28
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 39
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 48
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 52
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 46
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 35
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 24
+      }
+    ],
+    "wednesday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 28
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 41
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 42
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 34
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 26
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 26
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 33
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 50
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 64
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 75
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 69
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 53
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 34
+      }
+    ],
+    "thursday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 37
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 42
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 29
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 25
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 32
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 46
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 59
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 63
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 62
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 51
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 28
+      }
+    ],
+    "friday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 28
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 39
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 42
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 40
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 39
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 41
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 52
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 75
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 93
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 100
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 98
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 84
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 58
+      }
+    ],
+    "saturday": [
+      {
+        "time": "06 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "07 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "08 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "09 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "10 h",
+        "busyness_score": 0
+      },
+      {
+        "time": "11 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 29
+      },
+      {
+        "time": "12 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 46
+      },
+      {
+        "time": "13 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 59
+      },
+      {
+        "time": "14 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 58
+      },
+      {
+        "time": "15 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "16 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 45
+      },
+      {
+        "time": "17 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 53
+      },
+      {
+        "time": "18 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 63
+      },
+      {
+        "time": "19 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 87
+      },
+      {
+        "time": "20 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 96
+      },
+      {
+        "time": "21 h",
+        "info": "Généralement très fréquenté",
+        "busyness_score": 84
+      },
+      {
+        "time": "22 h",
+        "info": "Généralement assez fréquenté",
+        "busyness_score": 57
+      },
+      {
+        "time": "23 h",
+        "info": "Généralement peu fréquenté",
+        "busyness_score": 36
+      }
+    ]
   },
-  "placeName": null,
-  "liveStatus": null,
-  "livePercentage": null,
-  "usualPercentage": null,
-  "popularTimes": null,
-  "trend": null,
-  "raw": {},
-  "debug": {},
-  "error": "Failed to launch the browser process! spawn C:\\Users\\mouss\\AppData\\Local\\Temp\\chromium ENOENT\n\n\nTROUBLESHOOTING: https://pptr.dev/troubleshooting\n",
-  "score": null,
-  "message": "⚪ Erreur de scraping"
+  "currentPopularity": null,
+  "placeName": "Chez Antoine Vincennes",
+  "address": "2 Av. de la République, 94300 Vincennes, France",
+  "rating": 4.3,
+  "reviews": 3342,
+  "isEstimation": true
 }

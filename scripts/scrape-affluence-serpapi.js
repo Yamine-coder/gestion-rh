@@ -86,9 +86,10 @@ async function getAffluenceViaSerpAPI() {
       result.rating = place.rating;
       result.reviews = place.reviews;
       
-      // Popular Times (historique par jour/heure)
-      if (place.popular_times) {
-        result.popularTimes = place.popular_times;
+      // Popular Times - structure: popular_times.graph_results.{day}[{hour}]
+      if (place.popular_times && place.popular_times.graph_results) {
+        const graphResults = place.popular_times.graph_results;
+        result.popularTimes = graphResults;
         console.log('📊 Popular Times disponibles');
         
         // Extraire l'affluence actuelle basée sur le jour/heure
@@ -97,80 +98,92 @@ async function getAffluenceViaSerpAPI() {
         const currentDay = dayNames[now.getDay()];
         const currentHour = now.getHours();
         
-        const todayData = place.popular_times.find(d => d.day.toLowerCase() === currentDay);
-        if (todayData && todayData.popular_times) {
-          const hourData = todayData.popular_times.find(h => h.time && h.time.includes(`${currentHour}`));
+        // Trouver les données du jour actuel
+        const todayData = graphResults[currentDay];
+        if (todayData && Array.isArray(todayData)) {
+          // Chercher l'heure actuelle (format "12 h", "19 h", etc.)
+          const hourData = todayData.find(h => {
+            const hourMatch = h.time && h.time.match(/(\d+)/);
+            return hourMatch && parseInt(hourMatch[1]) === currentHour;
+          });
+          
           if (hourData) {
-            result.currentPopularity = hourData.busyness_percentage || hourData.percentage;
-            console.log(`📊 Affluence typique à ${currentHour}h:`, result.currentPopularity + '%');
+            result.currentPopularity = hourData.busyness_score;
+            result.currentInfo = hourData.info;
+            console.log(`📊 Affluence à ${currentHour}h: ${result.currentPopularity}% - ${hourData.info || 'N/A'}`);
+          }
+        }
+        
+        // Live Busyness (temps réel) - dans live_hash
+        if (place.popular_times.live_hash && place.popular_times.live_hash.info) {
+          const liveInfo = place.popular_times.live_hash.info;
+          console.log('🔴 LIVE:', liveInfo);
+          result.liveText = liveInfo;
+          result.source = 'serpapi_live';
+          
+          // Parser le texte live
+          const liveText = liveInfo.toLowerCase();
+          
+          if (liveText.includes('très') || liveText.includes('very busy')) {
+            result.status = 'very_busy';
+            result.score = 85;
+            result.message = '🔴 Très fréquenté';
+          } else if (liveText.includes('assez') || liveText.includes('fairly') || liveText.includes('somewhat')) {
+            result.status = 'fairly_busy';
+            result.score = 60;
+            result.message = '🟠 Assez fréquenté';
+          } else if (liveText.includes('peu') || liveText.includes('not busy') || liveText.includes('not too')) {
+            result.status = 'not_busy';
+            result.score = 30;
+            result.message = '🟢 Peu fréquenté';
+          } else {
+            result.status = 'unknown';
+            result.score = 50;
+            result.message = '⚪ ' + liveInfo;
+          }
+        }
+        // Si pas de live, utiliser les données historiques
+        else if (result.currentPopularity !== undefined && result.currentPopularity !== null) {
+          result.source = 'serpapi_historical';
+          result.score = result.currentPopularity;
+          
+          // Utiliser l'info de Google si disponible
+          if (result.currentInfo) {
+            const info = result.currentInfo.toLowerCase();
+            if (info.includes('très')) {
+              result.status = 'very_busy';
+              result.message = `🔴 ${result.currentInfo}`;
+            } else if (info.includes('assez')) {
+              result.status = 'fairly_busy';
+              result.message = `🟠 ${result.currentInfo}`;
+            } else if (info.includes('peu')) {
+              result.status = 'not_busy';
+              result.message = `🟢 ${result.currentInfo}`;
+            } else {
+              result.status = 'unknown';
+              result.message = `⚪ ${result.currentInfo}`;
+            }
+          } else {
+            // Fallback basé sur le score
+            if (result.currentPopularity >= 70) {
+              result.status = 'very_busy';
+              result.message = `🔴 Très fréquenté (${result.currentPopularity}%)`;
+            } else if (result.currentPopularity >= 40) {
+              result.status = 'fairly_busy';
+              result.message = `🟠 Assez fréquenté (${result.currentPopularity}%)`;
+            } else if (result.currentPopularity > 0) {
+              result.status = 'not_busy';
+              result.message = `🟢 Peu fréquenté (${result.currentPopularity}%)`;
+            } else {
+              result.status = 'closed';
+              result.message = `⚫ Fermé`;
+            }
           }
         }
       }
-      
-      // Live Busyness (temps réel) - C'est ce qu'on veut!
-      if (place.popular_times_live_text) {
-        console.log('🔴 LIVE:', place.popular_times_live_text);
-        result.liveText = place.popular_times_live_text;
-        result.source = 'serpapi_live';
-        
-        // Parser le texte live
-        const liveText = place.popular_times_live_text.toLowerCase();
-        
-        if (liveText.includes('très') || liveText.includes('very busy')) {
-          result.status = 'very_busy';
-          result.score = 85;
-          result.message = '🔴 Très fréquenté';
-        } else if (liveText.includes('assez') || liveText.includes('fairly') || liveText.includes('somewhat')) {
-          result.status = 'fairly_busy';
-          result.score = 60;
-          result.message = '🟠 Assez fréquenté';
-        } else if (liveText.includes('peu') || liveText.includes('not busy') || liveText.includes('not too')) {
-          result.status = 'not_busy';
-          result.score = 30;
-          result.message = '🟢 Peu fréquenté';
-        } else {
-          result.status = 'unknown';
-          result.score = 50;
-          result.message = '⚪ ' + place.popular_times_live_text;
-        }
-      } 
-      // Si pas de live mais on a le pourcentage live
-      else if (place.popular_times_live_percent !== undefined) {
-        const percent = place.popular_times_live_percent;
-        result.currentPopularity = percent;
-        result.score = percent;
-        result.source = 'serpapi_live_percent';
-        
-        if (percent >= 70) {
-          result.status = 'very_busy';
-          result.message = `🔴 Très fréquenté (${percent}%)`;
-        } else if (percent >= 40) {
-          result.status = 'fairly_busy';
-          result.message = `🟠 Assez fréquenté (${percent}%)`;
-        } else {
-          result.status = 'not_busy';
-          result.message = `🟢 Peu fréquenté (${percent}%)`;
-        }
-        console.log('🔴 Live %:', percent);
-      }
-      // Sinon utiliser les données historiques pour estimer
-      else if (result.currentPopularity) {
-        result.source = 'serpapi_historical';
-        result.score = result.currentPopularity;
-        
-        if (result.currentPopularity >= 70) {
-          result.status = 'very_busy';
-          result.message = `🔴 Habituellement très fréquenté (${result.currentPopularity}%)`;
-        } else if (result.currentPopularity >= 40) {
-          result.status = 'fairly_busy';
-          result.message = `🟠 Habituellement assez fréquenté (${result.currentPopularity}%)`;
-        } else {
-          result.status = 'not_busy';
-          result.message = `🟢 Habituellement peu fréquenté (${result.currentPopularity}%)`;
-        }
-      }
-      
-    } else if (data.error) {
+    }
+    
+    if (data.error) {
       console.log('❌ Erreur SerpAPI:', data.error);
       return getSmartEstimate(result);
     }
