@@ -2,10 +2,10 @@ name: 📊 Scrape Affluence Google
 
 on:
   schedule:
-    # Heures clés pour la restauration (UTC → +1h pour Paris hiver, +2h été)
-    - cron: '30 10 * * *'  # 11h30 Paris - avant rush midi
+    # 3 requêtes/jour = 90/mois (plan gratuit = 100)
+    # Heures UTC → +1h pour Paris (hiver)
     - cron: '30 11 * * *'  # 12h30 Paris - rush déjeuner
-    - cron: '0 18 * * *'   # 19h00 Paris - début service soir
+    - cron: '0 18 * * *'   # 19h00 Paris - début service soir  
     - cron: '30 19 * * *'  # 20h30 Paris - rush dîner
   
   workflow_dispatch:  # Permet de lancer manuellement
