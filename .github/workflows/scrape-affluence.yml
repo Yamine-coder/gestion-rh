@@ -104,7 +104,7 @@ jobs:
               // Attendre un peu que la page charge
               await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
               
-              // Accepter les cookies si présent
+              // Accepter les cookies si present
               try {
                 const acceptButton = await page.$('button[aria-label*="Accepter"]');
                 if (acceptButton) {
@@ -113,15 +113,56 @@ jobs:
                 }
               } catch (e) {}
               
+              // Cliquer sur onglet "A propos" pour voir les heures d affluence
+              try {
+                console.log('🔍 Recherche onglet A propos...');
+                const aboutTab = await page.$x('//button[contains(text(), "propos")]');
+                if (aboutTab.length > 0) {
+                  await aboutTab[0].click();
+                  console.log('✅ Clic sur A propos');
+                  await new Promise(r => setTimeout(r, 2000));
+                }
+              } catch (e) {
+                console.log('⚠️ Pas d onglet A propos trouve');
+              }
+              
+              // Scroller dans le panneau lateral pour charger les donnees d affluence
+              try {
+                console.log('📜 Scroll pour charger les donnees...');
+                await page.evaluate(() => {
+                  const panels = document.querySelectorAll('[role="main"], .m6QErb, .DxyBCb');
+                  panels.forEach(panel => {
+                    if (panel.scrollHeight > panel.clientHeight) {
+                      panel.scrollTop = panel.scrollHeight / 2;
+                    }
+                  });
+                  window.scrollBy(0, 500);
+                });
+                await new Promise(r => setTimeout(r, 2000));
+                
+                // Second scroll
+                await page.evaluate(() => {
+                  const panels = document.querySelectorAll('[role="main"], .m6QErb, .DxyBCb');
+                  panels.forEach(panel => {
+                    if (panel.scrollHeight > panel.clientHeight) {
+                      panel.scrollTop = panel.scrollHeight;
+                    }
+                  });
+                });
+                await new Promise(r => setTimeout(r, 2000));
+              } catch (e) {
+                console.log('⚠️ Erreur scroll:', e.message);
+              }
+              
               // Screenshot pour debug
               await page.screenshot({ path: 'google-maps-screenshot.png', fullPage: false });
-              console.log('📸 Screenshot sauvegardé');
+              console.log('📸 Screenshot sauvegarde');
               
-              // Chercher les données d'affluence
+              // Chercher les donnees d affluence
               const result = await page.evaluate(() => {
                 const bodyText = document.body?.innerText || '';
                 
-                // Vérifier si on est sur la bonne page (pas un CAPTCHA)
+                // Verifier si on est sur la bonne page (pas un CAPTCHA)
                 const isCaptcha = bodyText.includes('unusual traffic') || 
                                   bodyText.includes('trafic exceptionnel') ||
                                   bodyText.includes('pas un robot');
@@ -130,31 +171,55 @@ jobs:
                   return { error: 'CAPTCHA', debug: bodyText.substring(0, 500) };
                 }
                 
-                // Patterns pour l'affluence live
+                // Chercher specifiquement dans les elements aria-label (heures d affluence)
+                const ariaElements = document.querySelectorAll('[aria-label*="affluence"], [aria-label*="frequente"], [aria-label*="fréquenté"]');
+                for (const el of ariaElements) {
+                  const label = el.getAttribute('aria-label');
+                  if (label) {
+                    return { liveText: label, found: true, source: 'aria-label' };
+                  }
+                }
+                
+                // Chercher dans les sections populaires
+                const popularSections = document.querySelectorAll('.section-popular-times, .popular-times, [data-section-id="pft"]');
+                for (const section of popularSections) {
+                  const text = section.innerText;
+                  if (text && text.length > 0) {
+                    return { liveText: text, found: true, source: 'popular-section' };
+                  }
+                }
+                
+                // Patterns pour l affluence live
                 const livePatterns = [
-                  /moins fréquenté que d['']habitude/i,
-                  /plus fréquenté que d['']habitude/i,
-                  /aussi fréquenté que d['']habitude/i,
-                  /très peu fréquenté/i,
-                  /peu fréquenté/i,
-                  /assez fréquenté/i,
-                  /très fréquenté/i,
-                  /pas trop fréquenté/i
+                  /moins fr.quent. que d.habitude/i,
+                  /plus fr.quent. que d.habitude/i,
+                  /aussi fr.quent. que d.habitude/i,
+                  /tr.s peu fr.quent/i,
+                  /peu fr.quent/i,
+                  /assez fr.quent/i,
+                  /tr.s fr.quent/i,
+                  /pas trop fr.quent/i,
+                  /heures d.affluence/i,
+                  /actuellement/i
                 ];
                 
                 for (const pattern of livePatterns) {
                   const match = bodyText.match(pattern);
                   if (match) {
+                    // Extraire plus de contexte autour du match
+                    const idx = bodyText.toLowerCase().indexOf(match[0].toLowerCase());
+                    const context = bodyText.substring(Math.max(0, idx - 50), idx + 100);
                     return { 
                       liveText: match[0], 
                       found: true,
-                      debug: bodyText.substring(0, 300)
+                      context: context,
+                      source: 'text-match'
                     };
                   }
                 }
                 
-                // Chercher le pourcentage directement (ex: "75% d'affluence")
-                const percentMatch = bodyText.match(/(\d{1,3})\s*%.*(?:affluence|fréquent)/i);
+                // Chercher le pourcentage directement (ex: "75% d affluence")
+                const percentMatch = bodyText.match(/(\d{1,3})\s*%.*(?:affluence|fr.quent)/i);
                 if (percentMatch) {
                   return {
                     liveText: `${percentMatch[1]}% d'affluence`,
