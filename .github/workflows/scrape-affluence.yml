@@ -43,23 +43,23 @@ jobs:
           const GIST_ID = process.env.GIST_ID;
           const GITHUB_TOKEN = process.env.GIST_TOKEN;
           
-          // Mapping texte français -> score
+          // Mapping texte français -> score (utilise regex pour eviter problemes apostrophes)
           function textToScore(text) {
             if (!text) return null;
             const t = text.toLowerCase();
             
-            // Textes "live" comparatifs
-            if (t.includes('moins fréquenté que d\'habitude') || t.includes('moins fréquenté que d'habitude')) return 35;
-            if (t.includes('plus fréquenté que d\'habitude') || t.includes('plus fréquenté que d'habitude')) return 75;
-            if (t.includes('aussi fréquenté que d\'habitude') || t.includes('aussi fréquenté que d'habitude')) return 50;
+            // Textes "live" comparatifs - regex avec [''] pour matcher les 2 types d apostrophes
+            if (/moins fr.quent. que d.habitude/i.test(t)) return 35;
+            if (/plus fr.quent. que d.habitude/i.test(t)) return 75;
+            if (/aussi fr.quent. que d.habitude/i.test(t)) return 50;
             
             // Textes absolus
-            if (t.includes('pas trop fréquenté') || t.includes('très peu fréquenté')) return 15;
-            if (t.includes('peu fréquenté') && !t.includes('assez')) return 25;
-            if (t.includes('assez peu fréquenté')) return 30;
-            if (t.includes('assez fréquenté') && !t.includes('peu')) return 60;
-            if (t.includes('très fréquenté')) return 90;
-            if (t.includes('fréquenté')) return 50;
+            if (/pas trop fr.quent/i.test(t) || /tr.s peu fr.quent/i.test(t)) return 15;
+            if (/peu fr.quent/i.test(t) && !/assez/i.test(t)) return 25;
+            if (/assez peu fr.quent/i.test(t)) return 30;
+            if (/assez fr.quent/i.test(t) && !/peu/i.test(t)) return 60;
+            if (/tr.s fr.quent/i.test(t)) return 90;
+            if (/fr.quent/i.test(t)) return 50;
             
             return null;
           }
