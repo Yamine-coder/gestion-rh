@@ -1,18 +1,13 @@
-name: � Scrape Affluence Live (Puppeteer)
+name: 🔴 Scrape Affluence Live (Google Maps)
 
 on:
   schedule:
-    # ═══════════════════════════════════════════════════════════════
-    # SCRAPING GRATUIT avec Puppeteer - toutes les 30 min heures ouverture
-    # GitHub Actions = 2000 min/mois gratuit = ~60 runs/jour possible
-    # On fait 26 runs/jour (11h-23h = 13h × 2/heure)
-    # ═══════════════════════════════════════════════════════════════
-    - cron: '0,30 10-22 * * *'  # Toutes les 30 min de 11h à 23h Paris (10-22 UTC)
+    # Toutes les 30 min pendant les heures d'ouverture (11h-23h Paris = 10h-22h UTC)
+    - cron: '0,30 10-22 * * *'
   
   workflow_dispatch:  # Permet de lancer manuellement
 
 env:
-  RESTAURANT_NAME: "Chez Antoine Vincennes"
   PLACE_ID: "ChIJnYLnmZly5kcRgpLV4MN4Rus"
   GIST_ID: "d58c52b36d59dc78de0af9286881cdec"
 
@@ -30,10 +25,10 @@ jobs:
         with:
           node-version: '20'
       
-      - name: 📦 Install Puppeteer
+      - name: 📦 Install Dependencies
         run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
       
-      - name: 🔴 Scrape Google Affluence (Puppeteer)
+      - name: 🔴 Scrape Google Maps Affluence
         id: scrape
         run: |
           node << 'SCRIPT'
@@ -44,25 +39,33 @@ jobs:
           
           puppeteer.use(StealthPlugin());
           
+          const PLACE_ID = process.env.PLACE_ID;
           const GIST_ID = process.env.GIST_ID;
           const GITHUB_TOKEN = process.env.GIST_TOKEN;
           
-          // Mapping texte -> score
+          // Mapping texte français -> score
           function textToScore(text) {
+            if (!text) return null;
             const t = text.toLowerCase();
-            if (t.includes('très peu') || t.includes('pas trop')) return 15;
-            if (t.includes('moins fréquenté')) return 30;
-            if (t.includes('peu fréquenté')) return 25;
-            if (t.includes('aussi fréquenté')) return 50;
-            if (t.includes('assez fréquenté')) return 60;
-            if (t.includes('plus fréquenté')) return 75;
-            if (t.includes('très fréquenté')) return 85;
+            
+            // Textes "live" comparatifs
+            if (t.includes('moins fréquenté que d\'habitude') || t.includes('moins fréquenté que d'habitude')) return 35;
+            if (t.includes('plus fréquenté que d\'habitude') || t.includes('plus fréquenté que d'habitude')) return 75;
+            if (t.includes('aussi fréquenté que d\'habitude') || t.includes('aussi fréquenté que d'habitude')) return 50;
+            
+            // Textes absolus
+            if (t.includes('pas trop fréquenté') || t.includes('très peu fréquenté')) return 15;
+            if (t.includes('peu fréquenté') && !t.includes('assez')) return 25;
+            if (t.includes('assez peu fréquenté')) return 30;
+            if (t.includes('assez fréquenté') && !t.includes('peu')) return 60;
+            if (t.includes('très fréquenté')) return 90;
             if (t.includes('fréquenté')) return 50;
+            
             return null;
           }
           
-          async function scrapeAffluence() {
-            console.log('🔴 Démarrage scraping Puppeteer...');
+          async function scrapeGoogleMaps() {
+            console.log('🔴 Démarrage scraping Google Maps...');
             
             const browser = await puppeteer.launch({
               headless: 'new',
@@ -71,44 +74,100 @@ jobs:
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--single-process'
+                '--single-process',
+                '--disable-blink-features=AutomationControlled'
               ]
             });
             
             try {
               const page = await browser.newPage();
-              await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-              await page.setExtraHTTPHeaders({ 'Accept-Language': 'fr-FR,fr;q=0.9' });
               
-              console.log('🔴 Navigation vers Google...');
-              await page.goto('https://www.google.fr/search?q=Chez+Antoine+Vincennes+restaurant&hl=fr&gl=fr', {
+              // User agent réaliste
+              await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+              await page.setExtraHTTPHeaders({ 
+                'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+              });
+              
+              // Viewport desktop
+              await page.setViewport({ width: 1366, height: 768 });
+              
+              // URL Google Maps directe avec Place ID
+              const url = `https://www.google.com/maps/place/?q=place_id:${PLACE_ID}&hl=fr`;
+              console.log('🔴 Navigation vers:', url);
+              
+              await page.goto(url, {
                 waitUntil: 'networkidle2',
                 timeout: 30000
               });
               
-              await new Promise(r => setTimeout(r, 3000));
+              // Attendre un peu que la page charge
+              await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
+              
+              // Accepter les cookies si présent
+              try {
+                const acceptButton = await page.$('button[aria-label*="Accepter"]');
+                if (acceptButton) {
+                  await acceptButton.click();
+                  await new Promise(r => setTimeout(r, 1000));
+                }
+              } catch (e) {}
               
               // Screenshot pour debug
-              await page.screenshot({ path: 'google-screenshot.png', fullPage: true });
+              await page.screenshot({ path: 'google-maps-screenshot.png', fullPage: false });
               console.log('📸 Screenshot sauvegardé');
               
+              // Chercher les données d'affluence
               const result = await page.evaluate(() => {
-                const text = document.body?.innerText || '';
-                const patterns = [
-                  /Moins\s+fréquenté\s+que\s+d'habitude/i,
-                  /Plus\s+fréquenté\s+que\s+d'habitude/i,
-                  /Aussi\s+fréquenté\s+que\s+d'habitude/i,
-                  /Pas\s+trop\s+fréquenté/i,
-                  /Généralement\s+(très\s+)?peu\s+fréquenté/i,
-                  /Généralement\s+(très\s+)?fréquenté/i,
-                  /assez\s+fréquenté/i,
+                const bodyText = document.body?.innerText || '';
+                
+                // Vérifier si on est sur la bonne page (pas un CAPTCHA)
+                const isCaptcha = bodyText.includes('unusual traffic') || 
+                                  bodyText.includes('trafic exceptionnel') ||
+                                  bodyText.includes('pas un robot');
+                
+                if (isCaptcha) {
+                  return { error: 'CAPTCHA', debug: bodyText.substring(0, 500) };
+                }
+                
+                // Patterns pour l'affluence live
+                const livePatterns = [
+                  /moins fréquenté que d['']habitude/i,
+                  /plus fréquenté que d['']habitude/i,
+                  /aussi fréquenté que d['']habitude/i,
+                  /très peu fréquenté/i,
+                  /peu fréquenté/i,
+                  /assez fréquenté/i,
+                  /très fréquenté/i,
+                  /pas trop fréquenté/i
                 ];
                 
-                for (const p of patterns) {
-                  const match = text.match(p);
-                  if (match) return { liveText: match[0], found: true };
+                for (const pattern of livePatterns) {
+                  const match = bodyText.match(pattern);
+                  if (match) {
+                    return { 
+                      liveText: match[0], 
+                      found: true,
+                      debug: bodyText.substring(0, 300)
+                    };
+                  }
                 }
-                return { liveText: null, found: false, debug: text.substring(0, 500) };
+                
+                // Chercher le pourcentage directement (ex: "75% d'affluence")
+                const percentMatch = bodyText.match(/(\d{1,3})\s*%.*(?:affluence|fréquent)/i);
+                if (percentMatch) {
+                  return {
+                    liveText: `${percentMatch[1]}% d'affluence`,
+                    score: parseInt(percentMatch[1]),
+                    found: true
+                  };
+                }
+                
+                return { 
+                  liveText: null, 
+                  found: false, 
+                  debug: bodyText.substring(0, 500) 
+                };
               });
               
               await browser.close();
@@ -125,6 +184,7 @@ jobs:
             
             // Sauvegarder localement aussi
             fs.writeFileSync('affluence-live.json', content);
+            console.log('💾 Fichier local sauvegardé');
             
             return new Promise((resolve, reject) => {
               const req = https.request({
@@ -141,10 +201,10 @@ jobs:
                 res.on('data', chunk => body += chunk);
                 res.on('end', () => {
                   if (res.statusCode === 200) {
-                    console.log('✅ Gist mis à jour !');
+                    console.log('✅ Gist mis à jour avec succès !');
                     resolve();
                   } else {
-                    console.error('❌ Gist error:', res.statusCode, body);
+                    console.error('❌ Erreur Gist:', res.statusCode, body);
                     reject(new Error('Gist update failed: ' + res.statusCode));
                   }
                 });
@@ -160,27 +220,37 @@ jobs:
             });
           }
           
+          // Main
           (async () => {
             try {
-              const result = await scrapeAffluence();
-              console.log('📊 Résultat scraping:', JSON.stringify(result, null, 2));
+              const result = await scrapeGoogleMaps();
+              console.log('📊 Résultat:', JSON.stringify(result, null, 2));
+              
+              if (result.error === 'CAPTCHA') {
+                console.log('⚠️ CAPTCHA détecté - Pas de mise à jour');
+                console.log('Debug:', result.debug);
+                process.exit(0); // Exit propre, ne pas faire échouer le workflow
+              }
               
               if (result.found && result.liveText) {
-                const score = textToScore(result.liveText);
+                const score = result.score || textToScore(result.liveText);
+                
                 const data = {
                   score,
                   liveText: result.liveText,
                   isLive: true,
                   scrapedAt: new Date().toISOString(),
-                  source: 'github-actions-puppeteer'
+                  source: 'google-maps-live'
                 };
                 
-                console.log('📝 Données:', data);
+                console.log('📝 Données à sauvegarder:', data);
                 await updateGist(data);
                 console.log('🎉 Succès !');
               } else {
                 console.log('⚠️ Pas de données live trouvées');
-                console.log('Debug:', result.debug);
+                if (result.debug) {
+                  console.log('Debug (extrait):', result.debug.substring(0, 300));
+                }
               }
               
               process.exit(0);
@@ -192,7 +262,8 @@ jobs:
           SCRIPT
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          GIST_ID: ${{ env.GIST_ID }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          PLACE_ID: ${{ env.PLACE_ID }}
       
       - name: 📊 Upload debug artifacts
         uses: actions/upload-artifact@v4
@@ -200,6 +271,6 @@ jobs:
         with:
           name: scrape-debug-${{ github.run_id }}
           path: |
-            google-screenshot.png
+            google-maps-screenshot.png
             affluence-live.json
           retention-days: 3
