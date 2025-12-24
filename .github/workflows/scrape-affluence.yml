@@ -1,26 +1,25 @@
-name: 📊 Scrape Affluence Google
+name: � Scrape Affluence Live (Puppeteer)
 
 on:
   schedule:
-    # 3 requêtes/jour = 90/mois (plan gratuit = 100)
-    # Heures UTC → +1h pour Paris (hiver)
-    - cron: '30 11 * * *'  # 12h30 Paris - rush déjeuner
-    - cron: '0 18 * * *'   # 19h00 Paris - début service soir  
-    - cron: '30 19 * * *'  # 20h30 Paris - rush dîner
+    # ═══════════════════════════════════════════════════════════════
+    # SCRAPING GRATUIT avec Puppeteer - toutes les 30 min heures ouverture
+    # GitHub Actions = 2000 min/mois gratuit = ~60 runs/jour possible
+    # On fait 26 runs/jour (11h-23h = 13h × 2/heure)
+    # ═══════════════════════════════════════════════════════════════
+    - cron: '0,30 10-22 * * *'  # Toutes les 30 min de 11h à 23h Paris (10-22 UTC)
   
   workflow_dispatch:  # Permet de lancer manuellement
 
 env:
-  # Coordonnées exactes de Chez Antoine Vincennes (extrait du lien Google Maps)
   RESTAURANT_NAME: "Chez Antoine Vincennes"
-  RESTAURANT_ADDRESS: "2 Avenue de la République 94300 Vincennes"
-  # Place ID correct (de https://search.google.com/local/writereview?placeid=...)
   PLACE_ID: "ChIJnYLnmZly5kcRgpLV4MN4Rus"
+  GIST_ID: "d58c52b36d59dc78de0af9286881cdec"
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     
     steps:
       - name: 📥 Checkout
@@ -31,45 +30,176 @@ jobs:
         with:
           node-version: '20'
       
-      - name: 📦 Install dependencies
-        working-directory: scripts
-        run: npm ci || npm install
+      - name: 📦 Install Puppeteer
+        run: npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
       
-      - name: 🕵️ Scrape Affluence via SerpAPI
+      - name: 🔴 Scrape Google Affluence (Puppeteer)
         id: scrape
-        working-directory: scripts
-        run: node scrape-affluence-serpapi.js
-        env:
-          RESTAURANT_NAME: ${{ env.RESTAURANT_NAME }}
-          PLACE_ID: ${{ env.PLACE_ID }}
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-      
-      - name: 📤 Update Gist
-        working-directory: scripts
+        run: |
+          node << 'SCRIPT'
+          const puppeteer = require('puppeteer-extra');
+          const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+          const https = require('https');
+          const fs = require('fs');
+          
+          puppeteer.use(StealthPlugin());
+          
+          const GIST_ID = process.env.GIST_ID;
+          const GITHUB_TOKEN = process.env.GIST_TOKEN;
+          
+          // Mapping texte -> score
+          function textToScore(text) {
+            const t = text.toLowerCase();
+            if (t.includes('très peu') || t.includes('pas trop')) return 15;
+            if (t.includes('moins fréquenté')) return 30;
+            if (t.includes('peu fréquenté')) return 25;
+            if (t.includes('aussi fréquenté')) return 50;
+            if (t.includes('assez fréquenté')) return 60;
+            if (t.includes('plus fréquenté')) return 75;
+            if (t.includes('très fréquenté')) return 85;
+            if (t.includes('fréquenté')) return 50;
+            return null;
+          }
+          
+          async function scrapeAffluence() {
+            console.log('🔴 Démarrage scraping Puppeteer...');
+            
+            const browser = await puppeteer.launch({
+              headless: 'new',
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--single-process'
+              ]
+            });
+            
+            try {
+              const page = await browser.newPage();
+              await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+              await page.setExtraHTTPHeaders({ 'Accept-Language': 'fr-FR,fr;q=0.9' });
+              
+              console.log('🔴 Navigation vers Google...');
+              await page.goto('https://www.google.fr/search?q=Chez+Antoine+Vincennes+restaurant&hl=fr&gl=fr', {
+                waitUntil: 'networkidle2',
+                timeout: 30000
+              });
+              
+              await new Promise(r => setTimeout(r, 3000));
+              
+              // Screenshot pour debug
+              await page.screenshot({ path: 'google-screenshot.png', fullPage: true });
+              console.log('📸 Screenshot sauvegardé');
+              
+              const result = await page.evaluate(() => {
+                const text = document.body?.innerText || '';
+                const patterns = [
+                  /Moins\s+fréquenté\s+que\s+d'habitude/i,
+                  /Plus\s+fréquenté\s+que\s+d'habitude/i,
+                  /Aussi\s+fréquenté\s+que\s+d'habitude/i,
+                  /Pas\s+trop\s+fréquenté/i,
+                  /Généralement\s+(très\s+)?peu\s+fréquenté/i,
+                  /Généralement\s+(très\s+)?fréquenté/i,
+                  /assez\s+fréquenté/i,
+                ];
+                
+                for (const p of patterns) {
+                  const match = text.match(p);
+                  if (match) return { liveText: match[0], found: true };
+                }
+                return { liveText: null, found: false, debug: text.substring(0, 500) };
+              });
+              
+              await browser.close();
+              return result;
+              
+            } catch (err) {
+              await browser.close();
+              throw err;
+            }
+          }
+          
+          async function updateGist(data) {
+            const content = JSON.stringify(data, null, 2);
+            
+            // Sauvegarder localement aussi
+            fs.writeFileSync('affluence-live.json', content);
+            
+            return new Promise((resolve, reject) => {
+              const req = https.request({
+                hostname: 'api.github.com',
+                path: '/gists/' + GIST_ID,
+                method: 'PATCH',
+                headers: {
+                  'Authorization': 'token ' + GITHUB_TOKEN,
+                  'User-Agent': 'GitHub-Actions-Scraper',
+                  'Content-Type': 'application/json',
+                }
+              }, res => {
+                let body = '';
+                res.on('data', chunk => body += chunk);
+                res.on('end', () => {
+                  if (res.statusCode === 200) {
+                    console.log('✅ Gist mis à jour !');
+                    resolve();
+                  } else {
+                    console.error('❌ Gist error:', res.statusCode, body);
+                    reject(new Error('Gist update failed: ' + res.statusCode));
+                  }
+                });
+              });
+              
+              req.on('error', reject);
+              req.write(JSON.stringify({
+                files: {
+                  'affluence-live.json': { content }
+                }
+              }));
+              req.end();
+            });
+          }
+          
+          (async () => {
+            try {
+              const result = await scrapeAffluence();
+              console.log('📊 Résultat scraping:', JSON.stringify(result, null, 2));
+              
+              if (result.found && result.liveText) {
+                const score = textToScore(result.liveText);
+                const data = {
+                  score,
+                  liveText: result.liveText,
+                  isLive: true,
+                  scrapedAt: new Date().toISOString(),
+                  source: 'github-actions-puppeteer'
+                };
+                
+                console.log('📝 Données:', data);
+                await updateGist(data);
+                console.log('🎉 Succès !');
+              } else {
+                console.log('⚠️ Pas de données live trouvées');
+                console.log('Debug:', result.debug);
+              }
+              
+              process.exit(0);
+            } catch (err) {
+              console.error('❌ Erreur:', err.message);
+              process.exit(1);
+            }
+          })();
+          SCRIPT
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          GIST_ID: ${{ secrets.GIST_ID }}
-        run: node update-gist.js
+          GIST_ID: ${{ env.GIST_ID }}
       
-      - name: 📊 Upload artifacts (data + screenshots)
+      - name: 📊 Upload debug artifacts
         uses: actions/upload-artifact@v4
-        with:
-          name: affluence-debug-${{ github.run_id }}
-          path: |
-            scripts/affluence-data.json
-            scripts/*.png
-            scripts/*.json
-          retention-days: 7
         if: always()
-      
-      - name: 🔔 Notify server (optional)
-        if: success()
-        run: |
-          if [ -n "${{ secrets.API_URL }}" ]; then
-            curl -X POST "${{ secrets.API_URL }}/api/external/affluence-update" \
-              -H "Content-Type: application/json" \
-              -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
-              -d '{"source":"github-actions","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
-              --max-time 10 || true
-          fi
-        continue-on-error: true
+        with:
+          name: scrape-debug-${{ github.run_id }}
+          path: |
+            google-screenshot.png
+            affluence-live.json
+          retention-days: 3
