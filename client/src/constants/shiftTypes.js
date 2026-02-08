@@ -28,7 +28,7 @@ export const isWorkShift = (shift) => {
   return shift?.type === SHIFT_TYPES.TRAVAIL;
 };
 
-// Helper pour vérifier si un segment est un extra (heures au noir)
+// Helper pour vérifier si un segment est un extra (heures supplémentaires payées en espèces)
 export const isExtraSegment = (segment) => {
   return segment?.isExtra === true;
 };

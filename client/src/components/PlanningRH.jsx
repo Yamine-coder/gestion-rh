@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import axios from "axios";
 import { normalizeDateLocal, getCurrentDateString, isToday, toLocalDateString } from '../utils/parisTimeUtils';
-import { DEBUG_MODE, debugLog, debugWarn, debugError } from '../utils/debugMode';
 import { getCategorieEmploye as getCategorieEmployeUtil, CATEGORIES } from '../utils/categoriesConfig';
 import { TYPES_CONGES, getTypeConge, getTypesForSelect } from '../config/typesConges';
 // Import uuid retire - plus besoin d'IDs uniques pour les segments
@@ -278,24 +277,64 @@ const buildApiUrl = (endpoint) => `${API_URL}${endpoint.startsWith('/') ? endpoi
 // COMPOSANT LÉGENDE DES COULEURS PAR TYPE
 // Affiche une légende compacte des couleurs utilisées dans le planning
 // -------------------------------------------------------------------------------
-function ShiftColorLegend({ compact = false, showConges = true }) {
+function ShiftColorLegend({ compact = false, showConges = true, inline = false }) {
   const [isExpanded, setIsExpanded] = useState(false);
   
+  // Types de shifts visibles sur le planning (changement visuel)
   const shiftTypes = [
-    { key: 'normal', config: SHIFT_TYPE_COLORS.normal },
-    { key: 'aValider', config: SHIFT_TYPE_COLORS.aValider },
-    { key: 'extraAPayer', config: SHIFT_TYPE_COLORS.extraAPayer },
-    { key: 'extraPaye', config: SHIFT_TYPE_COLORS.extraPaye },
-    { key: 'nuit', config: SHIFT_TYPE_COLORS.nuit },
-    { key: 'remplacement', config: SHIFT_TYPE_COLORS.remplacement },
-    { key: 'repos', config: SHIFT_TYPE_COLORS.repos },
+    { key: 'normal', config: SHIFT_TYPE_COLORS.normal },           // Shift travail normal
+    { key: 'aValider', config: SHIFT_TYPE_COLORS.aValider },       // En attente de validation
+    { key: 'extraAPayer', config: SHIFT_TYPE_COLORS.extraAPayer }, // Extra non payé
+    { key: 'extraPaye', config: SHIFT_TYPE_COLORS.extraPaye },     // Extra payé
+    { key: 'remplacement', config: SHIFT_TYPE_COLORS.remplacement }, // Remplacement effectué
   ];
   
-  const congeTypes = showConges ? [
+  // Types de congés/absences
+  const congeTypes = [
     { key: 'CP', config: CONGE_TYPE_COLORS.CP },
+    { key: 'RTT', config: CONGE_TYPE_COLORS.RTT },
     { key: 'maladie', config: CONGE_TYPE_COLORS.maladie },
-  ] : [];
+    { key: 'formation', config: CONGE_TYPE_COLORS.formation },
+    { key: 'sans_solde', config: CONGE_TYPE_COLORS.sans_solde },
+  ];
+
+  // Version inline (barre horizontale)
+  if (inline) {
+    return (
+      <div className="flex items-center gap-3 flex-wrap text-[9px]">
+        {/* Shifts */}
+        {shiftTypes.map(({ key, config }) => {
+          const Icon = config.Icon;
+          return (
+            <span key={key} className="flex items-center gap-1">
+              <span className={`w-2 h-2 rounded ${config.dot}`}></span>
+              <Icon className={`w-2.5 h-2.5 ${config.text}`} />
+              <span className="text-gray-600">{config.label}</span>
+            </span>
+          );
+        })}
+        {/* Séparateur */}
+        {showConges && (
+          <>
+            <span className="text-gray-300">|</span>
+            {/* Congés */}
+            {congeTypes.map(({ key, config }) => {
+              const Icon = config.Icon;
+              return (
+                <span key={key} className="flex items-center gap-1">
+                  <span className={`w-2 h-2 rounded ${config.bg} border ${config.border}`}></span>
+                  <Icon className={`w-2.5 h-2.5 ${config.color}`} />
+                  <span className="text-gray-600">{config.label}</span>
+                </span>
+              );
+            })}
+          </>
+        )}
+      </div>
+    );
+  }
   
+  // Version compacte (bouton + dropdown)
   if (compact) {
     return (
       <div className="relative">
@@ -306,9 +345,9 @@ function ShiftColorLegend({ compact = false, showConges = true }) {
         >
           <div className="flex -space-x-1">
             <span className={`w-3 h-3 rounded-full ${SHIFT_TYPE_COLORS.normal.dot}`} />
-            <span className={`w-3 h-3 rounded-full ${SHIFT_TYPE_COLORS.aValider.dot}`} />
-            <span className={`w-3 h-3 rounded-full ${SHIFT_TYPE_COLORS.extraPaye.dot}`} />
-            <span className={`w-3 h-3 rounded-full ${SHIFT_TYPE_COLORS.nuit.dot}`} />
+            <span className={`w-3 h-3 rounded-full ${SHIFT_TYPE_COLORS.extraAPayer.dot}`} />
+            <span className={`w-3 h-3 rounded-full ${CONGE_TYPE_COLORS.CP.bg} border ${CONGE_TYPE_COLORS.CP.border}`} />
+            <span className={`w-3 h-3 rounded-full ${CONGE_TYPE_COLORS.maladie.bg} border ${CONGE_TYPE_COLORS.maladie.border}`} />
           </div>
           <span>Légende</span>
           <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -317,32 +356,43 @@ function ShiftColorLegend({ compact = false, showConges = true }) {
         </button>
         
         {isExpanded && (
-          <div className="absolute top-full right-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-100 p-3 z-50">
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Types de shifts</div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="absolute top-full right-0 mt-1 w-72 bg-white rounded-xl shadow-lg border border-gray-100 p-4 z-50">
+            {/* Types de shifts */}
+            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Clock className="w-3 h-3" />
+              Types de shifts
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-4">
               {shiftTypes.map(({ key, config }) => {
                 const Icon = config.Icon;
                 return (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className={`w-3 h-3 rounded-full ${config.dot}`} />
-                    <Icon size={12} className={config.text} />
-                    <span className="text-[10px] text-gray-600 truncate">{config.label}</span>
+                  <div key={key} className="flex items-center gap-2 py-0.5">
+                    <span className={`w-3 h-3 rounded ${config.dot}`} />
+                    <Icon className={`w-3.5 h-3.5 ${config.text}`} />
+                    <span className="text-[11px] text-gray-700">{config.label}</span>
                   </div>
                 );
               })}
             </div>
+            
+            {/* Séparateur */}
+            <div className="h-px bg-gray-100 my-3" />
+            
+            {/* Types de congés */}
             {showConges && (
               <>
-                <div className="h-px bg-gray-100 my-2" />
-                <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Congés</div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <Palmtree className="w-3 h-3" />
+                  Types d'absences
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                   {congeTypes.map(({ key, config }) => {
                     const Icon = config.Icon;
                     return (
-                      <div key={key} className="flex items-center gap-2">
-                        <span className={`w-3 h-3 rounded-full ${config.bg} border ${config.border}`} />
-                        <Icon size={12} className={config.color} />
-                        <span className="text-[10px] text-gray-600 truncate">{config.label}</span>
+                      <div key={key} className="flex items-center gap-2 py-0.5">
+                        <span className={`w-3 h-3 rounded ${config.bg} border ${config.border}`} />
+                        <Icon className={`w-3.5 h-3.5 ${config.color}`} />
+                        <span className="text-[11px] text-gray-700">{config.label}</span>
                       </div>
                     );
                   })}
@@ -355,10 +405,10 @@ function ShiftColorLegend({ compact = false, showConges = true }) {
     );
   }
   
-  // Version non-compact (inline)
+  // Version non-compact (inline simple)
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      {shiftTypes.slice(0, 5).map(({ key, config }) => {
+      {shiftTypes.map(({ key, config }) => {
         const Icon = config.Icon;
         return (
           <div key={key} className="flex items-center gap-1.5">
@@ -372,12 +422,7 @@ function ShiftColorLegend({ compact = false, showConges = true }) {
   );
 }
 
-// Import du panneau de debug (seulement en développement)
-const AnomaliesDebugPanel = React.lazy(() => 
-  process.env.NODE_ENV === 'development' 
-    ? import('./debug/AnomaliesDebugPanel') 
-    : Promise.resolve({ default: () => null })
-);
+
 
 // Les fonctions de validation sont maintenant implémentées directement dans le composant
 
@@ -402,7 +447,7 @@ function resumeCell(conge, shift) {
     return `Congé ${conge.type || 'non défini'} - ${conge.statut || 'en attente'}`;
   }
   if (shift && shift.type === "travail" && Array.isArray(shift.segments)) {
-    // Exclure les segments extra (heures au noir) du calcul officiel
+    // Exclure les segments extra (payés en espèces) du calcul officiel
     const segmentsOfficiels = shift.segments.filter(seg => !seg.isExtra);
     const totalMinutes = segmentsOfficiels.reduce((acc, seg) => {
       if (!seg.start || !seg.end) return acc;
@@ -491,27 +536,27 @@ function generateWeekDates(date) {
 }
 
 function generateMonthDates(date) {
-  // Utiliser UTC pour éviter les décalages de fuseau horaire
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth();
-  const lastDay = new Date(Date.UTC(year, month + 1, 0));
+  // Utiliser la date locale
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const lastDay = new Date(year, month + 1, 0);
   
   const dates = [];
-  for (let day = 1; day <= lastDay.getUTCDate(); day++) {
-    dates.push(new Date(Date.UTC(year, month, day, 0, 0, 0, 0)));
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    dates.push(new Date(year, month, day, 0, 0, 0, 0));
   }
   return dates;
 }
 
 function generateDayDates(date) {
-  // Utiliser UTC pour cohérence avec les autres vues
-  const utcDate = new Date(Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate(),
+  // Utiliser la date locale
+  const localDate = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
     0, 0, 0, 0
-  ));
-  return [utcDate];
+  );
+  return [localDate];
 }
 
 // Composant CongeBadge
@@ -941,10 +986,11 @@ function CellDrop({
     return (
       <div
         ref={drop}
-        title={`${typeConfig.label || conge.type || 'Congé'} - ${conge.statut || 'En attente'}`}
+        title={`${typeConfig.label || conge.type || 'Congé'} - ${conge.statut || 'En attente'}${shift?.type === 'absence' ? ' - Cliquer pour modifier' : ''}`}
         className={`flex-1 h-full relative transition-all duration-150 cursor-pointer border-r border-gray-200/60 ${
           isOver && !canDrop ? 'ring-2 ring-inset ring-orange-400' : ''
         }`}
+        onClick={() => onCellClick(employeId, date)}
       >
         {isOver && !canDrop && (
           <div className="absolute inset-0 flex items-center justify-center bg-orange-100/90 z-10">
@@ -1131,12 +1177,16 @@ function CellDrop({
             {shift.segments.map((s, idx) => {
               if (!s.start || !s.end) return null;
               
-              // Calcul dur�e pr�vue
+              // Calcul durée prévue
               const [startH, startM] = s.start.split(':').map(Number);
               const [endH, endM] = s.end.split(':').map(Number);
               let durationMin = (endH * 60 + endM) - (startH * 60 + startM);
               if (durationMin < 0) durationMin += 24 * 60;
               const durationH = (durationMin / 60).toFixed(1);
+              
+              // 🆕 Vérifier si le segment suivant est un extra (pour dissocier l'affichage)
+              const nextSegment = shift.segments[idx + 1];
+              const hasExtraAfter = nextSegment && nextSegment.isExtra === true;
               
               // Trouver les écarts pour ce créneau
               const segmentNum = idx + 1;
@@ -1145,13 +1195,15 @@ function CellDrop({
                 return e.type && (e.type.includes('retard') || e.type.includes('hors_plage') || e.type.includes('heures_sup') || e.type.includes('arrivee') || e.type.includes('depart'));
               }) : [];
               
-              // Extraire heures r�elles et minutes d'�cart
+              // Extraire heures réelles et minutes d'écart
               let heureArriveeReelle = null;
               let heureDepartReelle = null;
               let dureeReelleMin = null;
               let retardMinutes = 0;
               let heuresSupMinutes = 0;
               let departAnticipeMinutes = 0;
+              let arriveeAnticipeeMinutes = 0; // 🆕 Minutes en avance
+              let isHorsPlage = false; // 🆕 Hors-plage critique
               
               if (showComparaison && ecartsSegment.length > 0) {
                 ecartsSegment.forEach(ecart => {
@@ -1164,7 +1216,24 @@ function CellDrop({
                   if (type.includes('retard')) retardMinutes = mins;
                   if (type.includes('heures_sup') || type.includes('hors_plage_out')) heuresSupMinutes = mins;
                   if (type.includes('depart_premature') || type.includes('depart_anticipe')) departAnticipeMinutes = mins;
+                  // 🆕 Détecter arrivée anticipée et hors-plage
+                  if (type.includes('arrivee_anticipee')) arriveeAnticipeeMinutes = mins;
+                  if (type.includes('hors_plage_in')) { arriveeAnticipeeMinutes = mins; isHorsPlage = type.includes('critique'); }
                 });
+                
+                // 🆕 Si un segment extra suit, plafonner le départ réel à la fin prévue du segment actuel
+                // pour éviter de compter l'extra dans le calcul du segment principal
+                if (hasExtraAfter && heureDepartReelle) {
+                  const [depReelH, depReelM] = heureDepartReelle.split(':').map(Number);
+                  const depReelMinutes = depReelH * 60 + depReelM;
+                  const finPrevueMinutes = endH * 60 + endM;
+                  
+                  // Si départ réel > fin prévue, plafonner à la fin prévue
+                  if (depReelMinutes > finPrevueMinutes) {
+                    heureDepartReelle = s.end; // Utiliser la fin prévue
+                    heuresSupMinutes = 0; // Pas d'heures sup car l'extra est un segment séparé
+                  }
+                }
                 
                 if (heureArriveeReelle && heureDepartReelle) {
                   const [arrH, arrM] = heureArriveeReelle.split(':').map(Number);
@@ -1176,7 +1245,11 @@ function CellDrop({
               
               const hasRealData = heureArriveeReelle || heureDepartReelle || dureeReelleMin;
               
-              // Analyse d�taill�e du statut
+              // 🆕 Détection segment Extra (traitement spécial)
+              const isExtraSegment = s.isExtra === true;
+              const isExtraPaye = isExtraSegment && (s.paymentStatus === 'paye' || s.paymentStatus === 'payé');
+              
+              // Analyse détaillée du statut
               let statutSegment = 'normal';
               let isAbsent = false;
               let hasRetard = false;
@@ -1184,10 +1257,13 @@ function CellDrop({
               let hasDepartAnticipe = false;
               let retardType = null;
               
-              // V�rification des anomalies uniquement pour dates pass�es ou aujourd'hui
-              if (showComparaison && !isFutureDate) {
+              // Vérification des anomalies uniquement pour dates passées ou aujourd'hui
+              // Les segments isExtra ne sont PAS traités comme des absences
+              let hasArriveeAnticipee = false; // 🆕
+              
+              if (showComparaison && !isFutureDate && !isExtraSegment) {
                 if (ecartsSegment.length === 0 && !hasRealData) {
-                  // Pas de pointage trouv� = Absence (uniquement pour dates pass�es)
+                  // Pas de pointage trouvé = Absence (uniquement pour dates passées)
                   statutSegment = 'absent';
                   isAbsent = true;
                 } else if (ecartsSegment.length === 0 && hasRealData) {
@@ -1198,13 +1274,23 @@ function CellDrop({
                     const type = e.type || '';
                     if (type.includes('retard_modere')) { hasRetard = true; retardType = 'modere'; }
                     if (type.includes('retard_critique')) { hasRetard = true; retardType = 'critique'; }
-                    if (type.includes('hors_plage_in')) { hasRetard = true; retardType = retardType || 'modere'; }
+                    // 🆕 Hors-plage IN critique = traitement spécial (violet)
+                    if (type.includes('hors_plage_in_critique')) { hasArriveeAnticipee = true; isHorsPlage = true; }
+                    else if (type.includes('hors_plage_in')) { hasArriveeAnticipee = true; }
+                    // 🆕 Arrivée anticipée extra = traitement spécial (orange)
+                    if (type.includes('arrivee_anticipee_extra')) { hasArriveeAnticipee = true; }
+                    if (type.includes('arrivee_anticipee_auto')) { hasArriveeAnticipee = true; }
                     if (type.includes('depart_premature') || type.includes('depart_anticipe')) { hasDepartAnticipe = true; }
                     if (type.includes('heures_sup') || type.includes('hors_plage_out')) { hasHeuresSup = true; }
                     if (type.includes('absence') || type.includes('absent') || type.includes('segment_non_pointe') || type.includes('missing_in') || type.includes('missing_out')) { isAbsent = true; }
                   });
                   
                   if (isAbsent) statutSegment = 'absent';
+                  // 🆕 Hors-plage critique = statut spécial violet
+                  else if (isHorsPlage) statutSegment = 'hors_plage_critique';
+                  // 🆕 Arrivée anticipée avec heures sup = combo
+                  else if (hasArriveeAnticipee && hasHeuresSup) statutSegment = 'arrivee_anticipee_et_heures_sup';
+                  else if (hasArriveeAnticipee) statutSegment = 'arrivee_anticipee';
                   else if (hasRetard && hasHeuresSup) statutSegment = 'retard_et_heures_sup';
                   else if (hasRetard && hasDepartAnticipe) statutSegment = 'retard_et_depart_anticipe';
                   else if (hasRetard) statutSegment = retardType === 'critique' ? 'retard_critique' : 'retard_modere';
@@ -1242,7 +1328,21 @@ function CellDrop({
               let badges = [];
               
               if (showComparaison) {
-                switch (statutSegment) {
+                // 🆕 Gestion spéciale des segments Extra en mode comparaison
+                if (isExtraSegment) {
+                  if (isExtraPaye) {
+                    bgClass = 'bg-gradient-to-r from-emerald-500 to-teal-600';
+                    borderLeftClass = 'border-l-4 border-l-emerald-400';
+                    statusIcon = <CheckCircle className="w-3 h-3" strokeWidth={2.5} />;
+                    statusLabel = 'Extra payé';
+                  } else {
+                    bgClass = 'bg-gradient-to-r from-orange-400 to-amber-500';
+                    borderLeftClass = 'border-l-4 border-l-orange-400';
+                    statusIcon = <Star className="w-3 h-3" strokeWidth={2.5} />;
+                    statusLabel = 'Extra';
+                  }
+                } else {
+                  switch (statutSegment) {
                   case 'ok':
                     bgClass = 'bg-gradient-to-r from-emerald-500 to-teal-600';
                     borderLeftClass = 'border-l-4 border-l-emerald-400';
@@ -1256,6 +1356,32 @@ function CellDrop({
                     statusIcon = <XCircle className="w-3 h-3" strokeWidth={2.5} />;
                     statusLabel = 'Absent';
                     ringClass = 'ring-2 ring-red-300 ring-offset-1';
+                    break;
+                  // 🆕 Hors-plage critique (violet) - probable oubli de badge
+                  case 'hors_plage_critique':
+                    bgClass = 'bg-gradient-to-r from-purple-600 to-violet-700';
+                    borderLeftClass = 'border-l-4 border-l-purple-400';
+                    statusIcon = <AlertTriangle className="w-3 h-3" strokeWidth={2.5} />;
+                    statusLabel = 'Hors-plage';
+                    ringClass = 'ring-2 ring-purple-300 ring-offset-1';
+                    break;
+                  // 🆕 Arrivée anticipée (extra potentiel)
+                  case 'arrivee_anticipee':
+                    bgClass = 'bg-gradient-to-r from-amber-400 to-orange-500';
+                    borderLeftClass = 'border-l-4 border-l-amber-400';
+                    statusIcon = <Clock className="w-3 h-3" strokeWidth={2.5} />;
+                    statusLabel = 'Extra à valider';
+                    ringClass = 'ring-2 ring-amber-300 ring-offset-1';
+                    break;
+                  // 🆕 Arrivée anticipée + heures sup
+                  case 'arrivee_anticipee_et_heures_sup':
+                    bgClass = 'bg-gradient-to-r from-amber-500 via-orange-500 to-purple-500';
+                    borderLeftClass = 'border-l-4 border-l-amber-400';
+                    ringClass = 'ring-2 ring-amber-300 ring-offset-1';
+                    badges = [
+                      { icon: <Clock className="w-2.5 h-2.5" />, label: 'Arrivée', color: 'bg-amber-500', title: 'Arrivée anticipée' },
+                      { icon: <Timer className="w-2.5 h-2.5" />, label: 'Départ', color: 'bg-purple-500', title: 'Heures sup' }
+                    ];
                     break;
                   case 'retard_et_heures_sup':
                     // Couleur mixte orange-violet pour retard + heures sup
@@ -1310,6 +1436,7 @@ function CellDrop({
                     bgClass = 'bg-blue-500';
                     borderLeftClass = '';
                 }
+                } // Fermeture du else pour isExtraSegment
               } else {
                 // Mode normal - Style Skello épuré (couleurs pleines)
                 const isShiftRemplacement = shift?.motif?.toLowerCase()?.includes('remplacement de');
@@ -1338,10 +1465,15 @@ function CellDrop({
                 borderLeftClass = '';
               }
               
-              // Style compact
+              // Style compact - plus compact quand multi-segments
               const isDoubleShift = shift.segments.length > 1;
-              const segmentPadding = isDoubleShift ? 'px-2 py-1' : 'px-2 py-1.5';
-              const segmentHeight = isDoubleShift ? '32px' : '36px';
+              const isTripleOrMore = shift.segments.length >= 3;
+              const segmentPadding = isTripleOrMore ? 'px-1 py-0.5' : (isDoubleShift ? 'px-1.5 py-0.5' : 'px-2 py-1.5');
+              const segmentHeight = isTripleOrMore ? '28px' : (isDoubleShift ? '32px' : '36px');
+              // En mode comparaison avec multi-segments - hauteurs compactes pour éviter scroll
+              const comparaisonSegmentHeight = isTripleOrMore ? '44px' : (isDoubleShift ? '50px' : '70px');
+              // Hauteur pour segments extra - très compact
+              const extraSegmentHeight = isDoubleShift ? '38px' : '48px';
               
               // Label type de shift
               const isShiftExtra = s.isExtra;
@@ -1353,16 +1485,33 @@ function CellDrop({
                 typeLabel = isExtraPaid ? 'Extra payé' : 'à payer';
               }
               
+              // Détecter si c'est une VRAIE anomalie nécessitant une action
+              // (absence, pointage manquant, arrivée anticipée, hors-plage) vs un simple indicateur (retard léger)
+              // Les segments Extra ne sont JAMAIS des anomalies actionnables (déjà traités/payés)
+              const anomaliesActionables = isExtraSegment ? [] : ecartsSegment.filter(e => {
+                const type = e.type || '';
+                return type.includes('absence') || 
+                       type.includes('missing') || 
+                       type.includes('segment_non_pointe') ||
+                       type.includes('pointage_hors_planning') ||
+                       type.includes('presence_non_prevue') ||
+                       type.includes('arrivee_anticipee_extra') ||  // 🆕 Extra potentiel arrivée
+                       type.includes('extra_potentiel') ||          // 🆕 Extra potentiel départ
+                       type.includes('hors_plage_in_critique') ||   // 🆕 Hors-plage arrivée
+                       type.includes('hors_plage_out_critique');    // 🆕 Hors-plage départ
+              });
+              const hasActionableAnomalie = !isExtraSegment && (anomaliesActionables.length > 0 || isAbsent);
+              
               return (
                 <div
                   key={idx}
-                  className={`relative ${bgClass} rounded-md mx-0.5 my-0.5 overflow-hidden hover:brightness-110 hover:shadow-sm transition-all duration-150 cursor-pointer text-white ${ringClass}`}
-                  style={{ minHeight: showComparaison && hasRealData ? '56px' : segmentHeight }}
+                  className={`relative ${bgClass} rounded-md mx-0.5 my-0.5 overflow-hidden hover:brightness-110 hover:shadow-sm transition-all duration-150 ${hasActionableAnomalie ? 'cursor-pointer' : 'cursor-default'} text-white ${ringClass}`}
+                  style={{ minHeight: showComparaison ? (isExtraSegment ? extraSegmentHeight : (hasRealData ? comparaisonSegmentHeight : segmentHeight)) : segmentHeight }}
                   title={`${s.start} - ${s.end} (${durationH}h)${isShiftExtra ? (isExtraPaid ? ' - Extra payé' : ' - Extra à payer') : ''}${hasRealData ? `\nRéel: ${heureArriveeReelle || '--:--'} - ${heureDepartReelle || '--:--'}` : ''}${soldeLabel ? `\nSolde: ${soldeLabel}` : ''}${s.commentaire ? '\n' + s.commentaire : ''}`}
-                  onClick={showComparaison && !isFutureDate && (ecartsSegment.length > 0 || isAbsent) ? (e) => {
+                  onClick={showComparaison && !isFutureDate && hasActionableAnomalie ? (e) => {
                     e.stopPropagation();
-                    if (ecartsSegment.length > 0) {
-                      handleAnomalieClick(employeId, date, ecartsSegment[0]);
+                    if (anomaliesActionables.length > 0) {
+                      handleAnomalieClick(employeId, date, anomaliesActionables[0]);
                     } else if (isAbsent) {
                       handleAnomalieClick(employeId, date, {
                         type: 'segment_non_pointe',
@@ -1373,16 +1522,16 @@ function CellDrop({
                     }
                   } : undefined}
                 >
-                  {/* Badges multiples en haut pour anomalies combinées */}
+                  {/* Badges multiples en haut pour anomalies combinées - plus compact si multi-segments */}
                   {showComparaison && badges.length > 0 && (
-                    <div className="flex gap-0.5 px-1 pt-1">
+                    <div className={`flex gap-0.5 px-1 ${isTripleOrMore ? 'pt-0.5' : 'pt-1'}`}>
                       {badges.map((badge, bidx) => (
                         <div 
                           key={bidx}
-                          className={`${badge.color} flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold text-white shadow-sm`}
+                          className={`${badge.color} flex items-center gap-0.5 ${isTripleOrMore ? 'px-1 py-0' : 'px-1.5 py-0.5'} rounded text-[8px] font-bold text-white shadow-sm`}
                           title={badge.title}
                         >
-                          {badge.icon}
+                          {!isTripleOrMore && badge.icon}
                           <span>{badge.label}</span>
                         </div>
                       ))}
@@ -1428,34 +1577,38 @@ function CellDrop({
                       </div>
                     )}
                     
-                    {/* Mode comparaison: Horaires réels + Solde */}
-                    {showComparaison && hasRealData && !isAbsent && (
-                      <div className="mt-1 pt-1 border-t border-white/20 text-[9px]">
-                        <div className="flex items-center justify-between">
-                          <span className="opacity-70">Réel: {heureArriveeReelle || '--'}-{heureDepartReelle || '--'}</span>
-                          <span className="opacity-80">{dureeReelleMin ? `${(dureeReelleMin/60).toFixed(1)}h` : ''}</span>
-                        </div>
-                        {/* Solde (différence heures) */}
+                    {/* Mode comparaison: Horaires réels + Solde - compact sur une ligne */}
+                    {showComparaison && hasRealData && !isAbsent && !isExtraSegment && (
+                      <div className="flex items-center justify-between text-[9px] mt-0.5 pt-0.5 border-t border-white/20">
+                        <span className="opacity-80">Réel: {heureArriveeReelle || '--'}-{heureDepartReelle || '--'}</span>
                         {soldeLabel && (
-                          <div className={`flex items-center justify-end mt-0.5 font-bold ${soldeMinutes > 0 ? 'text-green-200' : 'text-red-200'}`}>
-                            <span className="text-[10px]">Solde: {soldeLabel}</span>
-                          </div>
+                          <span className={`font-bold ${soldeMinutes > 0 ? 'text-green-200' : 'text-red-200'}`}>
+                            {soldeLabel}
+                          </span>
                         )}
                       </div>
                     )}
                     
-                    {/* Mode comparaison: Absent */}
-                    {showComparaison && isAbsent && (
+                    {/* Mode comparaison: Absent - pas pour les segments Extra */}
+                    {showComparaison && isAbsent && !isExtraSegment && (
                       <div className="text-[9px] font-bold text-white/90 mt-0.5 flex items-center gap-1">
                         <UserX className="w-3 h-3" /> Aucun pointage
                       </div>
                     )}
+                    
+                    {/* Mode comparaison: Segment Extra - compact comme les absents */}
+                    {showComparaison && isExtraSegment && (
+                      <div className="text-[9px] font-medium text-white/90 mt-0.5 flex items-center gap-1">
+                        {isExtraPaye ? <CheckCircle className="w-2.5 h-2.5" /> : <Star className="w-2.5 h-2.5" />}
+                        {isExtraPaye ? 'Payé ✓' : 'À valider'}
+                      </div>
+                    )}
                   </div>
                   
-                  {/* Indicateur cliquable - uniquement pour dates passées */}
-                  {showComparaison && !isFutureDate && (ecartsSegment.length > 0 || isAbsent) && (
+                  {/* Indicateur cliquable - uniquement pour vraies anomalies (absence, pointage manquant) */}
+                  {showComparaison && !isFutureDate && hasActionableAnomalie && (
                     <div className="absolute top-1 right-1">
-                      <span className="flex items-center justify-center w-4 h-4 bg-white/30 rounded-full backdrop-blur-sm">
+                      <span className="flex items-center justify-center w-4 h-4 bg-white/30 rounded-full backdrop-blur-sm" title="Cliquez pour traiter cette anomalie">
                         <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
@@ -1532,7 +1685,8 @@ function CellDrop({
                   case 'heures_supplementaires': 
                   case 'heures_sup_auto_validees': 
                   case 'heures_sup_a_valider':
-                    text = `H.sup ${minutesTxt}`; 
+                  case 'extra_potentiel':
+                    text = `Extra ${minutesTxt}`; 
                     icon = <Star className="w-3 h-3" strokeWidth={2.5} />;
                     bgGradient = 'from-emerald-500 to-teal-600';
                     borderColor = 'border-l-emerald-400';
@@ -1652,9 +1806,12 @@ function CellDrop({
 // Vue mobile optimisée pour le planning
 function PlanningMobileView({ employes, dates, shifts, conges, onCellClick, viewType, formatEmployeeName, getEmployeeInitials, showComparaison, getEcartsForEmployeeDate, formatEcart, getCategorieEmploye = () => ({ label: 'Général', color: 'bg-gray-100 text-gray-800', Icon: User }), employesGroupesParCategorie = [], handleAnomalieClick = () => {}, handleQuickAction = () => {} }) {
   const getCellData = (emp, dateStr) => {
+    // Normaliser en UTC pour cohérence avec les dates du backend
     const normalizeDate = (d) => {
-      // Utiliser la fonction standardis�e
-      return normalizeDateLocal(d);
+      if (!d) return null;
+      if (typeof d === 'string') return d.slice(0, 10);
+      if (d instanceof Date) return d.toISOString().slice(0, 10);
+      return new Date(d).toISOString().slice(0, 10);
     };
     
     const cellDate = normalizeDate(dateStr);
@@ -2215,18 +2372,18 @@ function PlanningRHTable({
       if (!dateValue) return null;
       
       try {
-        // Si c'est une cha�ne, extraire les 10 premiers caract�res (YYYY-MM-DD)
+        // Si c'est une chaîne ISO, extraire les 10 premiers caractères (YYYY-MM-DD)
         if (typeof dateValue === 'string') {
           return dateValue.slice(0, 10);
         }
         
-        // Si c'est une instance de Date
+        // Si c'est une instance de Date, utiliser toISOString pour cohérence UTC
         if (dateValue instanceof Date) {
-          return normalizeDateLocal(dateValue);
+          return dateValue.toISOString().slice(0, 10);
         }
         
-        // Pour les autres cas, essayer avec normalizeDateLocal
-        return normalizeDateLocal(dateValue);
+        // Pour les autres cas, tenter une conversion
+        return new Date(dateValue).toISOString().slice(0, 10);
       } catch (error) {
         console.error("Erreur de normalisation de date:", error);
       }
@@ -2749,14 +2906,32 @@ function PlanningRHTable({
                   .reduce((acc, g) => acc + g.employes.length, 0) + empIndex;
                 const isEvenRow = globalEmpIndex % 2 === 0;
                 
+                // Calculer le nombre max de segments sur la semaine pour cet employé
+                const maxSegmentsCount = dates.reduce((maxSegs, date) => {
+                  const dStr = formatDate(date);
+                  const { shift } = getCellData(emp, dStr);
+                  if (shift && shift.type === 'travail' && Array.isArray(shift.segments)) {
+                    return Math.max(maxSegs, shift.segments.length);
+                  }
+                  return maxSegs;
+                }, 1);
+                
+                // Hauteur dynamique basée sur le nombre de segments en mode comparaison
+                // Chaque segment avec données comparaison fait ~60px (badges + horaires + solde)
+                const baseHeightComparaison = 112; // Hauteur de base
+                const heightPerExtraSegment = 60; // Hauteur supplémentaire par segment au-delà de 2
+                const dynamicHeight = maxSegmentsCount > 2 
+                  ? baseHeightComparaison + ((maxSegmentsCount - 2) * heightPerExtraSegment)
+                  : baseHeightComparaison;
+                
                 // Hauteur FIXE pour alignement parfait (pas de minHeight)
-                // Vue mois style Skello : hauteur augment�e pour les blocs horaires
+                // Vue mois style Skello : hauteur augmentée pour les blocs horaires
                 const rowHeight = viewType === "mois" 
                   ? "44px"  // Synchro avec les cellules pour blocs horaires
                   : viewType === "jour" 
                     ? "112px" 
                     : showComparaison 
-                      ? "112px" // h-28 = 112px pour aligner parfaitement avec les cellules
+                      ? `${dynamicHeight}px` // Hauteur dynamique selon nombre de segments
                       : rowDense ? "56px" : "96px";
                 
                 // Calculer heures totales pour vue mois (style Skello)
@@ -2835,7 +3010,7 @@ function PlanningRHTable({
                 ))}
               </div>
               
-              {/* Lignes de cellules pour chaque employ� */}
+              {/* Lignes de cellules pour chaque employé */}
               {groupe.employes.map((emp, empIndex) => {
                 const rowDense = globalDense && !expandedEmployees.has(emp.id);
                 const cellSizeClass = rowDense ? cellSizeClassBase : baseCellSizeClass;
@@ -2843,26 +3018,43 @@ function PlanningRHTable({
                 const isLastGroup = groupeIndex === employesGroupesParCategorie.length - 1;
                 const isLastEmployee = isLastInGroup && isLastGroup;
                 
-                // Calculer l'index global pour l'alternance zebra (synchronis� avec colonne employ�s)
+                // Calculer l'index global pour l'alternance zebra (synchronisé avec colonne employés)
                 const globalEmpIndex = employesGroupesParCategorie
                   .slice(0, groupeIndex)
                   .reduce((acc, g) => acc + g.employes.length, 0) + empIndex;
                 const isEvenRow = globalEmpIndex % 2 === 0;
                 
-                // Hauteur FIXE identique � la colonne employ�s - CRITIQUE pour alignement
-                // Vue mois style Skello : hauteur augment�e pour les blocs horaires
+                // Calculer le nombre max de segments sur la semaine pour cet employé
+                const maxSegmentsCount = dates.reduce((maxSegs, date) => {
+                  const dStr = formatDate(date);
+                  const { shift } = getCellData(emp, dStr);
+                  if (shift && shift.type === 'travail' && Array.isArray(shift.segments)) {
+                    return Math.max(maxSegs, shift.segments.length);
+                  }
+                  return maxSegs;
+                }, 1);
+                
+                // Hauteur dynamique basée sur le nombre de segments en mode comparaison
+                const baseHeightComparaison = 112;
+                const heightPerExtraSegment = 60;
+                const dynamicHeight = maxSegmentsCount > 2 
+                  ? baseHeightComparaison + ((maxSegmentsCount - 2) * heightPerExtraSegment)
+                  : baseHeightComparaison;
+                
+                // Hauteur FIXE identique à la colonne employés - CRITIQUE pour alignement
+                // Vue mois style Skello : hauteur augmentée pour les blocs horaires
                 const rowHeight = viewType === "mois" 
                   ? "44px"  // Plus haut pour afficher les horaires dans les blocs
                   : viewType === "jour" 
                     ? "112px" 
                     : showComparaison 
-                      ? "112px" // h-28 = 112px pour aligner parfaitement
+                      ? `${dynamicHeight}px` // Hauteur dynamique selon nombre de segments
                       : rowDense ? "56px" : "96px";
                 
                 return (
                   <div 
                     key={emp.id}
-                    className={`flex items-stretch ${isLastEmployee ? '' : 'border-b border-gray-200'} hover:bg-red-50/30 transition-colors group ${viewType === "mois" ? 'w-full' : 'flex-nowrap'} ${isEvenRow ? 'bg-gray-50/40' : 'bg-white'}`}
+                    className={`flex items-stretch border-b border-gray-200 hover:bg-red-50/30 transition-colors group ${viewType === "mois" ? 'w-full' : 'flex-nowrap'} ${isEvenRow ? 'bg-gray-50/40' : 'bg-white'}`}
                     style={{ 
                       height: rowHeight,
                       width: viewType === "mois" ? '100%' : 'auto'
@@ -3018,7 +3210,13 @@ function MonthCalendarView({
   formatEmployeeName,
   getCategorieEmploye 
 }) {
-  // �tat pour le jour s�lectionn� (pour afficher le d�tail)
+  // Fonction utilitaire pour obtenir une date en format YYYY-MM-DD local (pas UTC)
+  const toLocalDateStr = (date) => {
+    const d = new Date(date);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  
+  // État pour le jour sélectionné (pour afficher le détail)
   const [selectedDay, setSelectedDay] = useState(null);
   const [hoveredDay, setHoveredDay] = useState(null);
   const [filterEmployee, setFilterEmployee] = useState(null); // Filtre par employ�
@@ -3049,32 +3247,34 @@ function MonthCalendarView({
     const firstDay = new Date(referenceYear, referenceMonth, 1);
     const lastDay = new Date(referenceYear, referenceMonth + 1, 0);
     
+    // Trouver le lundi de la semaine du 1er jour du mois
     let startDate = new Date(firstDay);
-    const dayOfWeek = startDate.getDay();
-    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const dayOfWeek = startDate.getDay(); // 0 = dimanche, 1 = lundi, ..., 6 = samedi
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Reculer jusqu'au lundi
     startDate.setDate(startDate.getDate() + diff);
     
     const weeksArray = [];
-    let currentWeek = [];
     let current = new Date(startDate);
     
-    while (current <= lastDay || currentWeek.length > 0) {
-      currentWeek.push(new Date(current));
-      
-      if (currentWeek.length === 7) {
-        weeksArray.push(currentWeek);
-        currentWeek = [];
-        if (current > lastDay) break;
+    // Générer les semaines complètes (toujours 7 jours par semaine)
+    while (true) {
+      const week = [];
+      for (let i = 0; i < 7; i++) {
+        week.push(new Date(current));
+        current.setDate(current.getDate() + 1);
       }
-      current.setDate(current.getDate() + 1);
+      weeksArray.push(week);
+      
+      // Arrêter si on a dépassé le dernier jour du mois
+      if (week[6] >= lastDay) break;
     }
     
     return weeksArray;
   }, [referenceMonth, referenceYear]);
   
-  // Fonction pour obtenir les shifts/cong�s d'un jour (avec filtre employ�)
+  // Fonction pour obtenir les shifts/congés d'un jour (avec filtre employé)
   const getDayData = useCallback((date) => {
-    const dateStr = date.toISOString().slice(0, 10);
+    const dateStr = toLocalDateStr(date);
     
     let dayShifts = shifts.filter(s => {
       const shiftDate = s.date?.slice(0, 10);
@@ -3144,7 +3344,7 @@ function MonthCalendarView({
   
   const joursSemaine = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
   const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = toLocalDateStr(today);
   const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
   
   // Données du jour sélectionné
@@ -3279,33 +3479,36 @@ function MonthCalendarView({
               <span className="font-semibold text-gray-600">{monthStats.totalConges}</span>
               <span className="text-gray-500">congés</span>
             </div>
+            {/* Légende des couleurs */}
+            <ShiftColorLegend compact={true} showConges={true} />
           </div>
         </div>
         
-        {/* En-tête jours de la semaine */}
-        <div className="grid grid-cols-7 border-b border-gray-200">
-          {joursSemaine.map((jour, i) => (
-            <div 
-              key={jour} 
-              className={`py-2 text-center text-[11px] font-bold uppercase tracking-wider border-r last:border-r-0 border-gray-100 ${
-                i >= 5 ? 'text-gray-400 bg-gray-50' : 'text-gray-500'
-              }`}
-            >
-              {jour}
-            </div>
-          ))}
-        </div>
-        
-        {/* Grille des semaines */}
+        {/* Grille des semaines avec en-tête sticky */}
         <div className="flex-1 overflow-y-auto">
+          {/* En-tête jours de la semaine - sticky */}
+          <div className="grid grid-cols-7 border-b border-gray-200 sticky top-0 bg-white z-10">
+            {joursSemaine.map((jour, i) => (
+              <div 
+                key={jour} 
+                className={`py-2 text-center text-[11px] font-bold uppercase tracking-wider border-r last:border-r-0 border-gray-100 ${
+                  i >= 5 ? 'text-gray-400 bg-gray-50' : 'text-gray-500'
+                }`}
+              >
+                {jour}
+              </div>
+            ))}
+          </div>
+          
+          {/* Semaines */}
           {weeks.map((week, weekIndex) => (
             <div key={weekIndex} className="grid grid-cols-7 border-b border-gray-100 last:border-b-0" style={{ minHeight: '100px' }}>
               {week.map((day, dayIndex) => {
                 const isCurrentMonth = day.getMonth() === referenceMonth;
                 const isWeekend = dayIndex >= 5;
-                const dateStr = day.toISOString().slice(0, 10);
+                const dateStr = toLocalDateStr(day);
                 const isToday = dateStr === todayStr;
-                const isSelected = selectedDay && day.toISOString().slice(0, 10) === selectedDay.toISOString().slice(0, 10);
+                const isSelected = selectedDay && toLocalDateStr(day) === toLocalDateStr(selectedDay);
                 const isHovered = hoveredDay === dateStr;
                 const { dayShifts, dayConges } = getDayData(day);
                 const totalEvents = dayShifts.length + dayConges.length;
@@ -3475,7 +3678,7 @@ function MonthCalendarView({
                 return (
                   <div 
                     key={`conge-${idx}`}
-                    onClick={() => onCellClick(emp.id, selectedDay.toISOString().slice(0, 10))}
+                    onClick={() => onCellClick(emp.id, toLocalDateStr(selectedDay))}
                     className={`p-3 ${config.bg} rounded-lg cursor-pointer transition-all border ${config.border} hover:shadow-sm`}
                   >
                     <div className="flex items-center gap-2.5">
@@ -3525,7 +3728,7 @@ function MonthCalendarView({
                 return (
                   <div 
                     key={`shift-${idx}`}
-                    onClick={() => onCellClick(emp.id, selectedDay.toISOString().slice(0, 10))}
+                    onClick={() => onCellClick(emp.id, toLocalDateStr(selectedDay))}
                     className="bg-white rounded-lg cursor-pointer transition-all border border-gray-200 hover:border-gray-300 hover:shadow-sm overflow-hidden"
                   >
                     {/* Barre color�e selon le type */}
@@ -3584,7 +3787,7 @@ function MonthCalendarView({
             {/* Action rapide */}
             <div className="p-3 border-t border-gray-200 bg-gray-50">
               <button
-                onClick={() => onCellClick(employes[0]?.id, selectedDay.toISOString().slice(0, 10))}
+                onClick={() => onCellClick(employes[0]?.id, toLocalDateStr(selectedDay))}
                 className="w-full px-4 py-2 bg-[#cf292c] hover:bg-[#b52429] text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4" />
@@ -4304,24 +4507,32 @@ function ModalEditionShift({
 
   const isEdit = !!shift.id;
 
-  // ?? Vérifier si un segment extra est payé (donc verrouillé)
+  // 🔒 Vérifier si un segment extra est payé (donc verrouillé)
   const isSegmentLocked = (seg) => {
     return seg.isExtra && (seg.paymentStatus === 'payé' || seg.paymentStatus === 'paye' || seg.paymentStatus === 'pay\uFFFD');
   };
 
+  // 🔒 Vérifier si le shift contient au moins un segment payé
+  const hasLockedSegment = segments.some(seg => isSegmentLocked(seg));
+  
+  // 🔒 NOUVEAU: Quand un extra est payé, TOUT le shift est verrouillé
+  // On ne peut modifier aucun segment pour garantir la cohérence comptable
+  const isShiftFullyLocked = hasLockedSegment;
+
   // Message pour segment verrouillé
   const [lockedMessage, setLockedMessage] = useState(null);
   const showLockedMessage = (segmentIndex) => {
-    setLockedMessage(`Le créneau ${segmentIndex + 1} a été payé et ne peut plus être modifié. Pour corriger, créez un ajustement dans la gestion des extras.`);
+    if (isShiftFullyLocked) {
+      setLockedMessage(`Ce shift est verrouillé car un extra a été payé. Pour modifier, annulez d'abord le paiement dans la gestion des extras.`);
+    } else {
+      setLockedMessage(`Le créneau ${segmentIndex + 1} a été payé et ne peut plus être modifié.`);
+    }
     setTimeout(() => setLockedMessage(null), 5000);
   };
-
-  // ?? Vérifier si le shift contient au moins un segment payé
-  const hasLockedSegment = segments.some(seg => isSegmentLocked(seg));
   
   // Message global pour tentative de modification interdite
   const showShiftLockedMessage = () => {
-    setLockedMessage("Ce shift contient un créneau extra déjà payé. Vous ne pouvez pas le supprimer ou le convertir en absence. Pour corriger, créez un ajustement dans la gestion des extras.");
+    setLockedMessage("Ce shift est verrouillé car un extra a été payé. Vous ne pouvez pas le modifier. Pour corriger, annulez d'abord le paiement dans la gestion des extras.");
     setTimeout(() => setLockedMessage(null), 5000);
   };
 
@@ -4654,19 +4865,19 @@ function ModalEditionShift({
             />
           )}
           
-          {/* ?? Message segment verrouillé */}
+          {/* 🔒 Message segment verrouillé */}
           {lockedMessage && (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-start gap-3">
-              <Lock className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3">
+              <Lock className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <div className="text-sm font-medium text-purple-800">
-                  Segment verrouillé
+                <div className="text-sm font-medium text-red-800">
+                  Shift verrouillé
                 </div>
-                <div className="text-sm text-purple-700 mt-1">
+                <div className="text-sm text-red-700 mt-1">
                   {lockedMessage}
                 </div>
               </div>
-              <button onClick={() => setLockedMessage(null)} className="text-purple-400 hover:text-purple-600">
+              <button onClick={() => setLockedMessage(null)} className="text-red-400 hover:text-red-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -4702,7 +4913,31 @@ function ModalEditionShift({
             </div>
           )}
           
-          {/* Section Employ� et Date - align�s */}
+          {/* 🔒 Bannière shift verrouillé (quand un extra est payé) */}
+          {isShiftFullyLocked && (
+            <div className="bg-gradient-to-r from-red-50 to-rose-50 border-2 border-red-300 rounded-xl p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-red-500 flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <Lock className="w-4 h-4 text-white" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-bold text-red-800">Shift verrouillé</span>
+                  <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded font-semibold">
+                    EXTRA PAYÉ
+                  </span>
+                </div>
+              </div>
+              <div className="text-sm text-red-700 leading-relaxed">
+                Ce shift contient un extra payé. <strong>Tous les créneaux sont verrouillés</strong> pour garantir la cohérence comptable.
+              </div>
+              <div className="mt-3 pt-3 border-t border-red-200 flex items-center gap-2 text-xs text-red-600">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>Pour modifier, annulez d'abord le paiement dans <strong>Gestion des Extras</strong></span>
+              </div>
+            </div>
+          )}
+          
+          {/* Section Employé et Date - alignés */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 mb-1.5">
@@ -4885,13 +5120,15 @@ function ModalEditionShift({
               
               <div className="space-y-2">
                 {segments.map((seg, i) => {
-                  const locked = isSegmentLocked(seg);
+                  // 🔒 Si le shift a un extra payé, TOUS les segments sont verrouillés
+                  const locked = isShiftFullyLocked || isSegmentLocked(seg);
+                  const isThisSegmentPaid = isSegmentLocked(seg);
                   return (
                   <div 
                     key={seg.id || `seg-edit-${i}`} 
                     className={`bg-white rounded-lg border p-3 transition-all ${
                       locked
-                        ? 'border-purple-300 bg-gradient-to-r from-purple-50/50 to-violet-50/50'
+                        ? 'border-red-300 bg-gradient-to-r from-red-50/50 to-rose-50/50'
                         : segmentErrors[`segments[${i}].overlap`] 
                           ? 'border-red-300 bg-red-50/30' 
                           : seg.isExtra 
@@ -4902,22 +5139,22 @@ function ModalEditionShift({
                     {/* Header compact : numéro + supprimer */}
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <div className={`w-5 h-5 rounded text-white text-[10px] font-bold flex items-center justify-center ${locked ? 'bg-purple-500' : 'bg-[#cf292c]'}`}>
+                        <div className={`w-5 h-5 rounded text-white text-[10px] font-bold flex items-center justify-center ${locked ? 'bg-red-500' : 'bg-[#cf292c]'}`}>
                           {locked ? <Lock className="w-3 h-3" /> : (i + 1)}
                         </div>
-                        <span className={`text-xs font-medium ${locked ? 'text-purple-600' : 'text-gray-600'}`}>
-                          {locked ? 'Créneau payé (verrouillé)' : `Créneau ${i + 1}`}
+                        <span className={`text-xs font-medium ${locked ? 'text-red-600' : 'text-gray-600'}`}>
+                          {isThisSegmentPaid ? 'Créneau payé (verrouillé)' : locked ? 'Créneau verrouillé' : `Créneau ${i + 1}`}
                         </span>
-                        {locked && (
-                          <span className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                        {isThisSegmentPaid && (
+                          <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
                             PAYÉ
                           </span>
                         )}
                       </div>
                       {locked ? (
                         <div 
-                          className="w-6 h-6 flex items-center justify-center rounded text-purple-400 cursor-not-allowed"
-                          title="Segment payé - modification impossible"
+                          className="w-6 h-6 flex items-center justify-center rounded text-red-400 cursor-not-allowed"
+                          title="Segment verrouillé - modification impossible"
                         >
                           <Lock className="w-3.5 h-3.5" />
                         </div>
@@ -4955,16 +5192,16 @@ function ModalEditionShift({
                           }}
                           className={`flex items-center gap-2 h-9 px-3 rounded-lg transition-all border ${
                             locked 
-                              ? 'border-purple-200 bg-purple-50/50 cursor-not-allowed'
+                              ? 'border-red-200 bg-red-50/50 cursor-not-allowed'
                               : segmentErrors[`segments[${i}].start`] ? 'border-red-400 bg-red-50 cursor-pointer' 
                               : seg.start ? 'border-[#cf292c] bg-[#cf292c]/5 cursor-pointer' : 'border-gray-200 bg-gray-50 hover:border-gray-300 cursor-pointer'
                           }`}
                         >
-                          <LogOut className={`w-3.5 h-3.5 flex-shrink-0 ${locked ? 'text-purple-400' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`} />
-                          <span className={`text-sm font-semibold ${locked ? 'text-purple-500' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`}>
+                          <LogOut className={`w-3.5 h-3.5 flex-shrink-0 ${locked ? 'text-red-400' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`} />
+                          <span className={`text-sm font-semibold ${locked ? 'text-red-500' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`}>
                             {seg.start || '--:--'}
                           </span>
-                          {locked && <Lock className="w-3 h-3 text-purple-400 ml-auto" />}
+                          {locked && <Lock className="w-3 h-3 text-red-400 ml-auto" />}
                         </div>
                         {/* Dropdown avec scroll auto */}
                         {!locked && activeTimePicker === `${i}-start` && (
@@ -4987,7 +5224,7 @@ function ModalEditionShift({
                         )}
                       </div>
                       
-                      <span className={`text-lg ${locked ? 'text-purple-300' : 'text-gray-300'}`}>→</span>
+                      <span className={`text-lg ${locked ? 'text-red-300' : 'text-gray-300'}`}>→</span>
                       
                       {/* Input fin */}
                       <div className="flex-1 relative time-picker-container">
@@ -5001,16 +5238,16 @@ function ModalEditionShift({
                           }}
                           className={`flex items-center gap-2 h-9 px-3 rounded-lg transition-all border ${
                             locked 
-                              ? 'border-purple-200 bg-purple-50/50 cursor-not-allowed'
+                              ? 'border-red-200 bg-red-50/50 cursor-not-allowed'
                               : segmentErrors[`segments[${i}].end`] ? 'border-red-400 bg-red-50 cursor-pointer' 
                               : seg.end ? 'border-[#cf292c] bg-[#cf292c]/5 cursor-pointer' : 'border-gray-200 bg-gray-50 hover:border-gray-300 cursor-pointer'
                           }`}
                         >
-                          <Timer className={`w-3.5 h-3.5 flex-shrink-0 ${locked ? 'text-purple-400' : seg.end ? 'text-[#cf292c]' : 'text-gray-400'}`} />
-                          <span className={`text-sm font-semibold ${locked ? 'text-purple-500' : seg.end ? 'text-[#cf292c]' : 'text-gray-400'}`}>
+                          <Timer className={`w-3.5 h-3.5 flex-shrink-0 ${locked ? 'text-red-400' : seg.end ? 'text-[#cf292c]' : 'text-gray-400'}`} />
+                          <span className={`text-sm font-semibold ${locked ? 'text-red-500' : seg.end ? 'text-[#cf292c]' : 'text-gray-400'}`}>
                             {seg.end || '--:--'}
                           </span>
-                          {locked && <Lock className="w-3 h-3 text-purple-400 ml-auto" />}
+                          {locked && <Lock className="w-3 h-3 text-red-400 ml-auto" />}
                         </div>
                         {/* Dropdown avec scroll auto */}
                         {!locked && activeTimePicker === `${i}-end` && (
@@ -5057,12 +5294,12 @@ function ModalEditionShift({
                     
                     {/* Options compactes : À valider + Extra - VERROUILLÉ si payé */}
                     {locked ? (
-                      <div className="mt-2 pt-2 border-t border-purple-100 flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 text-purple-500">
+                      <div className="mt-2 pt-2 border-t border-red-100 flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 text-red-500">
                           <Lock className="w-3 h-3" />
                           <span className="text-[11px] font-medium">Options verrouillées</span>
                         </div>
-                        <span className="text-[10px] text-purple-400">Le paiement a été effectué</span>
+                        <span className="text-[10px] text-red-400">Shift verrouillé (extra payé)</span>
                       </div>
                     ) : (
                       <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-3">
@@ -5094,16 +5331,16 @@ function ModalEditionShift({
                     {seg.isExtra && (
                       <div className={`mt-2 p-2 rounded-md border flex items-center justify-between ${
                         locked 
-                          ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200'
+                          ? 'bg-gradient-to-r from-red-50 to-rose-50 border-red-200'
                           : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200'
                       }`}>
                         <div className="flex items-center gap-2">
-                          {locked ? <Lock className="w-4 h-4 text-purple-600" /> : <Banknote className="w-4 h-4 text-orange-600" />}
-                          <span className={`text-[11px] font-semibold ${locked ? 'text-purple-700' : 'text-orange-700'}`}>
+                          {locked ? <Lock className="w-4 h-4 text-red-600" /> : <Banknote className="w-4 h-4 text-orange-600" />}
+                          <span className={`text-[11px] font-semibold ${locked ? 'text-red-700' : 'text-orange-700'}`}>
                             {locked ? 'Extra Payé' : 'Heures Extra'}
                           </span>
                         </div>
-                        <div className={`text-sm font-bold ${locked ? 'text-purple-700' : 'text-orange-700'}`}>
+                        <div className={`text-sm font-bold ${locked ? 'text-red-700' : 'text-orange-700'}`}>
                           {seg.start && seg.end ? (() => {
                             const [startH, startM] = seg.start.split(':').map(Number);
                             const [endH, endM] = seg.end.split(':').map(Number);
@@ -5149,7 +5386,7 @@ function ModalEditionShift({
                   <button
                     type="button"
                     onClick={showShiftLockedMessage}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-purple-200 text-purple-400 bg-purple-50 cursor-not-allowed text-sm font-medium"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-500 bg-red-50 cursor-not-allowed text-sm font-medium"
                     title="Suppression impossible - contient un extra payé"
                   >
                     <Lock className="w-4 h-4" />
@@ -5209,15 +5446,17 @@ function ModalEditionShift({
               onClick={onClose} 
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all text-sm font-medium"
             >
-              Annuler
+              {isShiftFullyLocked ? 'Fermer' : 'Annuler'}
             </button>
-            <button 
-              type="submit" 
-              className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-gradient-to-r from-[#cf292c] to-[#e74c3c] hover:from-[#b02025] hover:to-[#cf292c] text-white shadow-md hover:shadow-lg transition-all text-sm font-medium"
-            >
-              <Check className="w-4 h-4" />
-              {isEdit ? 'Enregistrer' : 'Créer le shift'}
-            </button>
+            {!isShiftFullyLocked && (
+              <button 
+                type="submit" 
+                className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-gradient-to-r from-[#cf292c] to-[#e74c3c] hover:from-[#b02025] hover:to-[#cf292c] text-white shadow-md hover:shadow-lg transition-all text-sm font-medium"
+              >
+                <Check className="w-4 h-4" />
+                {isEdit ? 'Enregistrer' : 'Créer le shift'}
+              </button>
+            )}
           </div>
         </div>
       </form>
@@ -5552,7 +5791,7 @@ function AdminAnomaliesPanel({ isOpen, onClose, dates, employes, formatEmployeeN
   );
 }
 
-export default function PlanningRH() {
+export default function PlanningRH({ openAnomaliesPanel = false }) {
   // Hook pour les remplacements en attente (badge)
   const { enAttente: remplacementsEnAttente, refresh: refreshRemplacements } = useRemplacementsNotification();
   
@@ -5562,8 +5801,8 @@ export default function PlanningRH() {
   // Panneau lat�ral extras
   const [showExtrasPanel, setShowExtrasPanel] = useState(false);
   
-  // Panneau anomalies
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  // Panneau anomalies - ouvert si prop openAnomaliesPanel
+  const [showAdminPanel, setShowAdminPanel] = useState(openAnomaliesPanel);
   
   // Fermer les modales avec �chap
   useEffect(() => {
@@ -5584,13 +5823,20 @@ export default function PlanningRH() {
     return savedViewType && ['jour', 'semaine', 'mois'].includes(savedViewType) ? savedViewType : 'semaine';
   };
 
-  // R�cup�ration de la date sauvegard�e ou date actuelle par d�faut
+  // Récupération de la date sauvegardée ou date actuelle par défaut
   const getInitialDate = () => {
     const savedDate = localStorage.getItem('planningRH_currentDate');
-    return savedDate ? new Date(savedDate) : new Date();
+    if (savedDate) {
+      // Restaurer comme date locale (format YYYY-MM-DD stocké)
+      const [year, month, day] = savedDate.split('-').map(Number);
+      if (year && month && day) {
+        return new Date(year, month - 1, day, 0, 0, 0, 0);
+      }
+    }
+    return new Date();
   };
 
-  // Initialisation des dates selon la vue sauvegard�e
+  // Initialisation des dates selon la vue sauvegardée
   const getInitialDates = () => {
     const initialDate = getInitialDate();
     const initialViewType = getInitialViewType();
@@ -5610,9 +5856,10 @@ export default function PlanningRH() {
   const [dateCourante, setDateCourante] = useState(getInitialDate());
   const [dates, setDates] = useState(getInitialDates());
 
-  // Sauvegarde automatique de la date courante (utiliser la fonction standardis�e)
+  // Sauvegarde automatique de la date courante au format YYYY-MM-DD (date locale)
   useEffect(() => {
-    localStorage.setItem('planningRH_currentDate', dateCourante.toISOString());
+    const dateStr = `${dateCourante.getFullYear()}-${String(dateCourante.getMonth() + 1).padStart(2, '0')}-${String(dateCourante.getDate()).padStart(2, '0')}`;
+    localStorage.setItem('planningRH_currentDate', dateStr);
   }, [dateCourante]);
 
   // Sauvegarde automatique de la vue courante
@@ -5778,9 +6025,6 @@ export default function PlanningRH() {
   const [anomaliesData, setAnomaliesData] = useState({}); // employeId_date -> anomalies[]
   const [anomalieSelectionnee, setAnomalieSelectionnee] = useState(null); // Anomalie en cours de traitement
   // showAdminPanel d�clar� plus haut avec les autres modales
-  
-  // �tat pour le panneau de debug (seulement en d�veloppement)  
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
   
   // Hooks pour la gestion des anomalies
   const { syncAnomaliesFromComparison } = useSyncAnomalies();
@@ -6105,8 +6349,20 @@ export default function PlanningRH() {
         };
       });
       
-      console.log("Shifts format�s:", formattedShifts);
+      console.log("Shifts formatés:", formattedShifts.length, "shifts");
       setShifts(formattedShifts);
+      
+      // Recharger aussi les congés car ils peuvent être impactés (création/suppression d'absence)
+      try {
+        const congesResponse = await axios.get(buildApiUrl('/admin/conges'), {
+          headers: { Authorization: `Bearer ${currentToken}` },
+        });
+        console.log("Congés rechargés:", congesResponse.data.length, "congés");
+        setConges(congesResponse.data);
+      } catch (congesErr) {
+        console.error("Erreur rechargement congés:", congesErr);
+      }
+      
       return true;
     } catch (err) {
       console.error("Erreur lors du rechargement des shifts:", err);
@@ -6502,7 +6758,15 @@ export default function PlanningRH() {
       heures_sup_a_valider: {
         Icon: AlertTriangle,
         iconColor: 'text-amber-500',
-        label: 'H. sup',
+        label: 'Extra',
+        color: 'text-amber-600',
+        bg: 'bg-amber-50',
+        badge: 'à valider'
+      },
+      extra_potentiel: {
+        Icon: AlertTriangle,
+        iconColor: 'text-amber-500',
+        label: 'Extra',
         color: 'text-amber-600',
         bg: 'bg-amber-50',
         badge: 'à valider'
@@ -6879,6 +7143,12 @@ export default function PlanningRH() {
           }),
         ]);
         setEmployes(employesRes.data);
+        console.log("📦 Shifts reçus du backend:", shiftsRes.data.length, "shifts");
+        // Debug: chercher le shift de Paolo (employeId 97) et Marco (93)
+        const paoloShifts = shiftsRes.data.filter(s => s.employeId === 97);
+        const marcoShifts = shiftsRes.data.filter(s => s.employeId === 93);
+        console.log("🔍 Shifts de Paolo (97):", paoloShifts);
+        console.log("🔍 Shifts de Marco (93):", marcoShifts);
         setShifts(shiftsRes.data);
         // Debug: voir tous les cong�s re�us
         console.log("Cong�s re�us du backend:", congesRes.data);
@@ -6957,18 +7227,34 @@ export default function PlanningRH() {
     }
   };
 
-  // Ouvrir la modale d'�dition (ajout start/end optionnels pour pr�remplissage)
+  // Ouvrir la modale d'édition (ajout start/end optionnels pour préremplissage)
   const handleCellClick = (employeId, dateStr, startGuess, endGuess) => {
-    // V�rifier s'il y a un cong� pour cette date et cet employ�
+    // Normaliser la date de la cellule
+    const cellDateNormalized = typeof dateStr === 'string' ? dateStr.slice(0, 10) : new Date(dateStr).toISOString().slice(0, 10);
+    
+    // D'abord vérifier si un shift existe déjà pour cette date
+    const existingShift = shifts.find((s) => {
+      const shiftDate = typeof s.date === 'string' ? s.date.slice(0, 10) : new Date(s.date).toISOString().slice(0, 10);
+      return s.employeId === employeId && shiftDate === cellDateNormalized;
+    });
+    
+    // Si un shift absence existe déjà, on permet l'édition/suppression (bypass congé check)
+    if (existingShift && existingShift.type === 'absence') {
+      console.log('✅ Shift absence trouvé, ouverture modal:', existingShift.id);
+      setSelected({ ...existingShift });
+      setModalOpen(true);
+      return;
+    }
+    
+    // Vérifier s'il y a un congé pour cette date et cet employé
     const congeFound = conges.find((c) => {
       const empMatch = c.userId === employeId || c.employeId === employeId;
       if (!empMatch) return false;
       
-      const cellDate = dateStr.slice(0, 10);
       const debutConge = typeof c.dateDebut === 'string' ? c.dateDebut.slice(0, 10) : new Date(c.dateDebut).toISOString().slice(0, 10);
       const finConge = typeof c.dateFin === 'string' ? c.dateFin.slice(0, 10) : new Date(c.dateFin).toISOString().slice(0, 10);
       
-      return cellDate >= debutConge && cellDate <= finConge;
+      return cellDateNormalized >= debutConge && cellDateNormalized <= finConge;
     });
     
     if (congeFound) {
@@ -6976,7 +7262,7 @@ export default function PlanningRH() {
       const isApprouve = statutConge === 'approuvé' || statutConge === 'validé' || statutConge === 'approuv\uFFFD' || statutConge === 'valid\uFFFD' || statutConge === 'approuve' || statutConge === 'valide';
       const isEnAttente = statutConge === 'en_attente' || statutConge === 'en attente';
       
-      // ?? CONGÉ APPROUVÉ: Bloquer la création de shift
+      // 🚫 CONGÉ APPROUVÉ: Bloquer la création de NOUVEAU shift (mais pas l'édition d'absence)
       if (isApprouve) {
         setNotification({
           type: 'error',
@@ -6986,7 +7272,7 @@ export default function PlanningRH() {
         return; // Ne pas ouvrir la modale
       }
       
-      // ?? CONG� EN ATTENTE: Avertir mais permettre la cr�ation
+      // ⚠️ CONGÉ EN ATTENTE: Avertir mais permettre la création
       if (isEnAttente) {
         setNotification({
           type: 'warning',
@@ -6997,15 +7283,13 @@ export default function PlanningRH() {
       }
     }
     
-    const found = shifts.find(
-      (s) => s.employeId === employeId && s.date.slice(0, 10) === dateStr
-    );
-    if (found) {
-      setSelected({ ...found });
+    // Si un shift de travail existe, l'ouvrir pour édition
+    if (existingShift) {
+      setSelected({ ...existingShift });
     } else {
       setSelected({
         employeId,
-        date: dateStr,
+        date: cellDateNormalized,
         type: "travail",
         segments: [
           { 
@@ -7070,7 +7354,7 @@ export default function PlanningRH() {
           { headers: { Authorization: `Bearer ${token}` } }
         );
         
-        // Mise � jour de l'interface
+        // Mise à jour de l'interface
         setShifts((prev) =>
           prev.map((s) => (s.id === shift.id ? res.data : s))
         );
@@ -7078,20 +7362,35 @@ export default function PlanningRH() {
         setModalOpen(false);
         setSelected(null);
         
-        // Rafra�chir les donn�es si changement de type important
-        if (isTypeChange) {
-          console.log("Rafra�chissement des donn�es apr�s changement de type");
-          setTimeout(() => refreshShifts(true), 100);
-        }
+        // Notification de succès
+        setNotification({
+          type: 'success',
+          message: shift.type === 'absence' ? '✅ Absence modifiée avec succès' : '✅ Planning modifié avec succès',
+          duration: 3000
+        });
+        
+        // Rafraîchir immédiatement les données (shifts + congés)
+        await refreshShifts(true);
       } else {
         const res = await axios.post(
           buildApiUrl('/shifts'),
           { ...shift },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setShifts((prev) => [...prev, res.data]);
+        
+        // Fermer le modal immédiatement
         setModalOpen(false);
         setSelected(null);
+        
+        // Notification de succès
+        setNotification({
+          type: 'success',
+          message: shift.type === 'absence' ? '✅ Absence créée avec succès' : '✅ Planning créé avec succès',
+          duration: 3000
+        });
+        
+        // Rafraîchir immédiatement les données (shifts + congés auto-créés)
+        await refreshShifts(true);
       }
     } catch (err) {
       console.error("Erreur sauvegarde:", err.response?.data || err);
@@ -7116,29 +7415,60 @@ export default function PlanningRH() {
   // Suppression
   const handleDelete = async () => {
     if (!selected?.id) return;
+    
+    const shiftId = selected.id;
+    const shiftType = selected.type;
+    const employeName = employes.find(e => e.id === selected.employeId);
+    const displayName = employeName ? `${employeName.prenom || ''} ${employeName.nom || ''}`.trim() : 'Employé';
+    
     try {
-      // Suppression avec gestion optimiste des erreurs
-      await axios.delete(buildApiUrl(`/shifts/${selected.id}`), {
+      // Fermer le modal immédiatement pour une meilleure UX
+      setModalOpen(false);
+      
+      // Suppression côté serveur
+      await axios.delete(buildApiUrl(`/shifts/${shiftId}`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       
-      // Optimistic update - on suppose que la suppression a r�ussi m�me si le serveur n'a pas r�pondu
-      setShifts((prev) => prev.filter((s) => s.id !== selected.id));
-      setModalOpen(false);
+      // Mise à jour optimiste du state local
+      setShifts((prev) => prev.filter((s) => s.id !== shiftId));
       setSelected(null);
+      
+      // Message de succès
+      setNotification({
+        type: 'success',
+        message: shiftType === 'absence' 
+          ? `✅ Absence de ${displayName} supprimée avec succès`
+          : `✅ Shift de ${displayName} supprimé avec succès`,
+        duration: 4000
+      });
+      
+      // Rafraîchir immédiatement les données (shifts + congés)
+      await refreshShifts(true);
+      
     } catch (err) {
-      // Force la suppression locale m�me en cas d'erreur
-      setShifts((prev) => prev.filter((s) => s.id !== selected.id));
-      setModalOpen(false);
+      console.error('Erreur suppression shift:', err);
+      
+      // En cas d'erreur, afficher le message mais quand même retirer localement
+      setShifts((prev) => prev.filter((s) => s.id !== shiftId));
       setSelected(null);
       
-      // Simple notification d'erreur sans bloquer l'interface
-      console.warn('Note: Probl�me possible lors de la suppression du shift, mais il a �t� retir� de l\'interface:', err.response?.data || err.message);
-      
-      // En cas d'erreur critique, rafra�chir les donn�es
-      if (err.response?.status === 500 || err.response?.status === 409) {
-        refreshShifts(true);
+      if (err.response?.status === 409) {
+        setNotification({
+          type: 'warning',
+          message: `⚠️ Suppression partielle - certaines données liées n'ont pas pu être supprimées`,
+          duration: 5000
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          message: `Erreur lors de la suppression: ${err.response?.data?.error || err.message}`,
+          duration: 5000
+        });
       }
+      
+      // Rafraîchir pour resynchroniser
+      await refreshShifts(true);
     }
   };
 
@@ -7991,41 +8321,26 @@ export default function PlanningRH() {
             )}
           </header>
           
-          {/* L�gende des types de segments - toujours visible */}
-          <div className="fixed top-[120px] left-0 right-0 bg-white border-b border-gray-100 px-4 py-1.5 z-30 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-[10px]">
-              <span className="text-gray-500 font-medium">Légende:</span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gradient-to-r from-blue-500 to-blue-600"></span>
-                <span className="text-gray-600">Normal</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gradient-to-r from-purple-500 to-purple-600"></span>
-                <span className="text-gray-600">À valider</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gradient-to-r from-amber-500 to-orange-500"></span>
-                <span className="text-orange-600 font-medium">Extra (à payer)</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 rounded bg-gradient-to-r from-emerald-500 to-emerald-600"></span>
-                <span className="text-emerald-600 font-medium flex items-center gap-0.5">Extra (payé) <CheckCircle className="w-2.5 h-2.5" /></span>
-              </span>
+          {/* Légende des types de segments - uniquement en vue semaine */}
+          {viewType === 'semaine' && (
+            <div className="fixed top-[120px] left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-4 py-1 z-30 flex items-center justify-between">
+              <ShiftColorLegend inline={true} showConges={true} />
+              {/* Info rapide extras */}
+              {shifts.some(s => Array.isArray(s.segments) && s.segments.some(seg => seg.isExtra)) && (
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="text-gray-300">|</span>
+                  <span className="flex items-center gap-1 text-orange-600">
+                    <Star className="w-3 h-3" />
+                    {shifts.reduce((acc, s) => acc + (Array.isArray(s.segments) ? s.segments.filter(seg => seg.isExtra && !(seg.paymentStatus === 'payé' || seg.paymentStatus === 'paye' || seg.paymentStatus === 'pay\uFFFD')).length : 0), 0)} extra(s) à payer
+                  </span>
+                </div>
+              )}
             </div>
-            {/* Info rapide extras */}
-            {shifts.some(s => Array.isArray(s.segments) && s.segments.some(seg => seg.isExtra)) && (
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="text-gray-400">|</span>
-                <span className="flex items-center gap-1 text-orange-600">
-                  {shifts.reduce((acc, s) => acc + (Array.isArray(s.segments) ? s.segments.filter(seg => seg.isExtra && !(seg.paymentStatus === 'payé' || seg.paymentStatus === 'paye' || seg.paymentStatus === 'pay\uFFFD')).length : 0), 0)} extra(s) à payer
-                </span>
-              </div>
-            )}
-          </div>
+          )}
           
-          {/* Légende mode comparaison */}
-          {showComparaison && (
-            <div className="fixed top-[148px] left-0 right-0 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-4 py-2 z-30 flex items-center justify-between">
+          {/* Légende mode comparaison - uniquement en vue semaine */}
+          {showComparaison && viewType === 'semaine' && (
+            <div className="fixed top-[152px] left-0 right-0 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-4 py-1.5 z-30 flex items-center justify-between">
               <div className="flex items-center gap-4 text-xs">
                 <span className="font-medium text-blue-700 flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5" /> Mode comparaison actif
@@ -8061,8 +8376,13 @@ export default function PlanningRH() {
             </div>
           )}
             
-            {/* Zone de contenu - Fixed sous navbar (64px) + barre filtres (56px) + legende segments (28px) + legende comparaison si active */}
-            <main className={`fixed ${showComparaison ? 'top-[184px]' : 'top-[148px]'} left-0 right-0 bottom-0 overflow-hidden bg-white transition-all duration-200`}>
+            {/* Zone de contenu - Position ajustée selon la vue et le mode comparaison */}
+            {/* Vue semaine: +32px pour la légende inline */}
+            <main className={`fixed ${
+              viewType === 'semaine' 
+                ? (showComparaison ? 'top-[188px]' : 'top-[152px]')
+                : 'top-[120px]'
+            } left-0 right-0 bottom-0 overflow-hidden bg-white transition-all duration-200`}>
               {filteredEmployes.length === 0 ? (
                 /* Etat vide - Aucun employe trouve */
                 <div className="flex flex-col items-center justify-center py-12 px-4">
@@ -8199,24 +8519,25 @@ export default function PlanningRH() {
             )}
             
             {creationRapideModalOpen && (
-              <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto">
-                  <div className="p-4 sm:p-6">
-                    <div className="flex justify-between items-center mb-4">
-                      <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                        <span className="hidden sm:inline">Création rapide de planning</span>
-                        <span className="sm:hidden">Création rapide</span>
-                      </h2>
+              <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden border border-slate-200 flex flex-col">
+                  {/* Header compact avec onglets intégrés */}
+                  <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-200 bg-white">
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-sm font-semibold text-slate-800">Création rapide de planning</h2>
                       <button 
                         onClick={() => setCreationRapideModalOpen(false)}
-                        className="text-gray-400 hover:text-gray-600 p-1"
+                        className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-6 sm:h-6">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="18" y1="6" x2="6" y2="18"></line>
                           <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
                       </button>
                     </div>
+                  </div>
+                  {/* Contenu */}
+                  <div className="flex-1 overflow-y-auto p-4">
                     
                     <CreationRapideForm 
                       employes={employes}
@@ -8362,57 +8683,49 @@ export default function PlanningRH() {
         />
       )}
 
-      {/* Modale Remplacements - Int�gration parfaite style Planning */}
+      {/* Modale Remplacements */}
       {showRemplacementsPanel && (
         <div 
-          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-6 lg:p-8"
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
           onClick={(e) => e.target === e.currentTarget && setShowRemplacementsPanel(false)}
         >
           <div 
-            className="bg-white rounded-xl shadow-2xl w-full max-w-[1100px] flex flex-col overflow-hidden"
+            className="bg-white rounded-xl shadow-lg w-full max-w-[1100px] flex flex-col overflow-hidden border border-slate-200"
             style={{ height: 'min(82vh, 780px)' }}
           >
-            {/* Header - Proportions exactes comme AdminAnomaliesPanel */}
-            <div className="flex-shrink-0 px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-slate-50 via-gray-50 to-slate-50">
+            {/* Header léger */}
+            <div className="flex-shrink-0 px-5 py-4 border-b border-slate-100 bg-white">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-[#cf292c] flex items-center justify-center shadow-sm">
-                    <RefreshCw className="w-5 h-5 text-white" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+                    <RefreshCw className="w-5 h-5 text-red-600" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Gestion des Remplacements</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Gérez les demandes de remplacement de votre équipe</p>
+                    <h2 className="text-base font-semibold text-slate-800">Gestion des Remplacements</h2>
+                    <p className="text-sm text-slate-500">Gérez les demandes de remplacement</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowRemplacementsPanel(false)}
-                  className="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                  className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center transition-colors"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
               
-              {/* Barre d'info avec badge */}
-              <div className="mt-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {remplacementsEnAttente > 0 && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#cf292c]/10 rounded-lg">
-                      <span className="w-2 h-2 bg-[#cf292c] rounded-full animate-pulse"></span>
-                      <span className="text-sm font-semibold text-[#cf292c]">{remplacementsEnAttente} en attente</span>
-                    </div>
-                  )}
+              {/* Badge en attente */}
+              {remplacementsEnAttente > 0 && (
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-medium">
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                    {remplacementsEnAttente} en attente
+                  </span>
                 </div>
-                <button
-                  onClick={() => setShowRemplacementsPanel(false)}
-                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  Appuyer sur Échap pour fermer
-                </button>
-              </div>
+              )}
             </div>
             
-            {/* Contenu - padding ajust� pour coh�rence */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50/30">
+            {/* Contenu */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50/50">
               <ReplacementsManager embedded={true} />
             </div>
           </div>
@@ -8458,17 +8771,6 @@ export default function PlanningRH() {
         </div>
       )}
 
-      {/* Panneau de debug (seulement en d�veloppement) */}
-      {process.env.NODE_ENV === 'development' && (
-        <React.Suspense fallback={null}>
-          <AnomaliesDebugPanel
-            anomaliesData={anomaliesData}
-            comparaisons={comparaisons}
-            isVisible={showDebugPanel}
-            onToggle={() => setShowDebugPanel(!showDebugPanel)}
-          />
-        </React.Suspense>
-      )}
     </DndProvider>
   );
 }

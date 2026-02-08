@@ -6,192 +6,216 @@ const path = require('path');
 async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dateFin) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margins: { top: 35, bottom: 35, left: 40, right: 40 } });
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 40, bottom: 40, left: 50, right: 50 } });
       const chunks = [];
       doc.on('data', chunk => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
+      // Couleurs charte
       const PRIMARY = '#cf292c';
       const DARK = '#1f2937';
       const GRAY = '#6b7280';
-      const LIGHT_GRAY = '#d1d5db';
+      const LIGHT = '#9ca3af';
+      const BORDER = '#e5e7eb';
+      const GREEN = '#059669';
+      const BG_LIGHT = '#f8f9fa';
+      const WHITE = '#ffffff';
 
-      // === EN-TETE MINIMALISTE ===
-      doc.fontSize(20).fillColor(DARK).font('Helvetica-Bold').text('RAPPORT DE PRESENCE', 40, 40);
+      // Calculs
+      let heuresPrevues = 0;
+      let heuresTravaillees = 0;
+      if (rapportData.heuresParJour && rapportData.heuresParJour.length > 0) {
+        rapportData.heuresParJour.forEach(jour => {
+          heuresPrevues += (jour.prevues || 0);
+          heuresTravaillees += (jour.travaillees || 0);
+        });
+      }
+      if (heuresPrevues === 0) heuresPrevues = rapportData.heuresPrevues || 0;
+      if (heuresTravaillees === 0) heuresTravaillees = rapportData.heuresTravaillees || 0;
       
-      // Ligne rouge fine
-      doc.moveTo(40, 70).lineTo(555, 70).strokeColor(PRIMARY).lineWidth(1.5).stroke();
-
-      // Info employé + période sur une ligne épurée
-      doc.fontSize(11).fillColor(DARK).font('Helvetica-Bold').text(`${employe.prenom} ${employe.nom}`, 40, 82);
-      doc.fontSize(9).fillColor(GRAY).font('Helvetica').text(`${employe.role} • ${employe.email}`, 40, 97);
-      
-      doc.fontSize(9).fillColor(GRAY).text(
-        `${dateDebut.toLocaleDateString('fr-FR')} - ${dateFin.toLocaleDateString('fr-FR')}`,
-        0, 82, { align: 'right', width: 515 }
-      );
-      doc.fontSize(8).fillColor(LIGHT_GRAY).text(`${periode}`, 0, 97, { align: 'right', width: 515 });
-
-      // === METRIQUES PRINCIPALES (3 colonnes compactes) ===
-      const metricsY = 125;
-      const colWidth = 170;
-
-      const heuresPrevues = rapportData.heuresPrevues || 0;
-      const heuresTravaillees = rapportData.heuresTravaillees || 0;
-      const heuresSupp = rapportData.heuresSupplementaires || 0;
-      const tauxRealisation = heuresPrevues > 0 ? ((heuresTravaillees / heuresPrevues) * 100).toFixed(0) : 100;
-
-      // Colonne 1: Heures prévues
-      doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica').text('HEURES PREVUES', 40, metricsY);
-      doc.fontSize(36).fillColor(DARK).font('Helvetica-Bold').text(heuresPrevues.toFixed(0) + 'h', 40, metricsY + 15);
-
-      // Colonne 2: Heures travaillées avec %
-      doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica').text('HEURES TRAVAILLEES', 40 + colWidth, metricsY);
-      doc.fontSize(36).fillColor(PRIMARY).font('Helvetica-Bold').text(heuresTravaillees.toFixed(0) + 'h', 40 + colWidth, metricsY + 15);
-      doc.fontSize(10).fillColor(GRAY).font('Helvetica').text(`${tauxRealisation}% realise`, 40 + colWidth, metricsY + 55);
-
-      // Colonne 3: Heures supp
-      doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica').text('HEURES SUPP.', 40 + colWidth * 2, metricsY);
-      doc.fontSize(36).fillColor(DARK).font('Helvetica-Bold').text(heuresSupp.toFixed(0) + 'h', 40 + colWidth * 2, metricsY + 15);
-
-      // === STATISTIQUES CONDENSEES ===
-      const statsY = metricsY + 85;
-      
-      // Ligne de séparation fine
-      doc.moveTo(40, statsY - 10).lineTo(555, statsY - 10).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
-
-      // Utiliser joursPresents pour être cohérent avec le rapport web
+      const ecartTotal = heuresTravaillees - heuresPrevues;
+      const tauxRealisation = heuresPrevues > 0 ? Math.round((heuresTravaillees / heuresPrevues) * 100) : 100;
       const joursPresents = rapportData.statistiques?.joursPresents || 0;
-      const absJust = rapportData.absencesJustifiees || 0;
-      const absInjust = rapportData.absencesInjustifiees || 0;
       const retards = rapportData.nombreRetards || 0;
-      const moyHeures = (rapportData.statistiques?.moyenneHeuresJour || 0).toFixed(1);
       const tauxPonctualite = rapportData.tauxPonctualite !== undefined ? rapportData.tauxPonctualite : 100;
+      const moyHeures = joursPresents > 0 ? (heuresTravaillees / joursPresents).toFixed(1) : '0.0';
 
-      // Layout: 3 colonnes x 2 lignes
-      const statCol1 = 40;
-      const statCol2 = 230;
-      const statCol3 = 390;
+      const pageWidth = 495;
+      const left = 50;
+      let y = 0;
+
+      // === HEADER ROUGE ===
+      doc.rect(0, 0, 595, 70).fill(PRIMARY);
       
-      // Ligne 1
-      doc.fontSize(8).fillColor(LIGHT_GRAY).font('Helvetica').text('Jours presents', statCol1, statsY);
-      doc.fontSize(16).fillColor(DARK).font('Helvetica-Bold').text(joursPresents.toString(), statCol1, statsY + 12);
-
-      doc.fontSize(8).fillColor(LIGHT_GRAY).text('Absences justifiees', statCol2, statsY);
-      doc.fontSize(16).fillColor(DARK).text(absJust.toString(), statCol2, statsY + 12);
-
-      doc.fontSize(8).fillColor(LIGHT_GRAY).text('Absences injustifiees', statCol3, statsY);
-      doc.fontSize(16).fillColor(PRIMARY).text(absInjust.toString(), statCol3, statsY + 12);
-
-      // Ligne 2
-      const statsY2 = statsY + 50;
-      doc.fontSize(8).fillColor(LIGHT_GRAY).text('Retards', statCol1, statsY2);
-      doc.fontSize(16).fillColor(DARK).text(retards.toString(), statCol1, statsY2 + 12);
-
-      doc.fontSize(8).fillColor(LIGHT_GRAY).text('Moyenne h/jour', statCol2, statsY2);
-      doc.fontSize(16).fillColor(DARK).text(moyHeures + 'h', statCol2, statsY2 + 12);
-
-      doc.fontSize(8).fillColor(LIGHT_GRAY).text('Ponctualite', statCol3, statsY2);
-      doc.fontSize(16).fillColor(DARK).text(tauxPonctualite.toFixed(0) + '%', statCol3, statsY2 + 12);
-
-      // === TABLEAU COMPACT (limité pour tenir sur 1 page) ===
-      const tableY = statsY2 + 60;
+      doc.fontSize(18).fillColor(WHITE).font('Helvetica-Bold').text('RAPPORT DE PRESENCE', left, 22);
       
-      doc.moveTo(40, tableY - 8).lineTo(555, tableY - 8).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
-      doc.fontSize(9).fillColor(DARK).font('Helvetica-Bold').text('Detail des journees', 40, tableY);
+      const periodeLabel = periode === 'mois' ? 'Mensuel' : periode === 'semaine' ? 'Hebdomadaire' : 'Trimestriel';
+      const formatDate = (d) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+      doc.fontSize(10).fillColor(WHITE).font('Helvetica').text(
+        `${periodeLabel}  -  ${formatDate(dateDebut)} au ${formatDate(dateFin)}`, left, 46
+      );
+
+      // === EMPLOYE ===
+      y = 90;
+      doc.fontSize(13).fillColor(DARK).font('Helvetica-Bold').text(`${employe.prenom} ${employe.nom}`, left, y);
+      doc.fontSize(9).fillColor(GRAY).font('Helvetica').text(employe.email, left, y + 17);
+      
+      // Ligne separatrice
+      y = 125;
+      doc.moveTo(left, y).lineTo(left + pageWidth, y).strokeColor(BORDER).lineWidth(1).stroke();
+
+      // === SYNTHESE DES HEURES ===
+      y = 145;
+      doc.fontSize(9).fillColor(LIGHT).font('Helvetica-Bold').text('SYNTHESE DES HEURES', left, y);
+      y += 20;
+      
+      // Card avec fond
+      doc.roundedRect(left, y, pageWidth, 80, 4).fill(BG_LIGHT);
+      
+      const colWidth = pageWidth / 3;
+      const cardY = y + 18;
+      
+      // Col 1 - Heures prevues
+      doc.fontSize(8).fillColor(GRAY).font('Helvetica').text('Prevues', left + 25, cardY);
+      doc.fontSize(26).fillColor(DARK).font('Helvetica-Bold').text(heuresPrevues.toFixed(0) + 'h', left + 25, cardY + 14);
+      
+      // Separateur vertical
+      doc.moveTo(left + colWidth, y + 15).lineTo(left + colWidth, y + 65).strokeColor(BORDER).lineWidth(1).stroke();
+      
+      // Col 2 - Heures realisees
+      doc.fontSize(8).fillColor(GRAY).font('Helvetica').text('Realisees', left + colWidth + 25, cardY);
+      doc.fontSize(26).fillColor(PRIMARY).font('Helvetica-Bold').text(heuresTravaillees.toFixed(2) + 'h', left + colWidth + 25, cardY + 14);
+      doc.fontSize(8).fillColor(GRAY).font('Helvetica').text(tauxRealisation + '% du prevu', left + colWidth + 25, cardY + 45);
+      
+      // Separateur vertical
+      doc.moveTo(left + colWidth * 2, y + 15).lineTo(left + colWidth * 2, y + 65).strokeColor(BORDER).lineWidth(1).stroke();
+      
+      // Col 3 - Ecart
+      const ecartColor = ecartTotal >= 0 ? GREEN : PRIMARY;
+      const ecartSign = ecartTotal >= 0 ? '+' : '';
+      doc.fontSize(8).fillColor(GRAY).font('Helvetica').text('Ecart', left + colWidth * 2 + 25, cardY);
+      doc.fontSize(26).fillColor(ecartColor).font('Helvetica-Bold').text(ecartSign + ecartTotal.toFixed(2) + 'h', left + colWidth * 2 + 25, cardY + 14);
+      const ecartLabel = ecartTotal >= 0 ? 'Excedent' : 'A regulariser';
+      doc.fontSize(8).fillColor(ecartColor).font('Helvetica').text(ecartLabel, left + colWidth * 2 + 25, cardY + 45);
+
+      // === INDICATEURS ===
+      y = 260;
+      doc.fontSize(9).fillColor(LIGHT).font('Helvetica-Bold').text('INDICATEURS', left, y);
+      y += 20;
+      
+      const stats = [
+        { label: 'Jours travailles', value: joursPresents.toString(), color: DARK },
+        { label: 'Retards', value: retards.toString(), color: retards > 0 ? '#d97706' : DARK },
+        { label: 'Ponctualite', value: tauxPonctualite.toFixed(0) + '%', color: tauxPonctualite >= 80 ? GREEN : PRIMARY },
+        { label: 'Moyenne / jour', value: moyHeures + 'h', color: DARK }
+      ];
+      
+      const statWidth = pageWidth / 4;
+      stats.forEach((s, i) => {
+        const x = left + i * statWidth;
+        doc.fontSize(20).fillColor(s.color).font('Helvetica-Bold').text(s.value, x, y);
+        doc.fontSize(8).fillColor(LIGHT).font('Helvetica').text(s.label, x, y + 24);
+      });
+
+      // === DETAIL PAR JOUR ===
+      y = 330;
+      doc.fontSize(9).fillColor(GRAY).font('Helvetica-Bold').text('DETAIL PAR JOUR', left, y);
+      y += 15;
 
       if (rapportData.heuresParJour && rapportData.heuresParJour.length > 0) {
-        const tableTop = tableY + 20;
-        const colWidths = [95, 80, 80, 70, 90];
-        const colX = [40, 135, 215, 295, 365];
-        const headers = ['Date', 'Prevues', 'Reelles', 'Ecart', 'Statut'];
+        // Header du tableau - Style sobre avec fond gris clair
+        const colX = [left, left + 100, left + 195, left + 300, left + 405];
+        const colW = [92, 87, 97, 97, 90];
         
-        // En-tête tableau (fond gris léger)
-        doc.rect(40, tableTop, 415, 18).fill('#f9fafb');
-        headers.forEach((header, i) => {
-          doc.fontSize(7).fillColor(GRAY).font('Helvetica-Bold').text(
-            header, 
-            colX[i] + 5, 
-            tableTop + 5, 
-            { width: colWidths[i] - 10, align: i === 0 ? 'left' : 'center' }
+        doc.roundedRect(left, y, pageWidth, 22, 2).fill('#f3f4f6');
+        const headers = ['Date', 'Prevues', 'Realisees', 'Ecart', 'Statut'];
+        headers.forEach((h, i) => {
+          doc.fontSize(8).fillColor(GRAY).font('Helvetica-Bold').text(
+            h.toUpperCase(), colX[i] + 10, y + 7, { width: colW[i], align: i === 0 ? 'left' : 'center' }
           );
         });
-
-        // Lignes (limiter à 14 lignes max pour tenir sur 1 page)
-        let rowY = tableTop + 18;
-        const maxRows = Math.min(14, rapportData.heuresParJour.length);
-        const joursLimites = rapportData.heuresParJour.slice(0, maxRows);
         
-        joursLimites.forEach((jour, index) => {
+        y += 22;
+        
+        // Lignes du tableau - TOUTES les lignes avec pagination automatique
+        const rowHeight = 24;
+        const pageBottomLimit = 750; // Limite avant footer
+        
+        rapportData.heuresParJour.forEach((jour, idx) => {
+          // Vérifier si on doit créer une nouvelle page
+          if (y + rowHeight > pageBottomLimit) {
+            doc.addPage();
+            y = 50;
+            
+            // Re-dessiner le header du tableau sur la nouvelle page
+            doc.roundedRect(left, y, pageWidth, 22, 2).fill('#f3f4f6');
+            headers.forEach((h, i) => {
+              doc.fontSize(8).fillColor(GRAY).font('Helvetica-Bold').text(
+                h.toUpperCase(), colX[i] + 10, y + 7, { width: colW[i], align: i === 0 ? 'left' : 'center' }
+              );
+            });
+            y += 22;
+          }
+          
           const prevues = jour.prevues || 0;
           const travaillees = jour.travaillees || 0;
           const ecart = travaillees - prevues;
           
-          // Ligne fine de séparation
-          doc.moveTo(40, rowY).lineTo(455, rowY).strokeColor('#f3f4f6').lineWidth(0.5).stroke();
+          // Fond alterné
+          if (idx % 2 === 0) {
+            doc.rect(left, y, pageWidth, rowHeight).fill(BG_LIGHT);
+          }
           
-          // Date
-          doc.fontSize(8).fillColor(DARK).font('Helvetica').text(
-            new Date(jour.jour).toLocaleDateString('fr-FR'), 
-            colX[0] + 5, 
-            rowY + 5, 
-            { width: colWidths[0] - 10 }
+          const dateObj = new Date(jour.jour);
+          const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+          const jourSemaine = jours[dateObj.getDay()];
+          const dateFormatee = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+          
+          const rowY = y + 7;
+          doc.fontSize(9).fillColor(DARK).font('Helvetica').text(`${jourSemaine} ${dateFormatee}`, colX[0] + 10, rowY);
+          doc.fillColor(GRAY).text(prevues % 1 === 0 ? prevues + 'h' : prevues.toFixed(1) + 'h', colX[1] + 10, rowY, { width: colW[1], align: 'center' });
+          doc.fillColor(DARK).font('Helvetica-Bold').text(travaillees.toFixed(2) + 'h', colX[2] + 10, rowY, { width: colW[2], align: 'center' });
+          
+          const rowEcartColor = ecart > 0.01 ? GREEN : ecart < -0.01 ? PRIMARY : GRAY;
+          doc.fillColor(rowEcartColor).font('Helvetica').text((ecart >= 0 ? '+' : '') + ecart.toFixed(2) + 'h', colX[3] + 10, rowY, { width: colW[3], align: 'center' });
+          
+          // Déterminer la couleur du statut
+          const statut = jour.statut || (jour.type !== 'absence' && travaillees > 0 ? 'Présent' : 'Absent');
+          let statutColor = GRAY;
+          if (statut === 'Présent' || statut === 'Present') {
+            statutColor = GREEN;
+          } else if (statut === 'Absence' || statut === 'Absent') {
+            statutColor = PRIMARY;
+          } else if (statut.includes('Congé') || statut === 'RTT' || statut.includes('Maladie')) {
+            statutColor = '#3b82f6'; // Bleu pour congés/RTT/maladie
+          } else if (statut === 'Repos') {
+            statutColor = GRAY;
+          }
+          
+          doc.fontSize(8).fillColor(statutColor).font('Helvetica-Bold').text(
+            statut, colX[4] + 10, rowY + 1, { width: colW[4], align: 'center' }
           );
           
-          // Prévues
-          doc.fillColor(GRAY).text(
-            prevues.toFixed(1), 
-            colX[1] + 5, 
-            rowY + 5, 
-            { width: colWidths[1] - 10, align: 'center' }
-          );
-          
-          // Travaillées
-          doc.fillColor(DARK).font('Helvetica-Bold').text(
-            travaillees.toFixed(1), 
-            colX[2] + 5, 
-            rowY + 5, 
-            { width: colWidths[2] - 10, align: 'center' }
-          );
-          
-          // Écart
-          const ecartColor = ecart > 0 ? '#10b981' : ecart < 0 ? PRIMARY : GRAY;
-          doc.fillColor(ecartColor).font('Helvetica-Bold').text(
-            (ecart >= 0 ? '+' : '') + ecart.toFixed(1), 
-            colX[3] + 5, 
-            rowY + 5, 
-            { width: colWidths[3] - 10, align: 'center' }
-          );
-          
-          // Statut
-          const statut = jour.type === 'absence' ? 'Absent' : 'Present';
-          doc.fontSize(7).fillColor(statut === 'Present' ? GRAY : PRIMARY).font('Helvetica').text(
-            statut, 
-            colX[4] + 5, 
-            rowY + 5, 
-            { width: colWidths[4] - 10, align: 'center' }
-          );
-          
-          rowY += 16;
+          y += rowHeight;
         });
-
-        // Note si plus de jours
-        if (rapportData.heuresParJour.length > maxRows) {
-          doc.fontSize(7).fillColor(LIGHT_GRAY).font('Helvetica-Oblique').text(
-            `+ ${rapportData.heuresParJour.length - maxRows} jours supplementaires`,
-            40, rowY + 3
-          );
-        }
       }
 
-      // === PIED DE PAGE MINIMALISTE (position fixe sans créer de nouvelle page) ===
-      const footerY = 800; // Position fixe près du bas de la page A4 (hauteur = 841.89)
-      doc.fontSize(7).fillColor(LIGHT_GRAY).font('Helvetica').text(
-        `Genere le ${new Date().toLocaleDateString('fr-FR')}`,
-        40, 
-        footerY, 
-        { align: 'center', width: 515, lineBreak: false }
+      // === FOOTER === (positionné juste après le contenu, pas en bas fixe)
+      // Ajouter un espace après le tableau
+      y += 20;
+      
+      // Si on est trop bas, ajouter une nouvelle page pour le footer
+      if (y > 780) {
+        doc.addPage();
+        y = 50;
+      }
+      
+      // Ligne de séparation et texte du footer
+      doc.moveTo(left, y).lineTo(left + pageWidth, y).strokeColor(BORDER).lineWidth(0.5).stroke();
+      doc.fontSize(8).fillColor(LIGHT).font('Helvetica').text(
+        `Document genere le ${new Date().toLocaleDateString('fr-FR')}`,
+        left, y + 8, { width: pageWidth, align: 'center' }
       );
 
       doc.end();
@@ -222,12 +246,14 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   workbook.creator = 'Systeme RH Restaurant';
   workbook.created = new Date();
 
+  // Palette sobre et professionnelle (inspirée du rapport PDF)
   const palette = {
-    primary: 'FFCF292C',
-    dark: 'FF1F2937',
-    gray: 'FF6B7280',
-    lightGray: 'FFF3F4F6',
-    soft: 'FFFAFAFA'
+    dark: 'FF1F2937',       // Noir/gris foncé - titres
+    accent: 'FFCF292C',     // Rouge - uniquement pour alertes
+    gray: 'FF6B7280',       // Gris moyen - texte secondaire
+    lightGray: 'FFD1D5DB',  // Gris clair - bordures
+    soft: 'FFF9FAFB',       // Gris très clair - alternance lignes
+    white: 'FFFFFFFF'       // Blanc
   };
 
   // Pré-calculs pour chaque employé (utilisés par les deux feuilles)
@@ -369,69 +395,48 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     views: [{ state: 'frozen', xSplit: 0, ySplit: 5 }]
   });
 
-  // TITRE
+  // TITRE - sobre, fond blanc avec ligne rouge
   hrSheet.mergeCells('A1:I1');
   const titleCell = hrSheet.getCell('A1');
-  titleCell.value = 'RAPPORT MENSUEL - HEURES & ABSENCES';
-  titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
-  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.primary } };
-  hrSheet.getRow(1).height = 36;
+  titleCell.value = 'RAPPORT MENSUEL';
+  titleCell.font = { size: 18, bold: true, color: { argb: palette.dark } };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+  titleCell.border = { bottom: { style: 'medium', color: { argb: palette.accent } } };
+  hrSheet.getRow(1).height = 40;
 
-  // PÉRIODE
+  // PÉRIODE - discret
   hrSheet.mergeCells('A2:I2');
   const periodeCell = hrSheet.getCell('A2');
-  periodeCell.value = `Période: ${dateDebut.toLocaleDateString('fr-FR')} au ${dateFin.toLocaleDateString('fr-FR')}`;
-  periodeCell.font = { size: 11, bold: true, color: { argb: palette.dark } };
-  periodeCell.alignment = { vertical: 'middle', horizontal: 'center' };
-  hrSheet.getRow(2).height = 24;
+  periodeCell.value = `${dateDebut.toLocaleDateString('fr-FR')} - ${dateFin.toLocaleDateString('fr-FR')}`;
+  periodeCell.font = { size: 10, color: { argb: palette.gray } };
+  periodeCell.alignment = { vertical: 'middle', horizontal: 'left' };
+  hrSheet.getRow(2).height = 20;
 
-  // RÉSUMÉ (ligne 3)
+  // Ligne vide avant en-têtes
   hrSheet.addRow([]);
-  const summaryRow = hrSheet.addRow([
-    `${computedEmployes.length} employés`,
-    `${totals.heuresTravaillees.toFixed(0)}h travaillées`,
-    `${totals.cp} jours CP`,
-    `${totals.rtt} jours RTT`,
-    `${totals.maladie} jours maladie`,
-    totals.absInjustifiees > 0 ? `${totals.absInjustifiees} abs. injust.` : 'Aucune absence injustifiée',
-    'À compléter',
-    'Justificatifs requis',
-    `Édité le ${new Date().toLocaleDateString('fr-FR')}`
-  ]);
-  summaryRow.font = { size: 9, color: { argb: palette.gray }, italic: true };
-  summaryRow.alignment = { vertical: 'middle', horizontal: 'center' };
-  summaryRow.height = 20;
-  summaryRow.eachCell((cell) => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
-  });
 
-  // EN-TÊTES
+  // EN-TÊTES - sobres, fond gris clair
   const headerRow = hrSheet.addRow([
-    'NOM & PRÉNOM',
-    'HEURES\nTRAVAILLÉES',
-    'CONGÉS PAYÉS\n(jours + dates)',
-    'RTT\n(jours + dates)',
-    'ARRÊT MALADIE\n(jours + dates)',
-    'ABSENCES NON\nJUSTIFIÉES',
-    'NAVIGO\n(Oui/Non)',
-    'JUSTIFICATIF\nNAVIGO',
-    'OBSERVATIONS'
+    'Employé',
+    'Heures',
+    'Congés payés',
+    'RTT',
+    'Maladie',
+    'Abs. injust.',
+    'Navigo',
+    'Justif.',
+    'Notes'
   ]);
-  headerRow.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.dark } };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-  headerRow.height = 40;
+  headerRow.font = { bold: true, size: 9, color: { argb: palette.dark } };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.height = 28;
   headerRow.eachCell((cell) => {
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-      bottom: { style: 'medium', color: { argb: palette.dark } },
-      left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-      right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
-    };
+    cell.border = { bottom: { style: 'thin', color: { argb: palette.lightGray } } };
   });
+  headerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
 
-  const columnWidths = [28, 14, 32, 32, 32, 32, 12, 25, 25];
+  const columnWidths = [22, 10, 18, 18, 18, 12, 8, 10, 18];
   hrSheet.columns = columnWidths.map((width, i) => ({ key: `col${i}`, width }));
 
   computedEmployes.forEach((emp, index) => {
@@ -447,17 +452,22 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     
     // Utiliser le numéro PJ attribué par excelZipUtils, ou calculer si en mode standalone
     let justificatifText = '';
+    let justificatifFileName = '';
     if (emp.justificatifNavigo && emp.eligibleNavigo) {
+      // Extraire l'extension du fichier original
+      const ext = emp.justificatifNavigo.split('.').pop() || 'pdf';
+      justificatifFileName = `Navigo_${emp.nom}_${emp.prenom}.${ext}`;
+      
       if (emp.pjNumber) {
         // Mode ZIP: utiliser le numéro pré-attribué
-        justificatifText = `PJ${emp.pjNumber}`;
+        justificatifText = `📎 PJ${emp.pjNumber}`;
       } else {
         // Mode standalone: calculer le numéro
         const justifIndex = computedEmployes
           .slice(0, index + 1)
           .filter(e => e.justificatifNavigo && e.eligibleNavigo)
           .length;
-        justificatifText = `PJ${justifIndex}`;
+        justificatifText = `📎 PJ${justifIndex}`;
       }
     }
 
@@ -473,148 +483,89 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       ''  // OBSERVATIONS - cases vides pour notes manuelles
     ]);
 
-    row.height = 32;
-    row.font = { size: 10 };
+    row.height = 24;
+    row.font = { size: 9, color: { argb: palette.dark } };
 
+    // Alternance sobre
     const isEven = index % 2 === 0;
-    row.eachCell((cell, colNumber) => {
+    row.eachCell((cell) => {
       if (isEven) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.soft } };
       }
-      cell.border = {
-        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
-        right: { style: 'thin', color: { argb: 'FFF3F4F6' } },
-        left: { style: 'thin', color: { argb: 'FFF3F4F6' } }
-      };
-      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = { bottom: { style: 'hair', color: { argb: palette.lightGray } } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
     });
 
-    // Nom à gauche en gras
+    // Nom à gauche
     row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
-    row.getCell(1).font = { size: 10, bold: true, color: { argb: palette.dark } };
+    row.getCell(1).font = { size: 9, bold: true, color: { argb: palette.dark } };
     
-    // Heures en gras et centré
-    row.getCell(2).font = { size: 12, bold: true, color: { argb: palette.primary } };
-    row.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' };
+    // Heures - sobre mais visible
+    row.getCell(2).font = { size: 10, bold: true, color: { argb: palette.dark } };
 
-    // Bordure gauche renforcée pour séparer nom/heures des absences
-    row.getCell(3).border = {
-      ...row.getCell(3).border,
-      left: { style: 'medium', color: { argb: 'FFD1D5DB' } }
-    };
-
-    // Mettre en évidence les absences injustifiées
+    // Absences injustifiées - rouge discret
     if ((emp.absencesInjustifiees || 0) > 0) {
-      row.getCell(6).font = { bold: true, size: 10, color: { argb: 'FFDC2626' } };
-      row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFECACA' } };
+      row.getCell(6).font = { size: 9, bold: true, color: { argb: palette.accent } };
     }
 
-    // Mettre en évidence la maladie si > 3 jours
-    if (emp.joursMaladie > 3) {
-      row.getCell(5).font = { bold: true, color: { argb: 'FFEA580C' } };
-      row.getCell(5).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
-    }
-
-    // Colonne NAVIGO - fond jaune si éligible
+    // Navigo - sobre
     const navigoCell = row.getCell(7);
-    if (emp.eligibleNavigo) {
-      navigoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFA7F3D0' } };
-      navigoCell.font = { size: 10, bold: true, color: { argb: 'FF065F46' } };
-    } else {
-      navigoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
-      navigoCell.font = { size: 10, color: { argb: palette.gray } };
-    }
-    navigoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    navigoCell.font = { size: 9, color: { argb: emp.eligibleNavigo ? palette.dark : palette.gray } };
     
-    // Colonne JUSTIFICATIF - lien cliquable ou vide
+    // Justificatif - avec lien vers le fichier dans le dossier ZIP
     const justifCell = row.getCell(8);
-    if (emp.justificatifNavigo) {
-      justifCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
-      justifCell.font = { size: 10, bold: true, color: { argb: 'FF2563EB' }, underline: true };
+    if (emp.justificatifNavigo && justificatifFileName) {
+      // Ajouter un hyperlien vers le fichier dans le dossier Justificatifs_Navigo
+      justifCell.value = {
+        text: justificatifText,
+        hyperlink: `Justificatifs_Navigo/${justificatifFileName}`,
+        tooltip: `Ouvrir ${justificatifFileName}`
+      };
+      justifCell.font = { size: 9, color: { argb: '0066CC' }, underline: true };
     } else {
-      justifCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
-      justifCell.font = { size: 9, italic: true, color: { argb: 'FF9CA3AF' } };
+      justifCell.font = { size: 9, color: { argb: palette.gray } };
     }
-    justifCell.alignment = { vertical: 'middle', horizontal: 'center' };
-    
-    // OBSERVATIONS - fond blanc, prêt pour notes manuscrites
-    row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-    row.getCell(9).border = {
-      ...row.getCell(9).border,
-      left: { style: 'medium', color: { argb: 'FFD1D5DB' } }
-    };
   });
 
   // Ligne vide avant totaux
   hrSheet.addRow([]);
 
-  // LIGNE DE TOTAUX
+  // LIGNE DE TOTAUX - sobre
   const totalRow = hrSheet.addRow([
-    `TOTAUX - ${computedEmployes.length} EMPLOYÉS`,
-    totals.heuresTravaillees.toFixed(0) + ' h',
-    `${totals.cp} jours`,
-    `${totals.rtt} jours`,
-    `${totals.maladie} jours`,
-    totals.absInjustifiees > 0 ? `${totals.absInjustifiees} jours` : '-',
+    `Total (${computedEmployes.length})`,
+    totals.heuresTravaillees.toFixed(0) + 'h',
+    totals.cp || '-',
+    totals.rtt || '-',
+    totals.maladie || '-',
+    totals.absInjustifiees || '-',
     '',
     '',
-    totals.absInjustifiees > 0 ? '⚠️ Retenues salaire à prévoir' : ''
+    ''
   ]);
 
-  totalRow.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-  totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.primary } };
-  totalRow.height = 36;
+  totalRow.font = { bold: true, size: 9, color: { argb: palette.dark } };
+  totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+  totalRow.height = 26;
   totalRow.eachCell((cell) => {
-    cell.border = {
-      top: { style: 'medium', color: { argb: palette.dark } },
-      bottom: { style: 'medium', color: { argb: palette.dark } }
-    };
+    cell.border = { top: { style: 'thin', color: { argb: palette.lightGray } } };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
   });
   totalRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
-  totalRow.getCell(9).alignment = { vertical: 'middle', horizontal: 'left' };
 
-  // NOTE DE BAS DE PAGE
+  // Note discrète
   hrSheet.addRow([]);
   const noteRow = hrSheet.addRow([
-    '✅ Les justificatifs Navigo sont gérés via l\'interface web. Cliquez sur les liens bleus "📎 Voir justificatif" pour ouvrir les documents.',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    ''
+    `Généré le ${new Date().toLocaleDateString('fr-FR')} • Cliquez sur les liens PJ pour ouvrir les justificatifs Navigo (extraire le ZIP d'abord)`,
+    '', '', '', '', '', '', '', ''
   ]);
   hrSheet.mergeCells(`A${noteRow.number}:I${noteRow.number}`);
-  noteRow.getCell(1).font = { size: 10, italic: false, color: { argb: 'FFFFFFFF' }, bold: true };
-  noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-  noteRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
-  noteRow.height = 36;
-  
-  // Instructions
-  hrSheet.addRow([]);
-  const instructionsRow = hrSheet.addRow([
-    '📋 INSTRUCTIONS : Les cellules vertes = justificatif déjà uploadé (cliquer sur le lien). Pour ajouter/modifier un justificatif : utiliser la page "Justificatifs Navigo" de l\'application web.',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    ''
-  ]);
-  hrSheet.mergeCells(`A${instructionsRow.number}:I${instructionsRow.number}`);
-  instructionsRow.getCell(1).font = { size: 9, italic: true, color: { argb: palette.dark }, bold: true };
-  instructionsRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-  instructionsRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
-  instructionsRow.height = 32;
+  noteRow.getCell(1).font = { size: 8, italic: true, color: { argb: palette.gray } };
+  noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+  noteRow.height = 20;
 
   hrSheet.autoFilter = {
-    from: { row: 5, column: 1 },
-    to: { row: 5, column: 9 }
+    from: { row: 4, column: 1 },
+    to: { row: 4, column: 9 }
   };
 
   const buffer = await workbook.xlsx.writeBuffer();

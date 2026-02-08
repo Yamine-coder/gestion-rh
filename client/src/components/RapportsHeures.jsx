@@ -19,13 +19,19 @@ const RapportsHeures = () => {
   const [employes, setEmployes] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmployeId, setSelectedEmployeId] = useState(null);
-  const [periode, setPeriode] = useState('mois');
+  const [periode] = useState('mois'); // Toujours par mois
   const [moisSelectionne, setMoisSelectionne] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [statsGlobales, setStatsGlobales] = useState({
+    employesActifs: 0,
+    heuresPrevues: 0,
+    heuresTravaillees: 0,
+    productivite: null
+  });
 
   // Filtrer les employés selon le terme de recherche
   const filteredEmployes = employes.filter(employe => {
@@ -37,6 +43,44 @@ const RapportsHeures = () => {
       employe.role?.toLowerCase().includes(term)
     );
   });
+
+  // Récupérer les stats globales quand le mois change
+  const fetchStatsGlobales = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await api.get("/api/stats/globales", {
+        params: { periode: 'mois', mois: moisSelectionne },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const data = response.data;
+      const productivite = data.heuresPrevues > 0 
+        ? Math.round((data.heuresTravaillees / data.heuresPrevues) * 100) 
+        : null;
+      
+      setStatsGlobales({
+        employesActifs: data.employesActifs || employes.filter(e => e.statut === 'actif' && !e.dateSortie).length,
+        heuresPrevues: data.heuresPrevues || 0,
+        heuresTravaillees: data.heuresTravaillees || 0,
+        productivite
+      });
+    } catch (err) {
+      console.error("Erreur lors de la récupération des stats globales:", err);
+      // En cas d'erreur, calculer localement le nombre d'employés actifs
+      setStatsGlobales(prev => ({
+        ...prev,
+        employesActifs: employes.filter(e => e.statut === 'actif' && !e.dateSortie).length
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (employes.length > 0) {
+      fetchStatsGlobales();
+    }
+  }, [moisSelectionne, employes]);
 
   useEffect(() => {
     fetchEmployes();
@@ -190,40 +234,30 @@ const RapportsHeures = () => {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
+          {/* Sélecteur de mois uniquement */}
           <div className="relative w-full sm:w-auto">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <HiCalendar className="h-4 w-4 text-gray-400" />
             </div>
-            <select
-              value={periode}
-              onChange={(e) => setPeriode(e.target.value)}
-              className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all shadow-sm"
-            >
-              <option value="semaine">Cette semaine</option>
-              <option value="mois">Par mois</option>
-              <option value="trimestre">Ce trimestre</option>
-            </select>
-          </div>
-          
-          {periode === 'mois' && (
             <input
               type="month"
               value={moisSelectionne}
               onChange={(e) => setMoisSelectionne(e.target.value)}
+              min="2020-01"
               max={new Date().toISOString().slice(0, 7)}
-              className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all shadow-sm"
+              className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all shadow-sm"
             />
-          )}
+          </div>
 <button
             onClick={exporterTousRapports}
             data-export-all
-            className="w-full lg:w-auto bg-[#cf292c] text-white px-4 py-2 rounded-lg hover:bg-[#cf292c]/90 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            className="w-full lg:w-auto bg-[#cf292c] text-white px-4 py-2.5 rounded-lg hover:bg-[#b82528] transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            <span className="hidden sm:inline">📦 ZIP (PDF + Justificatifs)</span>
-            <span className="sm:hidden">📦 ZIP</span>
+            <span className="hidden sm:inline">Exporter (Excel + Navigo)</span>
+            <span className="sm:hidden">Export ZIP</span>
           </button>
         </div>
       </div>
@@ -234,7 +268,7 @@ const RapportsHeures = () => {
         <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Employés</p>
           <p className="text-2xl sm:text-3xl font-bold text-[#cf292c]">
-            {employes.filter(e => e.statut === 'actif' && !e.dateSortie).length}
+            {statsGlobales.employesActifs || employes.filter(e => e.statut === 'actif' && !e.dateSortie).length}
           </p>
           <p className="text-xs text-gray-500 mt-1">
             En poste
@@ -244,11 +278,22 @@ const RapportsHeures = () => {
         {/* Card 2: Productivité */}
         <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Productivité</p>
-          <p className="text-2xl sm:text-3xl font-bold text-blue-600">
-            --
+          <p className={`text-2xl sm:text-3xl font-bold ${
+            statsGlobales.productivite === null 
+              ? 'text-gray-400' 
+              : statsGlobales.productivite >= 100 
+                ? 'text-green-600' 
+                : statsGlobales.productivite >= 90 
+                  ? 'text-blue-600' 
+                  : 'text-amber-600'
+          }`}>
+            {statsGlobales.productivite !== null ? `${statsGlobales.productivite}%` : '--'}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Heures effectives vs heures prévues
+            {statsGlobales.heuresTravaillees > 0 
+              ? `${statsGlobales.heuresTravaillees.toFixed(0)}h / ${statsGlobales.heuresPrevues.toFixed(0)}h`
+              : 'Heures effectives vs prévues'
+            }
           </p>
         </div>
 
@@ -256,7 +301,7 @@ const RapportsHeures = () => {
         <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Période</p>
           <p className="text-lg sm:text-xl font-bold text-gray-800">
-            {periode === 'mois' && moisSelectionne 
+            {moisSelectionne 
               ? new Date(moisSelectionne + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
               : new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
           </p>
@@ -412,6 +457,7 @@ const RapportsHeures = () => {
       {selectedEmployeId && (
         <RapportHeuresEmploye
           employeId={selectedEmployeId}
+          initialMois={moisSelectionne}
           onClose={() => setSelectedEmployeId(null)}
         />
       )}

@@ -6,12 +6,32 @@
  * - Vérifie toutes les minutes les shifts qui viennent de se terminer
  * - Crée automatiquement les anomalies d'absence
  * - Ultra-léger : 1 requête SQL/minute
+ * - Rappel congés : vérifie à 9h les demandes en attente > 48h
  * 
  * ⚠️ TIMEZONE: Toutes les heures sont en Europe/Paris
  * Le serveur peut être en UTC (cloud) mais on force Paris partout
  */
 
 const prisma = require('../prisma/client');
+const congeReminderService = require('./congeReminderService');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties } = require('../utils/pointageTypeUtils');
+
+/**
+ * Parse les segments d'un shift (gère les cas où c'est une string JSON)
+ */
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  return [];
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🕐 UTILITAIRES TIMEZONE - Europe/Paris
@@ -121,6 +141,9 @@ class AnomalyScheduler {
     // Puis vérification régulière toutes les minutes
     this.intervalId = setInterval(() => {
       this.checkEndedShifts();
+      
+      // 📧 Vérifier les rappels de congés en attente (s'exécute uniquement à 9h)
+      congeReminderService.checkAndSendReminders();
     }, this.checkIntervalMs);
   }
 
@@ -198,7 +221,7 @@ class AnomalyScheduler {
         if (shift.employe?.statut !== 'actif') continue;
 
         // Vérifier les segments de travail
-        const segments = shift.segments || [];
+        const segments = parseSegments(shift.segments);
         
         // 🆕 Séparer segments NORMAUX et segments EXTRA
         // Les segments extra sont des heures "au noir" - pas de génération d'anomalie absence
@@ -285,11 +308,12 @@ class AnomalyScheduler {
       orderBy: { horodatage: 'asc' }
     });
 
-    const entrees = pointages.filter(p => p.type === 'ENTRÉE' || p.type === 'arrivee');
-    const sorties = pointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
+    // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes de types
+    const entrees = filtrerEntrees(pointages);
+    const sorties = filtrerSorties(pointages);
 
     // Récupérer les heures prévues du shift
-    const segments = shift.segments || [];
+    const segments = parseSegments(shift.segments);
     
     // 🆕 IMPORTANT: Séparer segments NORMAUX et EXTRA
     // Les segments extra (isExtra=true) sont des heures "au noir"
@@ -331,41 +355,34 @@ class AnomalyScheduler {
       return;
     }
 
-    // ===== CAS 2: RETARD =====
-    if (shiftStart && entrees.length > 0) {
+    // ===== CAS 2: RETARD - INDICATEUR SEULEMENT (stats ponctualité) =====
+    // Les retards ne créent pas d'anomalies - affichés sur le planning
+
+    // ===== CAS 2b: ARRIVÉE TRÈS EN AVANCE (≥45 min) - HEURES SUP À VALIDER =====
+    if (entrees.length > 0 && shiftStart) {
       const premiereEntree = new Date(entrees[0].horodatage);
       const [startH, startM] = shiftStart.split(':').map(Number);
-      const heureAttendue = new Date(premiereEntree);
-      heureAttendue.setHours(startH, startM, 0, 0);
+      const shiftStartMinutes = startH * 60 + startM;
+      const entreeMinutes = premiereEntree.getHours() * 60 + premiereEntree.getMinutes();
+      const avanceMinutes = shiftStartMinutes - entreeMinutes;
       
-      const ecartMinutes = Math.round((premiereEntree - heureAttendue) / (1000 * 60));
-      
-      // Retard > 10 minutes
-      if (ecartMinutes > 10) {
-        const typeRetard = ecartMinutes > 30 ? 'retard_critique' : 'retard_modere';
-        const gravite = ecartMinutes > 30 ? 'haute' : 'moyenne';
+      // Seuil 45 min : en dessous on ne paie pas d'extra
+      if (avanceMinutes >= 45) {
+        const avanceHeures = Math.floor(avanceMinutes / 60);
+        const avanceMin = avanceMinutes % 60;
+        const tempsExtra = avanceHeures > 0 
+          ? (avanceMin > 0 ? `${avanceHeures}h${avanceMin}min` : `${avanceHeures}h`)
+          : `${avanceMinutes}min`;
+        const heurePointage = `${String(premiereEntree.getHours()).padStart(2,'0')}:${String(premiereEntree.getMinutes()).padStart(2,'0')}`;
         
-        await this.createAnomalieIfNotExists(employeId, dateStr, typeRetard, {
-          gravite,
+        await this.createAnomalieIfNotExists(employeId, dateStr, 'extra_potentiel', {
+          gravite: 'a_valider',
           shiftId: shift.id,
-          heurePrevue: shiftStart,
-          heureReelle: premiereEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          ecartMinutes,
-          description: `Retard de ${ecartMinutes} minutes - Arrivée à ${premiereEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} au lieu de ${shiftStart}`
-        });
-      }
-      
-      // ===== CAS 2b: ARRIVÉE TRÈS EN AVANCE (hors plage) =====
-      // Si arrive >30 minutes avant le début prévu
-      if (ecartMinutes < -30) {
-        const avanceMinutes = Math.abs(ecartMinutes);
-        await this.createAnomalieIfNotExists(employeId, dateStr, 'hors_plage_in', {
-          gravite: avanceMinutes > 60 ? 'haute' : 'moyenne',
-          shiftId: shift.id,
-          heurePrevue: shiftStart,
-          heureReelle: premiereEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          ecartMinutes: avanceMinutes,
-          description: `Arrivée hors plage - ${avanceMinutes} minutes en avance (${premiereEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} au lieu de ${shiftStart})`
+          heurePrevueDebut: shiftStart,
+          heureReelleArrivee: heurePointage,
+          minutesEnAvance: avanceMinutes,
+          raison: 'arrivee_avance',
+          description: `Arrivée ${tempsExtra} en avance - Extra potentiel à valider (${heurePointage} au lieu de ${shiftStart})`
         });
       }
     }
@@ -392,72 +409,37 @@ class AnomalyScheduler {
       });
     }
 
-    // ===== CAS 4: DÉPART ANTICIPÉ =====
-    if (shiftEnd && sorties.length > 0) {
+    // ===== CAS 4: DÉPART ANTICIPÉ - INDICATEUR SEULEMENT (stats) =====
+    // Les départs anticipés ne créent pas d'anomalies - affichés sur le planning
+    
+    // ===== CAS 5: DÉPART TRÈS TARDIF (≥45 min) - HEURES SUP À VALIDER =====
+    if (sorties.length > 0 && shiftEnd) {
       const derniereSortie = new Date(sorties[sorties.length - 1].horodatage);
       const [endH, endM] = shiftEnd.split(':').map(Number);
-      const heureFinPrevue = new Date(derniereSortie);
-      heureFinPrevue.setHours(endH, endM, 0, 0);
+      const shiftEndMinutes = endH * 60 + endM;
+      const sortieMinutes = derniereSortie.getHours() * 60 + derniereSortie.getMinutes();
+      const retardMinutes = sortieMinutes - shiftEndMinutes;
       
-      const ecartMinutes = Math.round((heureFinPrevue - derniereSortie) / (1000 * 60));
-      
-      // Départ anticipé > 15 minutes mais < 60 minutes
-      if (ecartMinutes > 15 && ecartMinutes <= 60) {
-        await this.createAnomalieIfNotExists(employeId, dateStr, 'depart_anticipe', {
-          gravite: 'moyenne',
+      // Seuil 45 min : en dessous on ne paie pas d'extra
+      if (retardMinutes >= 45) {
+        const retardHeures = Math.floor(retardMinutes / 60);
+        const retardMin = retardMinutes % 60;
+        const tempsExtra = retardHeures > 0 
+          ? (retardMin > 0 ? `${retardHeures}h${retardMin}min` : `${retardHeures}h`)
+          : `${retardMinutes}min`;
+        const heurePointage = `${String(derniereSortie.getHours()).padStart(2,'0')}:${String(derniereSortie.getMinutes()).padStart(2,'0')}`;
+        
+        await this.createAnomalieIfNotExists(employeId, dateStr, 'extra_potentiel', {
+          gravite: 'a_valider',
           shiftId: shift.id,
-          heurePrevue: shiftEnd,
-          heureReelle: derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          ecartMinutes,
-          description: `Départ anticipé de ${ecartMinutes} minutes - Sortie à ${derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} au lieu de ${shiftEnd}`
-        });
-      }
-      
-      // ===== CAS 4b: DÉPART PRÉMATURÉ CRITIQUE (>1h avant) =====
-      if (ecartMinutes > 60) {
-        await this.createAnomalieIfNotExists(employeId, dateStr, 'depart_premature_critique', {
-          gravite: 'critique',
-          shiftId: shift.id,
-          heurePrevue: shiftEnd,
-          heureReelle: derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          ecartMinutes,
-          description: `⚠️ Départ prématuré critique - ${ecartMinutes} minutes avant la fin (${derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} au lieu de ${shiftEnd})`
-        });
-      }
-      
-      // ===== CAS 5: HEURES SUPPLÉMENTAIRES =====
-      if (ecartMinutes < -15 && ecartMinutes >= -120) { // Entre 15 min et 2h de dépassement
-        const heuresSup = Math.abs(ecartMinutes);
-        await this.createAnomalieIfNotExists(employeId, dateStr, 'heures_sup_a_valider', {
-          gravite: 'basse',
-          shiftId: shift.id,
-          heurePrevue: shiftEnd,
-          heureReelle: derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          ecartMinutes: heuresSup,
-          heuresSupp: (heuresSup / 60).toFixed(1),
-          description: `Heures supplémentaires - ${Math.round(heuresSup)} minutes après l'heure de fin prévue`
-        });
-      }
-      
-      // ===== CAS 5b: DÉPART TRÈS TARDIF (hors plage) - >2h après =====
-      if (ecartMinutes < -120) {
-        const retardSortie = Math.abs(ecartMinutes);
-        await this.createAnomalieIfNotExists(employeId, dateStr, 'hors_plage_out', {
-          gravite: 'haute',
-          shiftId: shift.id,
-          heurePrevue: shiftEnd,
-          heureReelle: derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          ecartMinutes: retardSortie,
-          heuresSupp: (retardSortie / 60).toFixed(1),
-          description: `Départ hors plage - ${(retardSortie / 60).toFixed(1)}h après la fin prévue (${derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} au lieu de ${shiftEnd})`
+          heurePrevueFin: shiftEnd,
+          heureReelleDepart: heurePointage,
+          minutesApres: retardMinutes,
+          raison: 'depart_tardif',
+          description: `Départ ${tempsExtra} après la fin - Extra potentiel à valider (${heurePointage} au lieu de ${shiftEnd})`
         });
       }
     }
-
-    // ===== CAS 6: PAUSE NON PRISE - DÉSACTIVÉ =====
-    // Note: Cette détection est désactivée volontairement pour éviter 
-    // les problèmes juridiques liés au code du travail
-    // await this.checkPauseNonPrise(shift, entrees, sorties, dateStr);
   }
 
   /**
@@ -465,7 +447,7 @@ class AnomalyScheduler {
    * Cas: shift 9h-13h + 14h-17h mais employé pointe 9h-17h sans interruption
    */
   async checkPauseNonPrise(shift, entrees, sorties, dateStr) {
-    const segments = shift.segments || [];
+    const segments = parseSegments(shift.segments);
     
     // Trouver les segments de pause prévus
     const pauseSegments = segments.filter(seg => {
@@ -530,14 +512,14 @@ class AnomalyScheduler {
           // qui doit être comptabilisé pour le paiement
           if (pauseDureeMinutes > 0) {
             const heuresSupp = (pauseDureeMinutes / 60).toFixed(1);
-            await this.createAnomalieIfNotExists(shift.employeId, dateStr, 'heures_sup_a_valider', {
+            await this.createAnomalieIfNotExists(shift.employeId, dateStr, 'extra_potentiel', {
               gravite: 'basse',
               shiftId: shift.id,
               pauseNonPrise: `${pauseDebut} - ${pauseFin}`,
               pauseDureeMinutes,
               heuresSupp,
               raison: 'pause_non_prise',
-              description: `+${heuresSupp}h supplémentaires - Pause de ${pauseDureeMinutes}min non prise (travaillée)`
+              description: `+${heuresSupp}h extra potentiel - Pause de ${pauseDureeMinutes}min non prise (travaillée)`
             });
           }
         }
@@ -638,7 +620,7 @@ class AnomalyScheduler {
       for (const shift of shiftsToday) {
         if (shift.employe?.statut !== 'actif') continue;
 
-        const segments = shift.segments || [];
+        const segments = parseSegments(shift.segments);
         const workSegments = segments.filter(seg => {
           const segType = seg.type?.toLowerCase();
           return segType !== 'pause' && segType !== 'break';
@@ -717,8 +699,9 @@ class AnomalyScheduler {
         if (user?.role === 'admin' || user?.role === 'manager' || user?.role === 'rh') continue;
         if (user?.statut !== 'actif') continue;
         
-        const entrees = userPointages.filter(p => p.type === 'ENTRÉE' || p.type === 'arrivee');
-        const sorties = userPointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
+        // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
+        const entrees = filtrerEntrees(userPointages);
+        const sorties = filtrerSorties(userPointages);
         
         // Si plus d'entrées que de sorties → employé "en cours"
         if (entrees.length > sorties.length) {
@@ -741,7 +724,7 @@ class AnomalyScheduler {
           
           if (shift) {
             // Extraire l'heure de fin du shift
-            const segments = shift.segments || [];
+            const segments = parseSegments(shift.segments);
             const workSegments = segments.filter(seg => {
               const segType = seg.type?.toLowerCase();
               return segType !== 'pause' && segType !== 'break';
@@ -834,8 +817,9 @@ class AnomalyScheduler {
         if (user?.role === 'admin' || user?.role === 'manager' || user?.role === 'rh') continue;
         if (user?.statut !== 'actif') continue;
         
-        const entrees = userPointages.filter(p => p.type === 'ENTRÉE' || p.type === 'arrivee');
-        const sorties = userPointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
+        // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
+        const entrees = filtrerEntrees(userPointages);
+        const sorties = filtrerSorties(userPointages);
         
         // Si entrée sans sortie → clôturer automatiquement
         if (entrees.length > sorties.length) {
@@ -857,7 +841,7 @@ class AnomalyScheduler {
           let heuresSupp = 0;
           
           if (shift) {
-            const segments = shift.segments || [];
+            const segments = parseSegments(shift.segments);
             const workSegments = segments.filter(seg => {
               const segType = seg.type?.toLowerCase();
               return segType !== 'pause' && segType !== 'break';
@@ -988,7 +972,7 @@ class AnomalyScheduler {
         
         // Fonction pour obtenir l'heure de début d'un shift en minutes
         const getShiftStartMinutes = (shift) => {
-          const segments = Array.isArray(shift.segments) ? shift.segments : [];
+          const segments = parseSegments(shift.segments);
           const workSegment = segments.find(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
           if (!workSegment) return null;
           
@@ -1000,9 +984,8 @@ class AnomalyScheduler {
         };
         
         // Pour chaque pointage d'entrée, trouver le shift le plus proche
-        const entreesPointages = userPointages.filter(p => 
-          p.type === 'ENTRÉE' || p.type === 'arrivee' || p.type === 'entree'
-        );
+        // ✅ CORRIGÉ: Utiliser le helper centralisé pour filtrer les entrées
+        const entreesPointages = filtrerEntrees(userPointages);
         
         for (const pointage of entreesPointages) {
           const pointageDate = new Date(pointage.horodatage);
@@ -1054,7 +1037,8 @@ class AnomalyScheduler {
             
             if (!anomalieExistante) {
               // Calculer les heures travaillées
-              const sorties = userPointages.filter(p => p.type === 'SORTIE' || p.type === 'depart');
+              // ✅ CORRIGÉ: Utiliser le helper centralisé pour filtrer les sorties
+              const sorties = filtrerSorties(userPointages);
               let totalMinutes = 0;
               
               for (const sortie of sorties) {

@@ -10,30 +10,45 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 /**
  * 📅 Événements à Venir - Calendrier 7 jours
  * Vue des événements impactant l'activité du restaurant
+ * @param {boolean} mini - Mode compact pour affichage en sidebar
  */
-const EvenementsCalendrier = () => {
+const EvenementsCalendrier = ({ mini = false }) => {
   const [matches, setMatches] = useState([]);
+  const [vincennesEvents, setVincennesEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
 
   // Fetch matchs depuis l'API
   const fetchMatches = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/external/matches`);
+      const res = await fetch(`${API_BASE}/api/events/matches`);
       if (res.ok) {
         const data = await res.json();
         setMatches(data.matches || []);
       }
     } catch (err) {
       console.error('Erreur matchs:', err);
-    } finally {
-      setLoading(false);
+    }
+  }, []);
+
+  // Fetch événements Vincennes
+  const fetchVincennesEvents = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/events/evenements-vincennes`);
+      if (res.ok) {
+        const data = await res.json();
+        setVincennesEvents(data.events || []);
+      }
+    } catch (err) {
+      console.error('Erreur événements Vincennes:', err);
     }
   }, []);
 
   useEffect(() => {
-    fetchMatches();
-  }, [fetchMatches]);
+    Promise.all([fetchMatches(), fetchVincennesEvents()]).finally(() => {
+      setLoading(false);
+    });
+  }, [fetchMatches, fetchVincennesEvents]);
 
   // ═══════════════════════════════════════════════════════════════
   // 📅 GÉNÉRATION DES ÉVÉNEMENTS
@@ -168,9 +183,39 @@ const EvenementsCalendrier = () => {
         }
       });
 
+    // ═══ ÉVÉNEMENTS VINCENNES (hippodrome, animations, etc.) ═══
+    vincennesEvents.forEach(event => {
+      const eventDate = new Date(event.date);
+      eventDate.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((eventDate - today) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays >= 0 && diffDays <= 14) {
+        events.push({
+          date: event.date,
+          dateObj: eventDate,
+          nom: event.nom,
+          type: event.type,
+          impact: event.impact === 'critical' ? 'critical' : 
+                  event.impact === 'high' ? 'high' : 
+                  event.impact === 'medium' ? 'medium' : 'low',
+          icon: event.type === 'hippodrome' ? Trophy : 
+                event.type === 'animation' ? PartyPopper : 
+                event.type === 'culture' ? GraduationCap :
+                event.type === 'commerce' ? Utensils : Star,
+          emoji: event.emoji || '📍',
+          daysUntil: diffDays,
+          detail: event.detail || event.lieu,
+          heure: event.heure || '',
+          lieu: event.lieu,
+          affluenceEstimee: event.affluenceEstimee,
+          category: 'vincennes'
+        });
+      }
+    });
+
     // Trier par date
     return events.sort((a, b) => a.daysUntil - b.daysUntil);
-  }, [matches]);
+  }, [matches, vincennesEvents]);
 
   // ═══════════════════════════════════════════════════════════════
   // 📆 GÉNÉRATION DES 7 PROCHAINS JOURS
@@ -236,21 +281,102 @@ const EvenementsCalendrier = () => {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse">
+      <div className={`bg-white rounded-2xl border border-slate-200 p-4 animate-pulse ${mini ? 'h-full' : ''}`}>
         <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-        <div className="flex gap-2 mb-4">
-          {[...Array(7)].map((_, i) => (
-            <div key={i} className="flex-1 h-16 bg-gray-100 rounded-lg"></div>
-          ))}
-        </div>
+        {!mini && (
+          <div className="flex gap-2 mb-4">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="flex-1 h-16 bg-gray-100 rounded-lg"></div>
+            ))}
+          </div>
+        )}
         <div className="space-y-2">
-          <div className="h-12 bg-gray-100 rounded"></div>
-          <div className="h-12 bg-gray-100 rounded"></div>
+          <div className="h-10 bg-gray-100 rounded"></div>
+          <div className="h-10 bg-gray-100 rounded"></div>
         </div>
       </div>
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🎯 MODE MINI - Affichage compact pour sidebar
+  // ═══════════════════════════════════════════════════════════════
+  if (mini) {
+    const upcomingEvents = generateEvents.slice(0, 4);
+    const todayEvents = upcomingEvents.filter(e => e.daysUntil === 0);
+    
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Header compact */}
+        <div className="px-3 py-2.5 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-[#cf292c]/10 rounded-lg">
+              <Calendar className="w-3.5 h-3.5 text-[#cf292c]" />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900">Événements</h3>
+          </div>
+          {todayEvents.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500 text-white font-bold animate-pulse">
+              {todayEvents.length} auj.
+            </span>
+          )}
+        </div>
+        
+        {/* Liste compacte - hauteur fixe */}
+        <div className="px-3 py-2 space-y-1.5">
+          {upcomingEvents.length === 0 ? (
+            <div className="text-center py-3 text-gray-400">
+              <Calendar className="w-5 h-5 mx-auto mb-1" />
+              <p className="text-[11px]">Aucun événement</p>
+            </div>
+          ) : (
+            upcomingEvents.map((event, i) => {
+              const style = getImpactStyle(event.impact);
+              
+              return (
+                <div 
+                  key={i}
+                  className={`flex items-center gap-2 p-1.5 rounded-lg ${style.bg} border ${style.border}`}
+                >
+                  <span className="text-base flex-shrink-0">{event.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[10px] font-medium ${style.text} truncate`}>{event.nom}</p>
+                    {event.heure && (
+                      <p className="text-[9px] text-gray-500 flex items-center gap-0.5">
+                        <Clock className="w-2.5 h-2.5" /> {event.heure}
+                      </p>
+                    )}
+                  </div>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${
+                    event.daysUntil === 0 
+                      ? 'bg-red-500 text-white' 
+                      : event.daysUntil <= 2 
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-white/80 text-gray-600'
+                  }`}>
+                    {event.daysUntil === 0 ? "Auj." : `J-${event.daysUntil}`}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+        
+        {/* Footer avec résumé */}
+        {generateEvents.length > 4 && (
+          <div className="px-3 py-1.5 border-t border-slate-100 text-center">
+            <span className="text-[10px] text-gray-500">
+              +{generateEvents.length - 4} autres cette semaine
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 📅 MODE COMPLET - Affichage avec timeline
+  // ═══════════════════════════════════════════════════════════════
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-full flex flex-col">
       {/* Header */}
@@ -260,7 +386,7 @@ const EvenementsCalendrier = () => {
             <div className="p-1.5 bg-[#cf292c]/10 rounded-lg">
               <Calendar className="w-4 h-4 text-[#cf292c]" />
             </div>
-            Événements à venir
+            Événements Vincennes
           </h3>
           <span className="text-xs text-[#cf292c] bg-[#cf292c]/10 px-2 py-1 rounded-full font-medium">7 jours</span>
         </div>
@@ -345,10 +471,11 @@ const EvenementsCalendrier = () => {
         ) : (
           generateEvents
             .filter(e => !selectedDate || e.dateObj.toDateString() === selectedDate.toDateString())
-            .slice(0, 5)
+            .slice(0, selectedDate ? 10 : 8)
             .map((event, i) => {
               const style = getImpactStyle(event.impact);
               const EventIcon = event.icon;
+              const isVincennes = event.category === 'vincennes';
               
               return (
                 <div 
@@ -366,6 +493,11 @@ const EvenementsCalendrier = () => {
                       <span className={`font-semibold text-sm ${style.text} truncate`}>
                         {event.nom}
                       </span>
+                      {isVincennes && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">
+                          📍 Vincennes
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {event.heure && (
@@ -374,7 +506,10 @@ const EvenementsCalendrier = () => {
                           {event.heure}
                         </span>
                       )}
-                      {event.detail && (
+                      {event.lieu && (
+                        <span className="text-xs text-gray-400">• {event.lieu}</span>
+                      )}
+                      {event.detail && !event.lieu && (
                         <span className="text-xs text-gray-500 truncate">{event.detail}</span>
                       )}
                     </div>
@@ -396,9 +531,9 @@ const EvenementsCalendrier = () => {
         )}
         
         {/* Voir plus */}
-        {generateEvents.length > 5 && !selectedDate && (
+        {generateEvents.length > 8 && !selectedDate && (
           <button className="w-full py-2.5 text-sm text-[#cf292c] hover:text-[#cf292c]/80 font-medium hover:bg-[#cf292c]/5 rounded-lg transition-colors">
-            Voir les {generateEvents.length} événements
+            +{generateEvents.length - 8} autres événements
           </button>
         )}
       </div>

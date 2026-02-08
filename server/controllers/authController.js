@@ -3,7 +3,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { validerMotDePasse } = require('../utils/passwordUtils');
 const { recordLoginAttempt } = require('../middlewares/rateLimitMiddleware');
-const { envoyerEmailRecuperation } = require('../services/emailService');
+const { envoyerEmailRecuperation } = require('../utils/emailService');
 const crypto = require('crypto');
 
 // 🔐 SIGNUP : création de compte
@@ -69,6 +69,8 @@ const login = async (req, res) => {
         email: true,
         password: true,
         role: true,
+        prenom: true,
+        nom: true,
         firstLoginDone: true,
         statut: true
       }
@@ -121,6 +123,8 @@ const login = async (req, res) => {
       token, 
       userId: user.id,
       role: user.role,
+      prenom: user.prenom,
+      nom: user.nom,
       firstLogin: !user.firstLoginDone // Indique si c'est la première connexion
     });
   } catch (error) {

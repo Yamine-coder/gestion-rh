@@ -439,10 +439,10 @@ export function useAlertesAnomalies({ jours = 7, autoRefresh = true, refreshInte
 }
 
 /**
- * Utilitaires pour les anomalies
+ * Utilitaires pour les anomalies - SIMPLIFIÉ
  */
 export const anomaliesUtils = {
-  // Couleurs et icônes selon la gravité
+  // Couleurs et icônes selon la gravité (4 niveaux standardisés)
   getGraviteStyle: (gravite) => {
     switch (gravite) {
       case 'critique':
@@ -450,37 +450,41 @@ export const anomaliesUtils = {
           color: 'text-red-600', 
           bg: 'bg-red-50', 
           border: 'border-red-200',
-          icon: '🔴' 
+          icon: '🔴',
+          label: 'Critique'
         };
-      case 'attention':
-        return { 
-          color: 'text-yellow-600', 
-          bg: 'bg-yellow-50', 
-          border: 'border-yellow-200',
-          icon: '🟡' 
-        };
-      case 'hors_plage':
-        return { 
-          color: 'text-purple-600', 
-          bg: 'bg-purple-50', 
-          border: 'border-purple-200',
-          icon: '🟣' 
-        };
-      case 'a_valider':
+      case 'moyenne':
         return { 
           color: 'text-orange-600', 
           bg: 'bg-orange-50', 
           border: 'border-orange-200',
-          icon: '⚠️' 
+          icon: '🟠',
+          label: 'Moyenne'
+        };
+      case 'attention':
+        return { 
+          color: 'text-amber-600', 
+          bg: 'bg-amber-50', 
+          border: 'border-amber-200',
+          icon: '🟡',
+          label: 'Attention'
+        };
+      case 'a_valider':
+        return { 
+          color: 'text-blue-600', 
+          bg: 'bg-blue-50', 
+          border: 'border-blue-200',
+          icon: '🔵',
+          label: 'À valider'
         };
       case 'info':
-      case 'ok':
       default:
         return { 
-          color: 'text-green-600', 
-          bg: 'bg-green-50', 
-          border: 'border-green-200',
-          icon: '🟢' 
+          color: 'text-slate-600', 
+          bg: 'bg-slate-50', 
+          border: 'border-slate-200',
+          icon: '⚪',
+          label: 'Info'
         };
     }
   },
@@ -503,28 +507,25 @@ export const anomaliesUtils = {
     }
   },
 
-  // Labels lisibles pour les types
+  // Labels lisibles pour les types - SIMPLIFIÉ (5 types actifs)
   getTypeLabel: (type) => {
     switch (type) {
-      case 'retard': return 'Retard';
-      case 'retard_modere': return 'Retard modéré';
-      case 'retard_critique': return 'Retard critique';
-      case 'hors_plage': return 'Hors plage';
-      case 'hors_plage_in': return 'Hors plage (arrivée)';
-      case 'hors_plage_out_critique': return 'Hors plage (départ)';
-      case 'absence_totale': return 'Absence totale';
-      case 'presence_non_prevue': return 'Présence non prévue';
-      case 'depart_anticipe': return 'Départ anticipé';
-      case 'depart_premature_critique': return 'Départ prématuré';
-      case 'heures_sup': return 'Heures supplémentaires';
-      case 'heures_sup_auto_validees': return 'Heures sup (auto)';
-      case 'heures_sup_a_valider': return 'Heures sup (à valider)';
-      case 'absence_planifiee_avec_pointage': return 'Pointage sur absence';
-      case 'segment_non_pointe': return 'Segment non pointé';
-      case 'missing_in': return 'Arrivée manquante';
-      case 'missing_out': return 'Départ manquant';
+      // Types ACTIFS (les seuls qui créent encore des anomalies)
+      case 'absence_injustifiee': return 'Absence injustifiée';
+      case 'extra_potentiel': return 'Extra potentiel';
+      case 'heures_sup_a_valider': return 'Extra potentiel'; // Rétro-compatibilité
+      case 'missing_out': return 'Sortie manquante';
+      case 'missing_in': return 'Entrée manquante';
       case 'pointage_hors_planning': return 'Pointage hors planning';
-      default: return type;
+      case 'pause_non_prise': return 'Pause non prise';
+      // Anciens types (rétro-compatibilité affichage historique)
+      case 'absence_totale': return 'Absence';
+      case 'absence_non_justifiee': return 'Absence';
+      case 'heures_supplementaires': return 'Heures sup';
+      case 'segment_non_pointe': return 'Sortie manquante';
+      case 'presence_non_prevue': return 'Hors planning';
+      // Fallback
+      default: return type?.replace(/_/g, ' ') || type;
     }
   },
 

@@ -17,7 +17,20 @@ import {
   Lock,
   Phone,
   MapPin,
-  FileText
+  FileText,
+  Bell,
+  Plus,
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
+  Star,
+  Send,
+  Calendar,
+  AlertTriangle,
+  RefreshCw,
+  FileCheck,
+  Users,
+  ClipboardCheck
 } from 'lucide-react';
 import FichePosteEditor from './FichePosteEditor';
 
@@ -57,6 +70,21 @@ const Parametres = () => {
     isRequestingRecovery: false
   });
 
+  // États pour les alertes avis (ancien - gardé pour compatibilité)
+  const [alertConfig, setAlertConfig] = useState({
+    enabled: true,
+    recipients: [],
+    alertThreshold: 3,
+    sendDailyReport: true
+  });
+  
+  // États pour la config centralisée des notifications
+  const [notifConfig, setNotifConfig] = useState({});
+  const [newRecipientEmail, setNewRecipientEmail] = useState('');
+  const [newRecipientName, setNewRecipientName] = useState('');
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [selectedNotifType, setSelectedNotifType] = useState('conges');
+
   // Chargement des données initiales
   useEffect(() => {
     const loadSettings = async () => {
@@ -83,6 +111,20 @@ const Parametres = () => {
           setCompanyData(prev => ({ ...prev, ...JSON.parse(savedCompany) }));
         }
 
+        // Charger la config centralisée des notifications (admin seulement)
+        if (profileRes.data.role === 'admin') {
+          try {
+            const notifRes = await axios.get(`${API_BASE}/api/notifications-config/config`);
+            setNotifConfig(notifRes.data);
+            // Mettre aussi à jour alertConfig pour compatibilité
+            if (notifRes.data.avisGoogle) {
+              setAlertConfig(notifRes.data.avisGoogle);
+            }
+          } catch (e) {
+            console.log('Config notifications non disponible');
+          }
+        }
+
       } catch (error) {
         if (error.response?.status !== 404) {
           toast.error('Erreur lors du chargement');
@@ -95,8 +137,91 @@ const Parametres = () => {
     loadSettings();
   }, []);
 
+  // Fonctions de gestion des alertes
+  // Fonctions de gestion des notifications (système centralisé)
+  const handleToggleNotifType = async (type, enabled) => {
+    try {
+      const res = await axios.patch(`${API_BASE}/api/notifications-config/config/${type}/toggle`, { enabled });
+      if (res.data.config) {
+        setNotifConfig(res.data.config);
+      }
+    } catch (err) {
+      toast.error('Erreur de mise à jour');
+    }
+  };
+
+  const handleAddRecipient = async (type = selectedNotifType) => {
+    if (!newRecipientEmail || !validateEmail(newRecipientEmail)) {
+      toast.error('Email valide requis');
+      return;
+    }
+    try {
+      setAlertsLoading(true);
+      const res = await axios.post(`${API_BASE}/api/notifications-config/recipients/${type}`, {
+        email: newRecipientEmail,
+        name: newRecipientName
+      });
+      if (res.data.config) {
+        setNotifConfig(res.data.config);
+        setNewRecipientEmail('');
+        setNewRecipientName('');
+        toast.success('Destinataire ajouté');
+      }
+    } catch (err) {
+      toast.error('Erreur lors de l\'ajout');
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
+
+  const handleRemoveRecipient = async (type, email) => {
+    try {
+      setAlertsLoading(true);
+      const res = await axios.delete(`${API_BASE}/api/notifications-config/recipients/${type}/${encodeURIComponent(email)}`);
+      if (res.data.config) {
+        setNotifConfig(res.data.config);
+        toast.success('Destinataire supprimé');
+      }
+    } catch (err) {
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
+
+  const handleToggleRecipient = async (type, email, active) => {
+    try {
+      const res = await axios.patch(`${API_BASE}/api/notifications-config/recipients/${type}/${encodeURIComponent(email)}`, { active });
+      if (res.data.config) {
+        setNotifConfig(res.data.config);
+      }
+    } catch (err) {
+      toast.error('Erreur');
+    }
+  };
+
+  const handleTestAlert = async () => {
+    try {
+      setAlertsLoading(true);
+      await axios.post(`${API_BASE}/api/avis/test-alert`);
+      toast.success('Email de test envoyé !');
+    } catch (err) {
+      toast.error('Erreur lors de l\'envoi');
+    } finally {
+      setAlertsLoading(false);
+    }
+  };
+
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  // Labels et icônes pour les types de notifications (charte unifiée #cf292c)
+  const notifTypes = {
+    conges: { label: 'Demandes de congés', Icon: Calendar },
+    avisGoogle: { label: 'Avis Google négatifs', Icon: Star },
+    anomalies: { label: 'Anomalies de pointage', Icon: AlertTriangle },
+    remplacements: { label: 'Demandes de remplacement', Icon: RefreshCw }
   };
 
   const handleSaveProfile = async () => {
@@ -107,7 +232,7 @@ const Parametres = () => {
     }
 
     if (!validateEmail(profileData.email)) {
-      toast.error('Email invalide');
+      toast.error('Email invalide');;
       return;
     }
 
@@ -227,8 +352,9 @@ const Parametres = () => {
     { id: 'profil', label: 'Mon Profil', icon: User },
     { id: 'securite', label: 'Sécurité', icon: Shield },
     { id: 'entreprise', label: 'Établissement', icon: Building },
-    { id: 'fiches', label: 'Fiches de poste', icon: FileText }
-  ];
+    { id: 'fiches', label: 'Fiches de poste', icon: FileText },
+    { id: 'alertes', label: 'Notifications Email', icon: Mail, adminOnly: true }
+  ].filter(tab => !tab.adminOnly || userRole === 'admin');
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -541,6 +667,386 @@ const Parametres = () => {
 
       case 'fiches':
         return <FichePosteEditor userRole={userRole} />;
+
+      case 'alertes':
+        const currentTypeConfig = notifConfig[selectedNotifType] || { enabled: false, recipients: [] };
+        const currentRecipients = currentTypeConfig.recipients || [];
+        const SelectedIcon = notifTypes[selectedNotifType]?.Icon;
+        
+        return (
+          <div className="space-y-4">
+            {/* Sélection du type de notification */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <div className="p-1 rounded bg-[#cf292c]/10">
+                  <Mail size={14} className="text-[#cf292c]" />
+                </div>
+                <h3 className="font-medium text-gray-900 text-sm">Notifications par email</h3>
+              </div>
+              <div className="p-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(notifTypes).map(([type, info]) => {
+                    const TypeIcon = info.Icon;
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => setSelectedNotifType(type)}
+                        className={`flex items-center gap-2.5 p-3 rounded-lg border-2 transition-all ${
+                          selectedNotifType === type
+                            ? 'border-[#cf292c] bg-[#cf292c]/5'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg ${selectedNotifType === type ? 'bg-[#cf292c]/10' : 'bg-gray-100'}`}>
+                          <TypeIcon size={16} className={selectedNotifType === type ? 'text-[#cf292c]' : 'text-gray-500'} />
+                        </div>
+                        <div className="text-left flex-1">
+                          <p className={`text-sm font-medium ${selectedNotifType === type ? 'text-[#cf292c]' : 'text-gray-800'}`}>
+                            {info.label}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {notifConfig[type]?.recipients?.length || 0} destinataire(s)
+                          </p>
+                        </div>
+                        <div className={`w-2.5 h-2.5 rounded-full ${
+                          notifConfig[type]?.enabled ? 'bg-[#cf292c]' : 'bg-gray-300'
+                        }`}></div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Configuration du type sélectionné */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-[#cf292c]/10">
+                    {SelectedIcon && <SelectedIcon size={14} className="text-[#cf292c]" />}
+                  </div>
+                  <h3 className="font-medium text-gray-900 text-sm">{notifTypes[selectedNotifType]?.label}</h3>
+                </div>
+                <button
+                  onClick={() => handleToggleNotifType(selectedNotifType, !currentTypeConfig.enabled)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    currentTypeConfig.enabled 
+                      ? 'bg-[#cf292c]/10 text-[#cf292c]' 
+                      : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {currentTypeConfig.enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+                  {currentTypeConfig.enabled ? 'Activé' : 'Désactivé'}
+                </button>
+              </div>
+              <div className="p-3">
+                <p className="text-xs text-gray-600 mb-3">
+                  {selectedNotifType === 'conges' && 'Recevez un email lors de chaque nouvelle demande de congé.'}
+                  {selectedNotifType === 'avisGoogle' && `Recevez un email immédiat quand un avis ≤${currentTypeConfig.alertThreshold || 3}⭐ est publié sur Google.`}
+                  {selectedNotifType === 'anomalies' && 'Recevez des alertes pour les anomalies de pointage détectées.'}
+                  {selectedNotifType === 'remplacements' && 'Recevez un email lors des demandes et candidatures de remplacement.'}
+                </p>
+                
+                {/* Options spécifiques aux CONGÉS */}
+                {selectedNotifType === 'conges' && (
+                  <div className="space-y-2 mb-3 pb-3 border-b border-gray-100">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Notifications à envoyer :</p>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.notifyOnNew !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnNew: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Nouvelle demande de congé</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.notifyOnStatus !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnStatus: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Changement de statut (validé/refusé)</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Options spécifiques aux AVIS GOOGLE */}
+                {selectedNotifType === 'avisGoogle' && (
+                  <div className="space-y-3 mb-3 pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-600">Seuil d'alerte :</label>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3].map(n => (
+                          <button
+                            key={n}
+                            onClick={async () => {
+                              try {
+                                const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { alertThreshold: n });
+                                if (res.data.config) setNotifConfig(res.data.config);
+                              } catch (err) { toast.error('Erreur'); }
+                            }}
+                            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentTypeConfig.alertThreshold || 3) === n
+                                ? 'bg-[#cf292c] text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            ≤{n}⭐
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.sendDailyReport !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { sendDailyReport: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Rapport quotidien (9h)</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Options spécifiques aux ANOMALIES */}
+                {selectedNotifType === 'anomalies' && (
+                  <div className="space-y-3 mb-3 pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-medium text-gray-600">Gravité minimum :</label>
+                      <div className="flex items-center gap-1">
+                        {['basse', 'moyenne', 'haute'].map(g => (
+                          <button
+                            key={g}
+                            onClick={async () => {
+                              try {
+                                const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { graviteMin: g });
+                                if (res.data.config) setNotifConfig(res.data.config);
+                              } catch (err) { toast.error('Erreur'); }
+                            }}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                              (currentTypeConfig.graviteMin || 'moyenne') === g
+                                ? 'bg-[#cf292c] text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {g.charAt(0).toUpperCase() + g.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.alertUrgent !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { alertUrgent: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Alerte immédiate (gravité haute)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.sendDailyRecap !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { sendDailyRecap: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Récapitulatif quotidien (8h)</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Options spécifiques aux REMPLACEMENTS */}
+                {selectedNotifType === 'remplacements' && (
+                  <div className="space-y-2 mb-3 pb-3 border-b border-gray-100">
+                    <p className="text-xs font-medium text-gray-700 mb-2">Notifications à envoyer :</p>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.notifyOnDemande !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnDemande: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Nouvelle demande de remplacement</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.notifyOnCandidature !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnCandidature: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Nouvelle candidature reçue</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={currentTypeConfig.notifyOnValidation !== false}
+                        onChange={async (e) => {
+                          try {
+                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnValidation: e.target.checked });
+                            if (res.data.config) setNotifConfig(res.data.config);
+                          } catch (err) { toast.error('Erreur'); }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                      />
+                      <span className="text-sm text-gray-700">Validation d'un remplacement</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Destinataires */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <div className="p-1 rounded bg-blue-100">
+                  <Mail size={14} className="text-blue-600" />
+                </div>
+                <h3 className="font-medium text-gray-900 text-sm">
+                  Destinataires - {notifTypes[selectedNotifType]?.label}
+                </h3>
+              </div>
+              <div className="p-3 space-y-3">
+                {/* Liste des destinataires */}
+                {currentRecipients.length > 0 ? (
+                  <div className="space-y-2">
+                    {currentRecipients.map((recipient, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                            recipient.active ? 'bg-[#cf292c]' : 'bg-gray-400'
+                          }`}>
+                            {(recipient.name || recipient.email)[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{recipient.name || 'Sans nom'}</p>
+                            <p className="text-xs text-gray-500">{recipient.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleToggleRecipient(selectedNotifType, recipient.email, !recipient.active)}
+                            className={`p-1.5 rounded transition-colors ${
+                              recipient.active 
+                                ? 'text-[#cf292c] hover:bg-[#cf292c]/10' 
+                                : 'text-gray-400 hover:bg-gray-100'
+                            }`}
+                            title={recipient.active ? 'Désactiver' : 'Activer'}
+                          >
+                            {recipient.active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                          </button>
+                          <button
+                            onClick={() => handleRemoveRecipient(selectedNotifType, recipient.email)}
+                            className="p-1.5 text-gray-400 hover:text-[#cf292c] hover:bg-[#cf292c]/10 rounded transition-colors"
+                            title="Supprimer"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-xs text-gray-500 mb-1">Aucun destinataire configuré</p>
+                    <p className="text-xs text-gray-400">Les notifications iront aux admins par défaut</p>
+                  </div>
+                )}
+
+                {/* Ajouter un destinataire */}
+                <div className="pt-2 border-t border-gray-100">
+                  <p className="text-xs font-medium text-gray-600 mb-2">Ajouter un destinataire</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newRecipientName}
+                      onChange={(e) => setNewRecipientName(e.target.value)}
+                      placeholder="Nom"
+                      className="w-24 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-[#cf292c] focus:border-transparent"
+                    />
+                    <input
+                      type="email"
+                      value={newRecipientEmail}
+                      onChange={(e) => setNewRecipientEmail(e.target.value)}
+                      placeholder="email@exemple.com"
+                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-[#cf292c] focus:border-transparent"
+                    />
+                    <button
+                      onClick={() => handleAddRecipient(selectedNotifType)}
+                      disabled={!newRecipientEmail || alertsLoading}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-[#cf292c] text-white rounded text-sm hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
+                    >
+                      <Plus size={14} />
+                      Ajouter
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Test d'envoi - uniquement pour avis Google */}
+            {selectedNotifType === 'avisGoogle' && (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                  <div className="p-1 rounded bg-[#cf292c]/10">
+                    <Send size={14} className="text-[#cf292c]" />
+                  </div>
+                  <h3 className="font-medium text-gray-900 text-sm">Tester les alertes</h3>
+                </div>
+                <div className="p-3">
+                  <p className="text-xs text-gray-600 mb-3">
+                    Envoyez un email de test pour vérifier que tout fonctionne.
+                  </p>
+                  <button
+                    onClick={handleTestAlert}
+                    disabled={alertsLoading || !currentRecipients?.some(r => r.active)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#cf292c] text-white rounded text-sm hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
+                  >
+                    <Send size={14} />
+                    {alertsLoading ? 'Envoi...' : 'Envoyer un test'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
 
       default:
         return null;

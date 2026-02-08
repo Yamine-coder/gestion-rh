@@ -10,6 +10,7 @@ const { authMiddleware: authenticateToken } = require('../middlewares/authMiddle
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const scoringService = require('../services/scoringService');
 const { notifierDemandeRemplacement } = require('../services/notificationService');
+const { sendRemplacementDemande, sendRemplacementCandidature } = require('../services/notificationEmailService');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📋 ROUTES EMPLOYÉ - Mes demandes de remplacement
@@ -258,6 +259,9 @@ router.post('/demande', authenticateToken, async (req, res) => {
         );
         console.log(`✅ Notifications envoyées à ${collegues.length} collègue(s) de l'équipe ${employeAbsent.categorie || 'tous'}`);
       }
+      
+      // Envoyer email aux destinataires configurés
+      await sendRemplacementDemande(demande, employeAbsent, shift);
     } catch (notifError) {
       console.error('Erreur envoi notifications:', notifError);
       // Ne pas bloquer la création de la demande si les notifs échouent
@@ -357,6 +361,10 @@ router.post('/:id/candidater', authenticateToken, async (req, res) => {
       });
       
       console.log(`✅ Notification envoyée à l'employé absent (ID: ${employeAbsentId}) pour candidature de ${candidat.prenom}`);
+      
+      // Envoyer email aux admins/managers configurés
+      const employeAbsent = candidature.demandeRemplacement.employeAbsent;
+      await sendRemplacementCandidature(candidature.demandeRemplacement, candidat, employeAbsent);
     } catch (notifError) {
       console.error('Erreur envoi notification candidature:', notifError);
     }

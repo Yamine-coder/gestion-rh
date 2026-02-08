@@ -4,6 +4,19 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { toLocalDateString } = require('../utils/dateUtils');
 
+// Fonction helper pour parser les segments JSON
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  return [];
+}
+
 // Récupérer le rapport d'heures pour un employé
 const getRapportEmploye = async (req, res) => {
   try {
@@ -140,14 +153,15 @@ const getRapportEmploye = async (req, res) => {
     // Calculer les heures prévues à partir des shifts
     console.log('🔄 DÉBUT CALCUL HEURES PRÉVUES');
     shifts.forEach((shift, index) => {      
+      const segments = parseSegments(shift.segments);
       console.log(`Shift ${index + 1}/${shifts.length}:`, {
         id: shift.id,
         date: toLocalDateString(shift.date),
-        segmentsCount: shift.segments?.length || 0
+        segmentsCount: segments.length
       });
       
-      if (shift.segments && Array.isArray(shift.segments) && shift.segments.length > 0) {
-        shift.segments.forEach((segment, segIndex) => {
+      if (segments.length > 0) {
+        segments.forEach((segment, segIndex) => {
           // Vérifier les deux formats possibles : heureDebut/heureFin et start/end
           const heureDebut = segment.heureDebut || segment.start;
           const heureFin = segment.heureFin || segment.end;

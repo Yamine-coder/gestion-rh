@@ -13,11 +13,192 @@ const isAdmin = require('../middlewares/isAdminMiddleware');
 const prisma = require('../prisma/client');
 const { generateEmployeePDF, generateAllEmployeesExcel } = require('../utils/exportUtils');
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles } = require('../utils/pointageTypeUtils');
 
-// 🔍 Middleware de debug pour toutes les routes stats
+/**
+ * Normalise les types d'absence pour un affichage unifié
+ * CP, conge_paye, Congé payé -> "Congé payé"
+ * RTT -> "RTT"
+ * maladie, Arrêt maladie -> "Arrêt maladie"
+ */
+function normaliserTypeAbsence(type) {
+  if (!type) return 'Absence';
+  const t = type.toLowerCase().trim();
+  
+  // Congés payés
+  if (t === 'cp' || t === 'conge_paye' || t.includes('congé payé') || t.includes('conge paye')) {
+    return 'Congé payé';
+  }
+  // RTT
+  if (t === 'rtt' || t.includes('récup')) {
+    return 'RTT';
+  }
+  // Maladie
+  if (t.includes('maladie') || t === 'arret_maladie') {
+    return 'Arrêt maladie';
+  }
+  // Sans solde
+  if (t.includes('sans solde')) {
+    return 'Congé sans solde';
+  }
+  // Exceptionnel
+  if (t.includes('exceptionnel') || t.includes('familial')) {
+    return 'Congé exceptionnel';
+  }
+  // Formation
+  if (t.includes('formation')) {
+    return 'Formation';
+  }
+  // Par défaut, retourner tel quel avec majuscule
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+// 🔍 Middleware de debug pour toutes les routes stats (uniquement en développement)
 router.use((req, res, next) => {
-  console.log(`🔍 [STATS DEBUG] ${req.method} ${req.path} - Query:`, req.query, '- Params:', req.params);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`🔍 [STATS DEBUG] ${req.method} ${req.path} - Query:`, req.query, '- Params:', req.params);
+  }
   next();
+});
+
+// 📊 Stats globales pour la page Rapports d'heures
+router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { periode, mois } = req.query;
+
+    // Calculer les dates de la période
+    let dateDebut, dateFin;
+
+    if (mois) {
+      const [annee, moisNum] = mois.split('-');
+      dateDebut = new Date(parseInt(annee), parseInt(moisNum) - 1, 1);
+      dateFin = new Date(parseInt(annee), parseInt(moisNum), 0, 23, 59, 59, 999);
+    } else {
+      const now = new Date();
+      dateDebut = new Date(now.getFullYear(), now.getMonth(), 1);
+      dateFin = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+
+    console.log(`📊 [STATS GLOBALES] Période: ${dateDebut.toISOString()} → ${dateFin.toISOString()}`);
+
+    // Compter les employés actifs
+    const employesActifs = await prisma.user.count({
+      where: {
+        role: 'employee',
+        statut: 'actif',
+        dateSortie: null
+      }
+    });
+
+    // Récupérer tous les shifts de travail de la période
+    const shifts = await prisma.shift.findMany({
+      where: {
+        date: { gte: dateDebut, lte: dateFin },
+        type: 'travail'
+      }
+    });
+
+    // Récupérer tous les pointages de la période
+    const pointages = await prisma.pointage.findMany({
+      where: {
+        horodatage: { gte: dateDebut, lte: dateFin }
+      }
+    });
+
+    // Récupérer les congés approuvés
+    const conges = await prisma.conge.findMany({
+      where: {
+        dateDebut: { lte: dateFin },
+        dateFin: { gte: dateDebut },
+        statut: 'approuvé'
+      }
+    });
+
+    // Créer une map des jours de congé par employé
+    const congesParEmployeJour = new Map();
+    conges.forEach(conge => {
+      let currentDate = new Date(conge.dateDebut);
+      const endDate = new Date(conge.dateFin);
+      while (currentDate <= endDate) {
+        const key = `${conge.userId}_${toLocalDateString(currentDate)}`;
+        congesParEmployeJour.set(key, true);
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
+    // Grouper les pointages par employé et jour
+    const pointagesParEmployeJour = new Map();
+    pointages.forEach(p => {
+      const dateKey = toLocalDateString(p.horodatage);
+      const key = `${p.userId}_${dateKey}`;
+      if (!pointagesParEmployeJour.has(key)) {
+        pointagesParEmployeJour.set(key, []);
+      }
+      pointagesParEmployeJour.get(key).push(p);
+    });
+
+    // Calculer les heures prévues et travaillées
+    let totalHeuresPrevues = 0;
+    let totalHeuresTravaillees = 0;
+
+    shifts.forEach(shift => {
+      const dateKey = toLocalDateString(shift.date);
+      const congeKey = `${shift.employeId}_${dateKey}`;
+      const isConge = congesParEmployeJour.has(congeKey);
+
+      // Parser les segments
+      let segments = shift.segments;
+      if (typeof segments === 'string') {
+        try {
+          segments = JSON.parse(segments);
+        } catch (e) {
+          segments = [];
+        }
+      }
+      if (!Array.isArray(segments)) segments = [];
+
+      // Calculer les heures prévues (sauf si congé)
+      if (!isConge) {
+        segments.forEach(segment => {
+          if (segment.start && segment.end && !segment.isExtra) {
+            const segType = (segment.type || 'work').toLowerCase();
+            if (segType === 'work' || segType === 'travail' || !segment.type) {
+              const [sh, sm] = segment.start.split(':').map(Number);
+              const [eh, em] = segment.end.split(':').map(Number);
+              totalHeuresPrevues += (eh + em / 60) - (sh + sm / 60);
+            }
+          }
+        });
+      }
+
+      // Calculer les heures travaillées
+      const pointageKey = `${shift.employeId}_${dateKey}`;
+      const pointagesJour = pointagesParEmployeJour.get(pointageKey) || [];
+      if (pointagesJour.length >= 2) {
+        // Calculer par paires entrée/sortie
+        const sorted = pointagesJour.sort((a, b) => new Date(a.horodatage) - new Date(b.horodatage));
+        for (let i = 0; i < sorted.length - 1; i += 2) {
+          if (sorted[i] && sorted[i + 1]) {
+            const diff = (new Date(sorted[i + 1].horodatage) - new Date(sorted[i].horodatage)) / (1000 * 60 * 60);
+            totalHeuresTravaillees += diff;
+          }
+        }
+      }
+    });
+
+    console.log(`✅ [STATS GLOBALES] ${employesActifs} employés, ${totalHeuresTravaillees.toFixed(2)}h / ${totalHeuresPrevues.toFixed(2)}h`);
+
+    res.json({
+      employesActifs,
+      heuresPrevues: Math.round(totalHeuresPrevues * 100) / 100,
+      heuresTravaillees: Math.round(totalHeuresTravaillees * 100) / 100,
+      periode: { debut: dateDebut, fin: dateFin }
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur stats globales:', error);
+    res.status(500).json({ message: 'Erreur lors du calcul des statistiques globales' });
+  }
 });
 
 // 📊 Rapport DÉTAILLÉ jour par jour pour fiche navette
@@ -26,7 +207,9 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
     const { employeId } = req.params;
     const { periode, mois } = req.query;
 
-    console.log(`📊 [FICHE NAVETTE] Génération rapport détaillé pour employé ${employeId}, période: ${periode}, mois: ${mois}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📊 [FICHE NAVETTE] Génération rapport détaillé pour employé ${employeId}, période: ${periode}, mois: ${mois}`);
+    }
 
     // Valider l'employé
     const employe = await prisma.user.findUnique({
@@ -163,19 +346,34 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
       let details = {};
 
       if (conge) {
-        // Jour de congé
-        statut = conge.type;
+        // Jour de congé - Utiliser la fonction de normalisation
+        statut = normaliserTypeAbsence(conge.type);
         details = {
           type: 'congé',
-          congeType: conge.type,
+          congeType: normaliserTypeAbsence(conge.type),
           motif: conge.motif || ''
         };
       } else if (shift) {
-        if (shift.type === 'travail' && shift.segments) {
-          // Calculer heures prévues
-          shift.segments.forEach(segment => {
+        // Parser les segments si c'est une string JSON
+        let segments = shift.segments;
+        if (typeof segments === 'string') {
+          try {
+            segments = JSON.parse(segments);
+          } catch (e) {
+            segments = [];
+          }
+        }
+        if (!Array.isArray(segments)) segments = [];
+
+        if (shift.type === 'travail' && segments.length > 0) {
+          // Calculer heures prévues - UNIQUEMENT les segments de travail (pas les pauses)
+          segments.forEach(segment => {
             if (segment.start && segment.end && !segment.isExtra) {
-              heuresPrevues += calculateSegmentHours(segment);
+              // Ne compter que si c'est du travail (pas une pause)
+              const segType = (segment.type || 'work').toLowerCase();
+              if (segType === 'work' || segType === 'travail' || !segment.type) {
+                heuresPrevues += calculateSegmentHours(segment);
+              }
             }
           });
 
@@ -186,28 +384,60 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
           ecart = heuresRealisees - heuresPrevues;
 
           // Analyser le retard
-          if (pointagesJour.length > 0 && shift.segments.length > 0) {
-            const premierSegment = shift.segments[0];
+          if (pointagesJour.length > 0 && segments.length > 0) {
+            const premierSegment = segments[0];
             const retardInfo = analyserRetard(premierSegment, pointagesJour, shift.date);
             retard = retardInfo.retard;
           }
 
-          // Définir le statut
+          // Définir le statut avec détails explicites
+          let statutDetail = '';
+          // Normaliser les types de pointage pour gérer les accents
+          const normalizeType = (type) => type.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const isEntree = (p) => {
+            const t = normalizeType(p.type);
+            return t.includes('entree') || t.includes('arrivee') || t === 'entree' || t === 'arrivee';
+          };
+          
           if (pointagesJour.length === 0) {
             statut = 'Absence injustifiée';
+            statutDetail = `Planifié ${segments[0]?.start || '?'}-${segments[segments.length-1]?.end || '?'}, aucun pointage`;
           } else if (pointagesJour.length % 2 !== 0) {
             statut = 'Pointage incomplet';
+            statutDetail = `${pointagesJour.length} pointage(s) - manque ${pointagesJour.length % 2 === 1 ? 'sortie' : 'entrée'}`;
           } else if (retard > 0) {
             statut = `Retard (${retard} min)`;
+            const premierPointage = pointagesJour.find(p => isEntree(p));
+            const heureArrivee = premierPointage ? premierPointage.horodatage.toTimeString().slice(0, 5) : '?';
+            const heurePrevue = segments[0]?.start || '?';
+            statutDetail = `Arrivée ${heureArrivee} au lieu de ${heurePrevue}`;
           } else {
             statut = 'Présent';
+            const premierPointage = pointagesJour.find(p => isEntree(p));
+            const heureArrivee = premierPointage ? premierPointage.horodatage.toTimeString().slice(0, 5) : '?';
+            statutDetail = `Arrivée ${heureArrivee}`;
           }
+
+          // Calculer les heures par segment (travail vs pause)
+          const workSegments = segments.filter(seg => seg.type === 'work' || !seg.type);
+          const pauseSegments = segments.filter(seg => seg.type === 'pause' || seg.type === 'break');
+          const heuresTravailPrevues = workSegments.reduce((acc, seg) => acc + calculateSegmentHours(seg), 0);
+          const heuresPausePrevues = pauseSegments.reduce((acc, seg) => acc + calculateSegmentHours(seg), 0);
+
+          // Affichage détaillé des segments de travail (ex: "09:00-12:00 / 13:00-17:00")
+          const horairePlanifieDetaille = workSegments
+            .map(seg => `${seg.start || '?'}-${seg.end || '?'}`)
+            .join(' / ');
 
           details = {
             type: 'travail',
-            segments: shift.segments.map(seg => ({
+            horairePlanifie: horairePlanifieDetaille || '-',
+            heuresTravailPrevues: Math.round(heuresTravailPrevues * 100) / 100,
+            heuresPausePrevues: Math.round(heuresPausePrevues * 100) / 100,
+            segments: segments.map(seg => ({
               debut: seg.start,
               fin: seg.end,
+              type: seg.type || 'work',
               duree: calculateSegmentHours(seg)
             })),
             pointages: pointagesJour.map(p => ({
@@ -216,13 +446,14 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
               horodatage: p.horodatage
             })),
             retard,
+            statutDetail,
             commentaire: shift.commentaire || ''
           };
         } else if (shift.type === 'absence') {
-          statut = shift.motif || 'Absence';
+          statut = normaliserTypeAbsence(shift.motif);
           details = {
             type: 'absence',
-            motif: shift.motif
+            motif: normaliserTypeAbsence(shift.motif)
           };
         }
       } else if (pointagesJour.length > 0) {
@@ -248,6 +479,10 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
         ecart: Math.round(ecart * 100) / 100,
         statut,
         retard,
+        // Nouveaux champs explicites
+        horairePlanifie: details.horairePlanifie || null,
+        statutDetail: details.statutDetail || null,
+        heuresTravailPrevues: details.heuresTravailPrevues || heuresPrevues,
         details
       });
 
@@ -468,7 +703,31 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       orderBy: { horodatage: 'asc' }
     });
 
-    console.log(`📋 Trouvé: ${shifts.length} shifts, ${pointages.length} pointages`);
+    // Récupérer les congés approuvés pour exclure ces jours du calcul
+    const conges = await prisma.conge.findMany({
+      where: {
+        userId: parseInt(employeId),
+        OR: [
+          { dateDebut: { lte: dateFin }, dateFin: { gte: dateDebut } }
+        ],
+        statut: 'approuvé'
+      },
+      select: { dateDebut: true, dateFin: true, type: true }
+    });
+
+    // Créer une map des jours de congé
+    const congesParJour = new Map();
+    conges.forEach(conge => {
+      let currentDate = new Date(conge.dateDebut);
+      const endDate = new Date(conge.dateFin);
+      while (currentDate <= endDate) {
+        const dateKey = toLocalDateString(currentDate);
+        congesParJour.set(dateKey, { type: conge.type });
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
+    console.log(`📋 Trouvé: ${shifts.length} shifts, ${pointages.length} pointages, ${congesParJour.size} jours de congé`);
 
     // Analyser les données jour par jour
     const heuresParJour = [];
@@ -494,14 +753,33 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       const dateKey = toLocalDateString(shift.date);
       const pointagesJour = pointagesParJour.get(dateKey) || [];
 
+      // Vérifier si ce jour est un jour de congé approuvé - si oui, ignorer le shift pour les heures prévues
+      const isConge = congesParJour.has(dateKey);
+
+      // Parser les segments si c'est une string JSON
+      let segments = shift.segments;
+      if (typeof segments === 'string') {
+        try {
+          segments = JSON.parse(segments);
+        } catch (e) {
+          segments = [];
+        }
+      }
+      if (!Array.isArray(segments)) segments = [];
+
       let heuresPrevuesJour = 0;
       let heuresTravailleesJour = 0;
 
-      if (shift.type === 'travail' && shift.segments) {
-        // Calculer les heures prévues
-        shift.segments.forEach(segment => {
+      if (shift.type === 'travail' && segments.length > 0 && !isConge) {
+        // Calculer les heures prévues - UNIQUEMENT les segments de travail (pas les pauses)
+        // Ne pas compter si c'est un jour de congé
+        segments.forEach(segment => {
           if (segment.start && segment.end && !segment.isExtra) {
-            heuresPrevuesJour += calculateSegmentHours(segment);
+            // Ne compter que si c'est du travail (pas une pause)
+            const segType = (segment.type || 'work').toLowerCase();
+            if (segType === 'work' || segType === 'travail' || !segment.type) {
+              heuresPrevuesJour += calculateSegmentHours(segment);
+            }
           }
           if (segment.isExtra) {
             heuresSupplementaires += calculateSegmentHours(segment);
@@ -513,7 +791,7 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
 
         // Analyser les retards
         if (pointagesJour.length > 0) {
-          shift.segments.forEach((segment, index) => {
+          segments.forEach((segment, index) => {
             if (segment.start && segment.end && !segment.isExtra) {
               const retardInfo = analyserRetard(segment, pointagesJour, shift.date);
               if (retardInfo.retard > 0) {
@@ -544,7 +822,8 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
         prevues: Math.round(heuresPrevuesJour * 100) / 100,
         travaillees: Math.round(heuresTravailleesJour * 100) / 100,
         type: shift.type,
-        motif: shift.motif
+        motif: shift.motif,
+        isConge: isConge // Marquer si c'est un jour de congé
       });
 
       heuresPrevues += heuresPrevuesJour;
@@ -571,6 +850,25 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
     // Trier par date
     heuresParJour.sort((a, b) => new Date(a.jour) - new Date(b.jour));
 
+    // Ajouter les congés approuvés (table Conge) aux absences justifiées
+    // (seulement les jours qui n'ont pas déjà été comptés comme shift d'absence)
+    const joursDejaComptes = new Set(
+      shifts.filter(s => s.type === 'absence').map(s => toLocalDateString(s.date))
+    );
+    congesParJour.forEach((conge, dateKey) => {
+      if (!joursDejaComptes.has(dateKey)) {
+        absencesJustifiees++;
+      }
+    });
+
+    // Calculer le taux de ponctualité (jours uniques avec retard)
+    // Exclure les jours de congé du calcul
+    const joursAvecRetard = new Set(retards.map(r => r.date)).size;
+    const joursPresentsRapport = heuresParJour.filter(h => h.travaillees > 0 && !h.isConge).length;
+    const tauxPonctualiteRapport = joursPresentsRapport > 0 
+      ? Math.round(((joursPresentsRapport - joursAvecRetard) / joursPresentsRapport) * 100)
+      : 100;
+
     const rapport = {
       employe,
       periode: { debut: dateDebut, fin: dateFin, type: periode },
@@ -579,7 +877,8 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       heuresSupplementaires: Math.round(heuresSupplementaires * 100) / 100,
       absencesJustifiees,
       absencesInjustifiees,
-      nombreRetards: retards.length,
+      nombreRetards: joursAvecRetard, // Nombre de JOURS avec retard (pas nombre de retards)
+      tauxPonctualite: tauxPonctualiteRapport,
       retards,
       heuresParJour,
       statistiques: {
@@ -625,44 +924,26 @@ function calculateSegmentHours(segment) {
 }
 
 function calculateRealHours(pointages) {
-  if (!pointages || pointages.length < 2) return 0;
-  
-  let totalMinutes = 0;
-  
-  for (let i = 0; i < pointages.length - 1; i += 2) {
-    const arrivee = pointages[i];
-    const depart = pointages[i + 1];
-    
-    // Gérer les variantes avec et sans accent
-    const isArrivee = arrivee.type === 'arrivee' || arrivee.type === 'arrivée' || arrivee.type === 'ENTRÉE';
-    const isDepart = depart && (depart.type === 'depart' || depart.type === 'départ' || depart.type === 'SORTIE');
-    
-    if (isArrivee && isDepart) {
-      const diffMs = new Date(depart.horodatage) - new Date(arrivee.horodatage);
-      totalMinutes += diffMs / (1000 * 60);
-    }
-  }
-  
-  return Math.round((totalMinutes / 60) * 100) / 100;
+  // ✅ CORRIGÉ: Utiliser le helper centralisé qui gère TOUTES les variantes de types
+  return calculerHeuresReelles(pointages);
 }
 
 function analyserRetard(segment, pointagesJour, dateShift) {
-  // Gérer les variantes avec et sans accent
-  const premiereArrivee = pointagesJour.find(p => 
-    p.type === 'arrivee' || p.type === 'arrivée' || p.type === 'ENTRÉE'
-  );
+  // ✅ CORRIGÉ: Utiliser le helper centralisé pour trouver la première entrée
+  const premiereArrivee = trouverPremiereEntree(pointagesJour);
   
   if (!premiereArrivee) {
-    return { retard: 0, heureArrivee: null };
+    return { retard: 0, heureArrivee: null, heurePrevue: segment.start };
   }
 
   // Convertir l'heure prévue en minutes
   const [prevuH, prevuM] = segment.start.split(':').map(Number);
   const minutesPrevues = prevuH * 60 + prevuM;
 
-  // Convertir l'heure réelle en minutes - UTILISER UTC pour éviter problèmes timezone
+  // Convertir l'heure réelle en minutes - Utiliser l'heure locale
   const heureArrivee = new Date(premiereArrivee.horodatage);
-  const minutesReelles = heureArrivee.getUTCHours() * 60 + heureArrivee.getUTCMinutes();
+  // Utiliser getHours/getMinutes pour l'heure locale (pas UTC)
+  const minutesReelles = heureArrivee.getHours() * 60 + heureArrivee.getMinutes();
 
   // Calculer le retard (en minutes)
   let retardMinutes = minutesReelles - minutesPrevues;
@@ -672,9 +953,13 @@ function analyserRetard(segment, pointagesJour, dateShift) {
     retardMinutes += 24 * 60;
   }
 
+  const heureArriveeStr = heureArrivee.toTimeString().slice(0, 5); // Format HH:MM local
+
   return {
     retard: Math.max(0, retardMinutes),
-    heureArrivee: heureArrivee.toISOString().substring(11, 16) // Format HH:MM en UTC
+    heureArrivee: heureArriveeStr,
+    heurePrevue: segment.start,
+    detail: retardMinutes > 0 ? `Arrivée ${heureArriveeStr} au lieu de ${segment.start} (+${retardMinutes} min)` : `À l'heure (${heureArriveeStr})`
   };
 }
 
@@ -762,6 +1047,29 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       orderBy: { horodatage: 'asc' }
     });
 
+    // Récupérer les congés approuvés pour exclure ces jours du calcul des heures prévues
+    const conges = await prisma.conge.findMany({
+      where: {
+        userId: parseInt(employeId),
+        OR: [
+          { dateDebut: { lte: dateFin }, dateFin: { gte: dateDebut } }
+        ],
+        statut: 'approuvé'
+      }
+    });
+
+    // Créer une map des jours de congé
+    const congesParJour = new Map();
+    conges.forEach(conge => {
+      let currentDate = new Date(conge.dateDebut);
+      const endDate = new Date(conge.dateFin);
+      while (currentDate <= endDate) {
+        const dateKey = toLocalDateString(currentDate);
+        congesParJour.set(dateKey, { type: conge.type });
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
     // Générer le CSV
     const csvLines = [];
     
@@ -784,14 +1092,31 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
     shifts.forEach(shift => {
       const dateKey = toLocalDateString(shift.date);
       const pointagesJour = pointagesParJour.get(dateKey) || [];
+      const isConge = congesParJour.has(dateKey);
 
       let heuresPrevuesJour = 0;
       let heuresTravailleesJour = 0;
 
-      if (shift.type === 'travail' && shift.segments) {
-        shift.segments.forEach(segment => {
+      // Parser les segments si c'est une string JSON
+      let segments = shift.segments;
+      if (typeof segments === 'string') {
+        try {
+          segments = JSON.parse(segments);
+        } catch (e) {
+          segments = [];
+        }
+      }
+      if (!Array.isArray(segments)) segments = [];
+
+      // Si c'est un jour de congé approuvé, ne pas compter les heures prévues
+      if (shift.type === 'travail' && segments.length > 0 && !isConge) {
+        // UNIQUEMENT les segments de travail (pas les pauses)
+        segments.forEach(segment => {
           if (segment.start && segment.end && !segment.isExtra) {
-            heuresPrevuesJour += calculateSegmentHours(segment);
+            const segType = (segment.type || 'work').toLowerCase();
+            if (segType === 'work' || segType === 'travail' || !segment.type) {
+              heuresPrevuesJour += calculateSegmentHours(segment);
+            }
           }
         });
         heuresTravailleesJour = calculateRealHours(pointagesJour);
@@ -817,20 +1142,35 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
     // Calculer les heures par jour d'abord pour détecter les jours présents
     const heuresParJourMap = new Map();
     shifts.forEach(shift => {
-      if (shift.type === 'travail' && shift.segments) {
-        const dateKey = toLocalDateString(shift.date);
+      const dateKey = toLocalDateString(shift.date);
+      const isConge = congesParJour.has(dateKey); // Vérifier si c'est un jour de congé
+      
+      // Parser les segments si c'est une string JSON
+      let segments = shift.segments;
+      if (typeof segments === 'string') {
+        try {
+          segments = JSON.parse(segments);
+        } catch (e) {
+          segments = [];
+        }
+      }
+      if (!Array.isArray(segments)) segments = [];
+
+      // Ne pas inclure les jours de congé dans le calcul de présence/retards
+      if (shift.type === 'travail' && segments.length > 0 && !isConge) {
         const pointagesJour = pointagesParJour.get(dateKey) || [];
         const heuresTravailleesJour = calculateRealHours(pointagesJour);
         heuresParJourMap.set(dateKey, {
           heures: heuresTravailleesJour,
           pointages: pointagesJour,
-          segments: shift.segments
+          segments: segments // segments déjà parsés
         });
       }
     });
 
     // Calculer les retards pour chaque jour avec heures travaillées > 0
-    let nombreRetards = 0;
+    // Utiliser un Set pour compter les jours UNIQUES avec retard (comme le rapport API)
+    const joursAvecRetardSet = new Set();
     let joursPresents = 0;
     
     heuresParJourMap.forEach((data, dateKey) => {
@@ -838,16 +1178,21 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       if (data.heures > 0) {
         joursPresents++;
         
-        // Analyser le retard sur le premier segment
-        const premierSegment = data.segments.find(s => s.start && s.end && !s.isExtra);
-        if (premierSegment && data.pointages.length > 0) {
-          const retardInfo = analyserRetard(premierSegment, data.pointages, dateKey);
-          if (retardInfo.retard > 0) {
-            nombreRetards++;
-          }
+        // Analyser le retard sur TOUS les segments (comme le rapport API)
+        if (data.pointages.length > 0) {
+          data.segments.forEach(segment => {
+            if (segment.start && segment.end && !segment.isExtra) {
+              const retardInfo = analyserRetard(segment, data.pointages, dateKey);
+              if (retardInfo.retard > 0) {
+                joursAvecRetardSet.add(dateKey); // Ajouter au Set (dédupliqué automatiquement)
+              }
+            }
+          });
         }
       }
     });
+
+    const nombreRetards = joursAvecRetardSet.size; // Nombre de JOURS uniques avec retard
 
     // Calculer le taux de ponctualité
     const tauxPonctualite = joursPresents > 0 
@@ -857,42 +1202,101 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
     console.log(`📊 PDF Export - Jours présents: ${joursPresents}, Retards: ${nombreRetards}, Taux: ${tauxPonctualite}%`);
 
     // Préparer les données complètes du rapport
+    // Construire heuresParJour pour TOUS les jours de la période (pas seulement les shifts)
+    const heuresParJourData = [];
+    let currentDateLoop = new Date(dateDebut);
+    
+    while (currentDateLoop <= dateFin) {
+      const dateKey = toLocalDateString(currentDateLoop);
+      const shift = shifts.find(s => toLocalDateString(s.date) === dateKey);
+      const pointagesJour = pointagesParJour.get(dateKey) || [];
+      const isConge = congesParJour.has(dateKey);
+      const congeInfo = congesParJour.get(dateKey);
+      
+      let heuresPrevuesJour = 0;
+      let heuresTravailleesJour = 0;
+      let statut = 'Repos'; // Par défaut si pas de shift
+      
+      if (shift) {
+        // Parser les segments si c'est une string JSON
+        let segments = shift.segments;
+        if (typeof segments === 'string') {
+          try {
+            segments = JSON.parse(segments);
+          } catch (e) {
+            segments = [];
+          }
+        }
+        if (!Array.isArray(segments)) segments = [];
+        
+        if (isConge) {
+          // Jour de congé approuvé
+          statut = normaliserTypeAbsence(congeInfo?.type || 'Congé');
+          heuresTravailleesJour = calculateRealHours(pointagesJour); // Au cas où il y aurait des pointages
+        } else if (shift.type === 'absence') {
+          // Shift de type absence (maladie, congé, etc.)
+          statut = normaliserTypeAbsence(shift.motif || 'Absence');
+        } else if (shift.type === 'repos') {
+          statut = 'Repos';
+        } else if (shift.type === 'travail' && segments.length > 0) {
+          // Jour de travail planifié
+          // Calculer heures prévues - UNIQUEMENT les segments de travail (pas les pauses)
+          segments.forEach(segment => {
+            if (segment.start && segment.end && !segment.isExtra) {
+              const segType = (segment.type || 'work').toLowerCase();
+              if (segType === 'work' || segType === 'travail' || !segment.type) {
+                heuresPrevuesJour += calculateSegmentHours(segment);
+              }
+            }
+          });
+          heuresTravailleesJour = calculateRealHours(pointagesJour);
+          
+          // Déterminer le statut
+          if (heuresTravailleesJour > 0) {
+            statut = 'Présent';
+          } else if (pointagesJour.length === 0) {
+            statut = 'Absence';
+          } else {
+            statut = 'Incomplet';
+          }
+        }
+      } else if (isConge) {
+        // Pas de shift mais congé approuvé
+        statut = normaliserTypeAbsence(congeInfo?.type || 'Congé');
+      } else if (pointagesJour.length > 0) {
+        // Pointages sans planning
+        heuresTravailleesJour = calculateRealHours(pointagesJour);
+        statut = 'Hors planning';
+      }
+      // Sinon reste 'Repos' par défaut
+      
+      heuresParJourData.push({
+        jour: dateKey,
+        date: new Date(currentDateLoop),
+        prevues: Math.round(heuresPrevuesJour * 100) / 100,
+        travaillees: Math.round(heuresTravailleesJour * 100) / 100,
+        type: shift?.type || 'repos',
+        motif: shift?.motif || null,
+        isConge: isConge,
+        statut: statut
+      });
+      
+      currentDateLoop.setDate(currentDateLoop.getDate() + 1);
+    }
+
     const rapportComplet = {
       heuresPrevues: totalPrevues,
       heuresTravaillees: totalTravaillees,
       heuresSupplementaires: 0,
-      absencesJustifiees: shifts.filter(s => s.type === 'absence' && (s.motif?.toLowerCase().includes('congé') || s.motif?.toLowerCase().includes('rtt') || s.motif?.toLowerCase().includes('maladie'))).length,
+      absencesJustifiees: shifts.filter(s => s.type === 'absence' && (s.motif?.toLowerCase().includes('congé') || s.motif?.toLowerCase().includes('rtt') || s.motif?.toLowerCase().includes('maladie'))).length + congesParJour.size,
       absencesInjustifiees: shifts.filter(s => s.type === 'absence' && !(s.motif?.toLowerCase().includes('congé') || s.motif?.toLowerCase().includes('rtt') || s.motif?.toLowerCase().includes('maladie'))).length,
       nombreRetards: nombreRetards,
       tauxPonctualite: tauxPonctualite,
-      heuresParJour: shifts.map(shift => {
-        const dateKey = toLocalDateString(shift.date);
-        const pointagesJour = pointagesParJour.get(dateKey) || [];
-        
-        let heuresPrevuesJour = 0;
-        let heuresTravailleesJour = 0;
-        
-        if (shift.type === 'travail' && shift.segments) {
-          shift.segments.forEach(segment => {
-            if (segment.start && segment.end && !segment.isExtra) {
-              heuresPrevuesJour += calculateSegmentHours(segment);
-            }
-          });
-          heuresTravailleesJour = calculateRealHours(pointagesJour);
-        }
-        
-        return {
-          jour: dateKey,
-          date: shift.date,
-          prevues: heuresPrevuesJour,
-          travaillees: heuresTravailleesJour,
-          type: shift.type,
-          motif: shift.motif
-        };
-      }),
+      heuresParJour: heuresParJourData,
       statistiques: {
-        joursTravailles: shifts.filter(s => s.type === 'travail').length,
-        joursAbsents: shifts.filter(s => s.type === 'absence').length,
+        joursTravailles: heuresParJourData.filter(h => h.statut === 'Présent').length,
+        joursAbsents: heuresParJourData.filter(h => h.statut.includes('Congé') || h.statut === 'RTT' || h.statut.includes('Maladie') || h.statut === 'Absence').length,
+        joursRepos: heuresParJourData.filter(h => h.statut === 'Repos').length,
         joursPresents: joursPresents,
         moyenneHeuresJour: joursPresents > 0 ? totalTravaillees / joursPresents : 0
       }
@@ -931,13 +1335,24 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
           const dateKey = toLocalDateString(shift.date);
           const pointagesJour = pointagesParJour.get(dateKey) || [];
           
+          // Parser les segments
+          let segments = shift.segments;
+          if (typeof segments === 'string') {
+            try { segments = JSON.parse(segments); } catch (e) { segments = []; }
+          }
+          if (!Array.isArray(segments)) segments = [];
+          
           let heuresPrevuesJour = 0;
           let heuresTravailleesJour = 0;
           
-          if (shift.type === 'travail' && shift.segments) {
-            shift.segments.forEach(segment => {
+          if (shift.type === 'travail' && segments.length > 0) {
+            // UNIQUEMENT les segments de travail (pas les pauses)
+            segments.forEach(segment => {
               if (segment.start && segment.end && !segment.isExtra) {
-                heuresPrevuesJour += calculateSegmentHours(segment);
+                const segType = (segment.type || 'work').toLowerCase();
+                if (segType === 'work' || segType === 'travail' || !segment.type) {
+                  heuresPrevuesJour += calculateSegmentHours(segment);
+                }
               }
             });
             heuresTravailleesJour = calculateRealHours(pointagesJour);
@@ -1174,9 +1589,16 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         const pointagesJour = pointagesParJour.get(dateKey) || [];
         const congeJour = congesParJour.get(dateKey);
 
-        if (shift.type === 'travail' && shift.segments) {
+        // Parser les segments
+        let segments = shift.segments;
+        if (typeof segments === 'string') {
+          try { segments = JSON.parse(segments); } catch (e) { segments = []; }
+        }
+        if (!Array.isArray(segments)) segments = [];
+
+        if (shift.type === 'travail' && segments.length > 0) {
           let heuresPrevuesJour = 0;
-          shift.segments.forEach(segment => {
+          segments.forEach(segment => {
             if (segment.start && segment.end && !segment.isExtra) {
               const heuresSegment = calculateSegmentHours(segment);
               heuresPrevues += heuresSegment;
@@ -1200,7 +1622,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
 
           // Compter les retards PAR JOUR (pas par segment)
           if (pointagesJour.length > 0) {
-            shift.segments.forEach(segment => {
+            segments.forEach(segment => {
               if (segment.start && segment.end && !segment.isExtra) {
                 const retardInfo = analyserRetard(segment, pointagesJour, shift.date);
                 if (retardInfo.retard > 0) {

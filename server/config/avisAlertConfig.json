@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "recipients": [],
+  "alertThreshold": 3,
+  "sendDailyReport": true,
+  "dailyReportTime": "09:00"
+}

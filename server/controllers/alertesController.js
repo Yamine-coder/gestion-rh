@@ -4,6 +4,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, trouverDerniereSortie } = require('../utils/pointageTypeUtils');
 
 /**
  * Détecte les retards et absences en temps réel
@@ -77,8 +78,8 @@ const detecterRetardsAbsences = async (req, res) => {
         orderBy: { horodatage: 'asc' }
       });
       
-      // Support des deux formats: 'arrivee' et 'ENTRÉE'
-      const hasArrivee = pointages.some(p => p.type === 'arrivee' || p.type === 'ENTRÉE');
+      // ✅ CORRIGÉ: Utiliser le helper centralisé pour vérifier toutes les variantes de types
+      const hasArrivee = filtrerEntrees(pointages).length > 0;
       const minutesDepuisDebut = nowMinutes - shiftStartMinutes;
       const isShiftFinished = nowMinutes > shiftEndMinutes;
       
@@ -256,9 +257,10 @@ const getStatutPointageEmploye = async (req, res) => {
       orderBy: { horodatage: 'desc' }
     });
     
-    const hasArrivee = pointages.some(p => p.type === 'arrivee');
+    // ✅ CORRIGÉ: Utiliser les helpers centralisés pour vérifier toutes les variantes de types
+    const hasArrivee = filtrerEntrees(pointages).length > 0;
     const dernierPointage = pointages[0];
-    const isEnService = dernierPointage?.type === 'arrivee';
+    const isEnService = dernierPointage ? isEntree(dernierPointage.type) : false;
     const minutesDepuisDebut = nowMinutes - shiftStartMinutes;
     const isShiftFinished = nowMinutes > shiftEndMinutes;
     

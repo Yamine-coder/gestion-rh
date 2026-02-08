@@ -231,11 +231,11 @@ const getShifts = async (req, res) => {
 
     const shifts = await prisma.shift.findMany({
       where,
-      include: { employe: { select: { id: true, email: true, prenom: true, nom: true } } },
+      include: { employe: { select: { id: true, email: true, prenom: true, nom: true, categorie: true } } },
       orderBy: [{ date: "asc" }],
     });
 
-    // S'assurer que les dates sont formatées en ISO string pour faciliter la manipulation côté client
+    // S'assurer que les dates sont formatées en ISO string et segments sont des tableaux
     const formattedShifts = shifts.map(shift => {
       // Pour garantir que les dates sont toujours envoyées au format ISO string
       let formattedDate = null;
@@ -253,13 +253,25 @@ const getShifts = async (req, res) => {
         }
       }
       
+      // Parser segments si c'est une string JSON
+      let parsedSegments = shift.segments;
+      if (typeof shift.segments === 'string') {
+        try {
+          parsedSegments = JSON.parse(shift.segments);
+        } catch (e) {
+          console.error("Erreur parsing segments:", e);
+          parsedSegments = [];
+        }
+      }
+      
       return {
         ...shift,
-        date: formattedDate
+        date: formattedDate,
+        segments: parsedSegments
       };
     });
 
-    console.log("Shifts envoyés au client:", formattedShifts);
+    console.log("Shifts envoyés au client:", formattedShifts.length);
 
     res.json(formattedShifts);
   } catch (error) {
@@ -482,6 +494,62 @@ const createOrUpdateShift = async (req, res) => {
             version: 0
           },
         });
+        
+        // 🎯 CRÉATION ABSENCE PAR ADMIN = Congé auto-validé
+        // Quand un admin crée un shift "absence", on crée aussi un Conge validé
+        // pour que ça apparaisse dans les congés de l'employé et dans les stats
+        if (type === 'absence') {
+          try {
+            // Utiliser la même date que le shift (dateObj est déjà normalisée en UTC minuit)
+            // Ne pas créer de nouvelles dates qui pourraient avoir un décalage timezone
+            
+            const congeExistant = await prisma.conge.findFirst({
+              where: {
+                userId: Number(employeId),
+                dateDebut: { lte: dateObj },
+                dateFin: { gte: dateObj }
+              }
+            });
+            
+            if (!congeExistant) {
+              // Créer un congé validé automatiquement avec la même date exacte que le shift
+              const congeAutoValide = await prisma.conge.create({
+                data: {
+                  userId: Number(employeId),
+                  type: motif || 'Absence', // Utiliser le motif comme type
+                  dateDebut: dateObj, // Même date que le shift
+                  dateFin: dateObj,   // Même date que le shift (congé d'un jour)
+                  statut: 'approuvé', // Auto-validé car créé par admin
+                  vu: true, // Déjà vu car c'est l'admin qui crée
+                  motifEmploye: `Absence posée par l'administration`,
+                }
+              });
+              console.log(`✅ Congé auto-validé créé (ID: ${congeAutoValide.id}) pour shift absence ID: ${shift.id}, date: ${dateObj.toISOString()}`);
+              
+              // 🔔 Notifier l'employé de son absence
+              const dateStr = dateObj.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+              await prisma.notifications.create({
+                data: {
+                  employe_id: Number(employeId),
+                  type: 'absence_admin',
+                  titre: 'Absence enregistrée',
+                  message: JSON.stringify({
+                    text: `Une absence (${motif}) a été enregistrée pour vous le ${dateStr}`,
+                    motif: motif,
+                    date: dateObj.toISOString()
+                  }),
+                  lu: false
+                }
+              });
+              console.log(`🔔 Notification absence envoyée à l'employé ${employeId}`);
+            } else {
+              console.log(`ℹ️ Congé existant trouvé (ID: ${congeExistant.id}), pas de création supplémentaire`);
+            }
+          } catch (congeError) {
+            console.error('⚠️ Erreur création congé auto-validé (non bloquant):', congeError.message);
+            // On continue même si la création du congé échoue
+          }
+        }
       }
       
       // 🔔 Notification nouveau shift (seulement pour les créations de travail)
@@ -537,7 +605,7 @@ const deleteShift = async (req, res) => {
     // Vérifier existence et récupérer les données
     const existing = await prisma.shift.findUnique({ 
       where: { id }, 
-      select: { id: true, employeId: true, date: true, segments: true } 
+      select: { id: true, employeId: true, date: true, type: true, motif: true, segments: true } 
     });
     if (!existing) return res.status(404).json({ error: 'Shift introuvable' });
 
@@ -545,6 +613,33 @@ const deleteShift = async (req, res) => {
     
     // 💰 Gérer les PaiementExtra avant suppression
     const syncResult = await syncShiftExtrasWithPaiements(existing, [], adminId, { isDelete: true });
+    
+    // 🗑️ Si c'est une absence, supprimer aussi le congé associé créé automatiquement
+    if (existing.type === 'absence') {
+      try {
+        const shiftDate = new Date(existing.date);
+        const startOfDay = new Date(shiftDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(shiftDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        // Supprimer le congé auto-créé pour cette date et cet employé
+        const deletedConge = await prisma.conge.deleteMany({
+          where: {
+            userId: existing.employeId,
+            dateDebut: { lte: endOfDay },
+            dateFin: { gte: startOfDay },
+            motifEmploye: 'Absence posée par l\'administration' // Identifier les congés auto-créés
+          }
+        });
+        
+        if (deletedConge.count > 0) {
+          console.log(`🗑️ Congé auto-validé supprimé (${deletedConge.count}) pour shift absence ID: ${id}`);
+        }
+      } catch (congeError) {
+        console.error('⚠️ Erreur suppression congé associé (non bloquant):', congeError.message);
+      }
+    }
     
     // Transaction: supprimer les dépendances et le shift
     await prisma.$transaction(async (tx) => {
@@ -1084,8 +1179,26 @@ const deleteRangeShifts = async (req, res) => {
       ...(Array.isArray(employeIds) && employeIds.length ? { employeId: { in: employeIds.map(Number) } } : {}),
       ...(type ? { type } : {})
     };
-    const count = await prisma.shift.deleteMany({ where });
-    res.json({ success:true, deleted: count.count });
+    
+    // D'abord récupérer les IDs des shifts à supprimer
+    const shiftsToDelete = await prisma.shift.findMany({
+      where,
+      select: { id: true }
+    });
+    const shiftIds = shiftsToDelete.map(s => s.id);
+    
+    if (shiftIds.length === 0) {
+      return res.json({ success: true, deleted: 0 });
+    }
+    
+    // Supprimer les demandes de remplacement liées à ces shifts
+    await prisma.demandeRemplacement.deleteMany({
+      where: { shiftId: { in: shiftIds } }
+    });
+    
+    // Maintenant supprimer les shifts
+    const count = await prisma.shift.deleteMany({ where: { id: { in: shiftIds } } });
+    res.json({ success: true, deleted: count.count });
   } catch (e) {
     console.error('Erreur suppression plage:', e);
     res.status(500).json({ error: 'Erreur suppression plage' });

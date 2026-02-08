@@ -2,10 +2,25 @@ const prisma = require("../prisma/client");
 const { getParisDateString, getParisTimeString, calculateTimeGapMinutes, getParisBusinessDayKey } = require("../utils/parisTimeUtils");
 const { toLocalDateString, getCurrentDateString } = require("../utils/dateUtils");
 
+// Fonction helper pour parser les segments JSON
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  return [];
+}
+
 // Centralisation des seuils d'alerte
 const THRESHOLDS = {
   ARRIVEE: {
-    EARLY_HORS_PLAGE: 30,      // > 30 min trop tôt => hors plage IN
+    EARLY_AUTO_VALIDEES: 30,   // jusqu'à 30 min trop tôt => auto-validées
+    EARLY_EXTRA_POTENTIEL: 90, // 30-90 min trop tôt => extra potentiel
+    EARLY_HORS_PLAGE: 91,      // > 90 min trop tôt => hors plage IN critique
     RETARD_ACCEPTABLE: -5,     // jusqu'à -5 min (retard) acceptable
     RETARD_MODERE: -20         // jusqu'à -20 min retard modéré, au delà critique
   },
@@ -13,7 +28,7 @@ const THRESHOLDS = {
     DEPART_PREMATURE_CRITIQUE: 30,  // > 30 min trop tôt
     DEPART_ANTICIPE: 15,            // 15-30 min trop tôt
     HEURES_SUP_AUTO_VALIDEES: -30,  // jusqu'à 30 min en plus => auto-validées
-    HEURES_SUP_A_VALIDER: -90,      // 30-90 min en plus => à valider
+    EXTRA_POTENTIEL: -90,           // 30-90 min en plus => extra potentiel
     HEURES_SUP_HORS_PLAGE: -91      // > 90 min en plus => hors-plage critique
   }
 };
@@ -108,9 +123,10 @@ const getPlanningVsRealite = async (req, res) => {
     
     shiftsPrevus.forEach(shift => {
       const shiftDateParis = new Date(shift.date).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+      const segments = parseSegments(shift.segments);
       
-      if (shift.type === 'travail' && Array.isArray(shift.segments)) {
-        shift.segments.forEach((segment, idx) => {
+      if (shift.type === 'travail' && segments.length > 0) {
+        segments.forEach((segment, idx) => {
           if (segment.start && segment.end) {
             const [startHH, startMM] = segment.start.split(':').map(Number);
             const [endHH, endMM] = segment.end.split(':').map(Number);
@@ -287,20 +303,44 @@ const getPlanningVsRealite = async (req, res) => {
             shiftId: shift.id
           });
           console.log(`  → Ajouté absence: ${shift.motif}`);
-        } else if (Array.isArray(shift.segments) && shift.segments.length > 0) {
-          // Pour une présence planifiée avec des segments
-          shift.segments.forEach((segment, segIdx) => {
-            console.log(`  → Segment ${segIdx}: start=${segment.start}, end=${segment.end}`);
-            comparaisonJour.planifie.push({
-              debut: segment.start,
-              fin: segment.end,
-              type: 'travail',
-              shiftId: shift.id
-            });
-            console.log(`    ✅ Segment ajouté aux planifiés: ${segment.start}-${segment.end}`);
-          });
         } else {
-          console.log(`  ⚠️ Shift ignoré: pas de segments valides`);
+          // Pour une présence planifiée avec des segments
+          const segments = parseSegments(shift.segments);
+          if (segments.length > 0) {
+            // 🆕 Détecter les segments Extra payés qui précèdent
+            let lastExtraEnd = null;
+            
+            segments.forEach((segment, segIdx) => {
+              // 🆕 Ignorer les segments Extra (déjà traités/payés séparément)
+              if (segment.isExtra) {
+                console.log(`  → Segment ${segIdx} (Extra) ignoré: ${segment.start}-${segment.end}`);
+                // 🆕 Mémoriser la fin du segment Extra pour le segment suivant
+                if (segment.paymentStatus === 'paye' || segment.paymentStatus === 'payé') {
+                  lastExtraEnd = segment.end;
+                }
+                return;
+              }
+              console.log(`  → Segment ${segIdx}: start=${segment.start}, end=${segment.end}`);
+              
+              // 🆕 Vérifier si un segment Extra payé précède immédiatement
+              const hasExtraBefore = lastExtraEnd && lastExtraEnd === segment.start;
+              
+              comparaisonJour.planifie.push({
+                debut: segment.start,
+                fin: segment.end,
+                type: 'travail',
+                shiftId: shift.id,
+                originalIndex: segIdx + 1, // 🆕 Index original (1-based) incluant les Extra
+                hasExtraBefore: hasExtraBefore // 🆕 Indique si un Extra payé précède ce segment
+              });
+              console.log(`    ✅ Segment ajouté aux planifiés: ${segment.start}-${segment.end} (originalIndex: ${segIdx + 1}, hasExtraBefore: ${hasExtraBefore})`);
+              
+              // Réinitialiser après utilisation
+              lastExtraEnd = null;
+            });
+          } else {
+            console.log(`  ⚠️ Shift ignoré: pas de segments valides`);
+          }
         }
       });
 
@@ -472,7 +512,7 @@ function calculerEcarts(planifie, reel) {
     console.log(`⏰ Pointages réels (${reel.length}):`, reel);
     
     // Vérification préliminaire des données
-    const segmentsValides = planifie.filter(s => s.debut && s.fin);
+    const segmentsValides = planifie.filter(s => s.debut && s.fin && !s.isExtra);
     
     // Filtrage des segments redondants ou problématiques
     if (segmentsValides.length > 1) {
@@ -607,18 +647,37 @@ function calculerEcarts(planifie, reel) {
         const segment = segmentsValides[segIdx];
         const pointage = pointagesComplets[ptIdx];
         
-        // Analyser l'arrivée
-        const ecartArrivee = calculateTimeGapMinutes(segment.debut, pointage.arrivee);
-        console.log(`📊 Écart arrivée segment ${segIdx + 1}: ${ecartArrivee} minutes`);
+        // 🆕 Si un segment Extra payé précède, l'arrivée est considérée conforme
+        // car l'employé était déjà présent avant le début du segment
+        let effectiveArrivee = pointage.arrivee;
+        if (segment.hasExtraBefore) {
+          console.log(`🎯 Segment ${segIdx + 1} a un Extra payé avant → Arrivée considérée à ${segment.debut}`);
+          effectiveArrivee = segment.debut; // L'employé était là à l'heure
+        }
         
-        // Utilisation des seuils centralisés
+        // Analyser l'arrivée
+        const ecartArrivee = calculateTimeGapMinutes(segment.debut, effectiveArrivee);
+        console.log(`📊 Écart arrivée segment ${segIdx + 1}: ${ecartArrivee} minutes (effectif: ${effectiveArrivee})`);
+        
+        // Utilisation des seuils centralisés - 3 zones pour arrivée anticipée
         let typeArrivee, graviteArrivee, descriptionArrivee;
         const minsArrivee = Math.abs(ecartArrivee);
         
-        if (ecartArrivee > THRESHOLDS.ARRIVEE.EARLY_HORS_PLAGE) {
-          typeArrivee = 'hors_plage_in';
+        if (ecartArrivee >= THRESHOLDS.ARRIVEE.EARLY_HORS_PLAGE) {
+          // > 90 min trop tôt => hors-plage critique
+          typeArrivee = 'hors_plage_in_critique';
           graviteArrivee = 'hors_plage';
-          descriptionArrivee = `🟣 Hors-plage IN: arrivée à ${pointage.arrivee}, ${minsArrivee} min trop tôt (prévu ${segment.debut}) → À valider`;
+          descriptionArrivee = `🟣 Hors-plage IN critique: arrivée à ${pointage.arrivee}, ${minsArrivee} min trop tôt (prévu ${segment.debut}) → Probable oubli de badge, correction requise`;
+        } else if (ecartArrivee >= THRESHOLDS.ARRIVEE.EARLY_AUTO_VALIDEES) {
+          // 30-90 min trop tôt => Extra potentiel (arrivée anticipée)
+          typeArrivee = 'arrivee_anticipee_extra';
+          graviteArrivee = 'a_valider';
+          descriptionArrivee = `⚠️ Extra potentiel (arrivée): arrivé à ${pointage.arrivee}, ${minsArrivee} min en avance (prévu ${segment.debut}) → Validation managériale requise`;
+        } else if (ecartArrivee > 0) {
+          // 0-30 min trop tôt => auto-validé
+          typeArrivee = 'arrivee_anticipee_auto';
+          graviteArrivee = 'info';
+          descriptionArrivee = `✅ Arrivée anticipée auto-validée: ${pointage.arrivee}, ${minsArrivee} min en avance (prévu ${segment.debut}) → Payées automatiquement`;
         } else if (ecartArrivee >= THRESHOLDS.ARRIVEE.RETARD_ACCEPTABLE) {
           typeArrivee = 'arrivee_acceptable';
           graviteArrivee = 'ok';
@@ -642,8 +701,10 @@ function calculerEcarts(planifie, reel) {
           description: descriptionArrivee,
           prevu: segment.debut,
           reel: pointage.arrivee,
+          heureArriveeReelle: pointage.arrivee,
+          heureDepartReelle: pointage.depart,
           ecartMinutes: ecartArrivee,
-          segment: segIdx + 1
+          segment: segment.originalIndex || (segIdx + 1) // 🆕 Utiliser l'index original si disponible
         };
         console.log(`📤 ÉCART ARRIVÉE AJOUTÉ:`, JSON.stringify(ecartArriveeObj, null, 2));
         ecarts.push(ecartArriveeObj);
@@ -676,11 +737,11 @@ function calculerEcarts(planifie, reel) {
             graviteDepart = 'info';
             descriptionDepart = `� Heures sup auto-validées: départ à ${pointage.depart}, ${minsDepart} min d'heures sup (prévu ${segment.fin}) → Payées automatiquement`;
           }
-        } else if (ecartDepart >= THRESHOLDS.DEPART.HEURES_SUP_A_VALIDER) {
+        } else if (ecartDepart >= THRESHOLDS.DEPART.EXTRA_POTENTIEL) {
           // Zone à valider : +30 min à +90 min d'heures sup
-          typeDepart = 'heures_sup_a_valider';
+          typeDepart = 'extra_potentiel';
           graviteDepart = 'a_valider';
-          descriptionDepart = `⚠️ Heures sup à valider: départ à ${pointage.depart}, ${minsDepart} min d'heures sup (prévu ${segment.fin}) → Validation managériale requise`;
+          descriptionDepart = `⚠️ Extra potentiel: départ à ${pointage.depart}, ${minsDepart} min en plus (prévu ${segment.fin}) → Validation managériale requise`;
         } else {
           // Hors-plage critique : > +90 min d'heures sup
           typeDepart = 'hors_plage_out_critique';
@@ -695,8 +756,10 @@ function calculerEcarts(planifie, reel) {
           description: descriptionDepart,
           prevu: segment.fin,
           reel: pointage.depart,
+          heureArriveeReelle: pointage.arrivee,
+          heureDepartReelle: pointage.depart,
           ecartMinutes: ecartDepart,
-          segment: segIdx + 1
+          segment: segment.originalIndex || (segIdx + 1) // 🆕 Utiliser l'index original si disponible
         });
       }
       
@@ -732,9 +795,9 @@ function calculerEcarts(planifie, reel) {
           ecarts.push({
             type: 'segment_non_pointe',
             gravite: 'critique',
-            description: `🔴 Segment ${segIdx + 1} (${segment.debut}-${segment.fin}) sans aucun pointage`,
+            description: `🔴 Segment ${segment.originalIndex || (segIdx + 1)} (${segment.debut}-${segment.fin}) sans aucun pointage`,
             prevu: `${segment.debut}-${segment.fin}`,
-            segment: segIdx + 1
+            segment: segment.originalIndex || (segIdx + 1)
           });
         } else {
           // Absence partielle
@@ -742,9 +805,9 @@ function calculerEcarts(planifie, reel) {
             ecarts.push({
               type: 'missing_in',
               gravite: 'critique',
-              description: `🔴 Arrivée manquante pour le segment ${segIdx + 1} (début prévu: ${segment.debut})`,
+              description: `🔴 Arrivée manquante pour le segment ${segment.originalIndex || (segIdx + 1)} (début prévu: ${segment.debut})`,
               prevu: segment.debut,
-              segment: segIdx + 1
+              segment: segment.originalIndex || (segIdx + 1)
             });
           }
           
@@ -752,9 +815,9 @@ function calculerEcarts(planifie, reel) {
             ecarts.push({
               type: 'missing_out',
               gravite: 'critique',
-              description: `🔴 Départ manquant pour le segment ${segIdx + 1} (fin prévue: ${segment.fin})`,
+              description: `🔴 Départ manquant pour le segment ${segment.originalIndex || (segIdx + 1)} (fin prévue: ${segment.fin})`,
               prevu: segment.fin,
-              segment: segIdx + 1
+              segment: segment.originalIndex || (segIdx + 1)
             });
           }
         }

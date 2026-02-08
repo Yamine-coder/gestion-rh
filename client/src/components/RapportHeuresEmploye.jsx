@@ -18,12 +18,12 @@ import {
 } from "recharts";
 import { useToast } from './ui/Toast';
 
-const RapportHeuresEmploye = ({ employeId, onClose }) => {
+const RapportHeuresEmploye = ({ employeId, onClose, initialMois }) => {
   const [employe, setEmploye] = useState(null);
   const [rapportData, setRapportData] = useState(null);
   const [rapportDetaille, setRapportDetaille] = useState(null);
-  const [periode, setPeriode] = useState('mois'); // semaine, mois, trimestre
-  const [moisSelectionne, setMoisSelectionne] = useState(new Date().toISOString().slice(0, 7));
+  const [periode] = useState('mois'); // Toujours par mois
+  const [moisSelectionne, setMoisSelectionne] = useState(initialMois || new Date().toISOString().slice(0, 7));
   const [loading, setLoading] = useState(true);
   const [loadingDetaille, setLoadingDetaille] = useState(false);
   const [error, setError] = useState(null);
@@ -152,7 +152,12 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
 
   // Calcul de ponctualité basé sur les retards réels
   const tauxPonctualiteCalcule = React.useMemo(() => {
-    // Si pas de données, supposer 100%
+    // Utiliser le taux calculé par le backend s'il est disponible
+    if (rapportData?.tauxPonctualite !== undefined) {
+      return rapportData.tauxPonctualite;
+    }
+    
+    // Sinon, calculer localement (fallback)
     if (!rapportData || !heuresParJourNormalisees.length) return 100;
     
     // Compter les jours travaillés (présences)
@@ -378,35 +383,21 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
           </div>
         </div>
 
-        {/* Contrôles de période */}
+        {/* Contrôles de période - Sélecteur de mois uniquement */}
         <div className="px-4 sm:px-6 py-3 bg-gray-50 border-b border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <label className="text-sm font-medium text-gray-700">Période</label>
-              <select
-                value={periode}
-                onChange={(e) => setPeriode(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] bg-white"
-              >
-                <option value="semaine">Semaine</option>
-                <option value="mois">Mois</option>
-                <option value="trimestre">Trimestre</option>
-              </select>
-            </div>
-            {periode === 'mois' && (
-              <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700">Mois</label>
-                <input
-                  type="month"
-                  value={moisSelectionne}
-                  onChange={(e) => setMoisSelectionne(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] bg-white"
-                />
-              </div>
-            )}
+          <div className="flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <label className="text-sm font-medium text-gray-700">Mois</label>
+            <input
+              type="month"
+              value={moisSelectionne}
+              onChange={(e) => setMoisSelectionne(e.target.value)}
+              min="2020-01"
+              max={new Date().toISOString().slice(0, 7)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] bg-white"
+            />
           </div>
         </div>
 
@@ -636,10 +627,11 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
                     </div>
                   )}
 
-                  {/* Tableau détaillé jour par jour */}
+                  {/* Tableau détaillé jour par jour - Design épuré */}
                   <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                      <h3 className="text-xs sm:text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    {/* Header sobre */}
+                    <div className="p-4 border-b border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
                         Détail jour par jour • {rapportDetaille.periode?.libelle || 'Période'}
                       </h3>
                     </div>
@@ -647,118 +639,213 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
                     {/* Version Desktop */}
                     <div className="hidden md:block overflow-x-auto">
                       <table className="min-w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Jour</th>
-                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Prévu</th>
-                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Réalisé</th>
-                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Écart</th>
-                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Statut</th>
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Jour</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Horaires</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Prévu</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Réalisé</th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Écart</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {rapportDetaille.detailsJours?.map((jour, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
-                                {new Date(jour.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-600 capitalize">
-                                {jour.jourSemaine}
-                              </td>
-                              <td className="px-4 py-3 text-center text-sm font-medium text-gray-800">
-                                {jour.heuresPrevues}h
-                              </td>
-                              <td className="px-4 py-3 text-center text-sm font-medium text-[#cf292c]">
-                                {jour.heuresRealisees}h
-                              </td>
-                              <td className="px-4 py-3 text-center text-sm font-medium">
-                                <span className={`px-2 py-1 rounded ${
-                                  jour.ecart > 0 ? 'bg-green-100 text-green-700' :
-                                  jour.ecart < 0 ? 'bg-amber-100 text-amber-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {jour.ecart >= 0 ? '+' : ''}{jour.ecart}h
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-center">
-                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                  jour.statut === 'Présent' ? 'bg-green-100 text-green-700' :
-                                  jour.statut.includes('Retard') ? 'bg-yellow-100 text-yellow-700' :
-                                  jour.statut.includes('Congé') || jour.statut.includes('RTT') ? 'bg-blue-100 text-blue-700' :
-                                  jour.statut.includes('Absence') ? 'bg-red-100 text-red-700' :
-                                  jour.statut === 'Hors planning' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-gray-100 text-gray-700'
-                                }`}>
-                                  {jour.statut}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
+                        <tbody>
+                          {rapportDetaille.detailsJours?.map((jour, idx) => {
+                            const isWeekend = jour.jourSemaine?.toLowerCase() === 'samedi' || jour.jourSemaine?.toLowerCase() === 'dimanche';
+                            const isAbsence = jour.statut?.includes('Congé') || jour.statut?.includes('RTT') || jour.statut?.includes('Maladie') || jour.statut?.includes('Absence');
+                            const isRetard = jour.statut?.includes('Retard');
+                            const isPresent = jour.statut === 'Présent';
+                            
+                            return (
+                              <tr 
+                                key={idx} 
+                                className={`border-b border-gray-100 transition-colors ${
+                                  idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                                } ${isWeekend ? 'bg-gray-50' : ''} hover:bg-gray-50`}
+                              >
+                                <td className="px-4 py-3">
+                                  <span className="text-sm font-medium text-gray-900">
+                                    {new Date(jour.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`text-sm capitalize ${isWeekend ? 'text-gray-400 font-normal' : 'text-gray-600'}`}>
+                                    {jour.jourSemaine}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`text-xs font-mono ${
+                                    jour.horairePlanifie && jour.horairePlanifie !== '-' 
+                                      ? 'text-gray-700' 
+                                      : 'text-gray-400'
+                                  }`}>
+                                    {jour.horairePlanifie || jour.details?.horairePlanifie || '-'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className="text-sm font-medium text-gray-700">
+                                    {jour.heuresTravailPrevues || jour.heuresPrevues || 0}h
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`text-sm font-semibold ${
+                                    (jour.heuresRealisees || 0) > 0 ? 'text-[#cf292c]' : 'text-gray-400'
+                                  }`}>
+                                    {jour.heuresRealisees || 0}h
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[45px] px-2 py-0.5 rounded text-xs font-medium ${
+                                    jour.ecart > 0 ? 'text-green-600' :
+                                    jour.ecart < 0 ? 'text-amber-600' :
+                                    'text-gray-400'
+                                  }`}>
+                                    {jour.ecart > 0 ? '+' : ''}{jour.ecart || 0}h
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="flex flex-col gap-1">
+                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold w-fit ${
+                                      isPresent ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                                      isRetard ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                                      isAbsence ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                      jour.statut === 'Non planifié' || jour.statut === 'Hors planning' ? 'bg-gray-100 text-gray-500' :
+                                      'bg-gray-100 text-gray-600'
+                                    }`}>
+                                      {isPresent && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                                      {isRetard && <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>}
+                                      {isAbsence && <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>}
+                                      {jour.statut}
+                                    </span>
+                                    {(jour.statutDetail || jour.details?.statutDetail) && (
+                                      <span className="text-[10px] text-gray-500 italic pl-1">
+                                        {jour.statutDetail || jour.details?.statutDetail}
+                                      </span>
+                                    )}
+                                    {jour.details?.pointages?.length > 0 && (
+                                      <span className="text-[10px] text-gray-400 pl-1 font-mono">
+                                        {jour.details.pointages.map(p => `${p.heure} (${p.type?.toLowerCase()})`).join(' → ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
-                        <tfoot className="bg-gray-100 font-semibold">
-                          <tr>
-                            <td colSpan="2" className="px-4 py-3 text-sm text-gray-700">TOTAL</td>
-                            <td className="px-4 py-3 text-center text-sm text-gray-800">
-                              {rapportDetaille.totaux?.heuresPrevues || 0}h
+                        {/* Footer avec totaux - Style sobre */}
+                        <tfoot>
+                          <tr className="bg-gray-50 border-t-2 border-gray-200">
+                            <td colSpan="3" className="px-4 py-4">
+                              <span className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Total période</span>
                             </td>
-                            <td className="px-4 py-3 text-center text-sm text-[#cf292c]">
-                              {rapportDetaille.totaux?.heuresRealisees || 0}h
+                            <td className="px-4 py-4 text-center">
+                              <span className="text-sm font-semibold text-gray-700">{rapportDetaille.totaux?.heuresPrevues || 0}h</span>
                             </td>
-                            <td className="px-4 py-3 text-center text-sm">
-                              <span className={`px-2 py-1 rounded ${
-                                (rapportDetaille.totaux?.ecart || 0) >= 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            <td className="px-4 py-4 text-center">
+                              <span className="text-sm font-bold text-[#cf292c]">
+                                {rapportDetaille.totaux?.heuresRealisees || 0}h
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <span className={`text-sm font-semibold ${
+                                (rapportDetaille.totaux?.ecart || 0) >= 0 
+                                  ? 'text-green-600' 
+                                  : 'text-amber-600'
                               }`}>
                                 {(rapportDetaille.totaux?.ecart || 0) >= 0 ? '+' : ''}{rapportDetaille.totaux?.ecart || 0}h
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-center text-sm text-gray-700">
-                              {rapportDetaille.totaux?.joursPresents || 0} jours présents
+                            <td className="px-4 py-4">
+                              <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                  {rapportDetaille.totaux?.joursPresents || 0}j présents
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                  {rapportDetaille.totaux?.nombreRetards || 0} retard(s)
+                                </span>
+                              </div>
                             </td>
                           </tr>
                         </tfoot>
                       </table>
                     </div>
 
-                    {/* Version Mobile */}
+                    {/* Version Mobile - Cards */}
                     <div className="md:hidden divide-y divide-gray-100">
-                      {rapportDetaille.detailsJours?.map((jour, idx) => (
-                        <div key={idx} className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {new Date(jour.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                      {rapportDetaille.detailsJours?.map((jour, idx) => {
+                        const isWeekend = jour.jourSemaine?.toLowerCase() === 'samedi' || jour.jourSemaine?.toLowerCase() === 'dimanche';
+                        const isAbsence = jour.statut?.includes('Congé') || jour.statut?.includes('RTT') || jour.statut?.includes('Maladie');
+                        const isRetard = jour.statut?.includes('Retard');
+                        const isPresent = jour.statut === 'Présent';
+                        
+                        return (
+                          <div key={idx} className={`p-4 ${isWeekend ? 'bg-gray-50' : ''}`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-10 h-10 rounded-lg bg-[#cf292c]/10 flex items-center justify-center">
+                                  <span className="text-xs font-bold text-[#cf292c]">
+                                    {new Date(jour.date).getDate()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900 capitalize">{jour.jourSemaine}</div>
+                                  <div className="text-xs text-gray-500 font-mono">
+                                    {jour.horairePlanifie || '-'}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-xs text-gray-500 capitalize">{jour.jourSemaine}</div>
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                isPresent ? 'bg-emerald-100 text-emerald-700' :
+                                isRetard ? 'bg-amber-100 text-amber-700' :
+                                isAbsence ? 'bg-blue-100 text-blue-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {jour.statut}
+                              </span>
                             </div>
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              jour.statut === 'Présent' ? 'bg-green-100 text-green-700' :
-                              jour.statut.includes('Retard') ? 'bg-yellow-100 text-yellow-700' :
-                              jour.statut.includes('Congé') ? 'bg-blue-100 text-blue-700' :
-                              jour.statut.includes('Absence') ? 'bg-red-100 text-red-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {jour.statut}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 text-xs">
-                            <div className="text-center p-2 bg-gray-50 rounded">
-                              <div className="text-gray-500">Prévu</div>
-                              <div className="font-medium text-gray-800">{jour.heuresPrevues}h</div>
-                            </div>
-                            <div className="text-center p-2 bg-red-50 rounded">
-                              <div className="text-gray-500">Réalisé</div>
-                              <div className="font-medium text-[#cf292c]">{jour.heuresRealisees}h</div>
-                            </div>
-                            <div className="text-center p-2 bg-gray-50 rounded">
-                              <div className="text-gray-500">Écart</div>
-                              <div className={`font-medium ${jour.ecart >= 0 ? 'text-green-600' : 'text-amber-600'}`}>
-                                {jour.ecart >= 0 ? '+' : ''}{jour.ecart}h
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="text-center p-2 bg-gray-50 rounded-lg border border-gray-100">
+                                <div className="text-[10px] uppercase text-gray-400 font-medium">Prévu</div>
+                                <div className="text-sm font-bold text-gray-700">{jour.heuresPrevues || 0}h</div>
+                              </div>
+                              <div className="text-center p-2 bg-[#cf292c]/5 rounded-lg border border-[#cf292c]/20">
+                                <div className="text-[10px] uppercase text-[#cf292c]/70 font-medium">Réalisé</div>
+                                <div className="text-sm font-bold text-[#cf292c]">{jour.heuresRealisees || 0}h</div>
+                              </div>
+                              <div className={`text-center p-2 rounded-lg border ${
+                                jour.ecart > 0 ? 'bg-green-50 border-green-100' :
+                                jour.ecart < 0 ? 'bg-amber-50 border-amber-100' :
+                                'bg-gray-50 border-gray-100'
+                              }`}>
+                                <div className="text-[10px] uppercase text-gray-400 font-medium">Écart</div>
+                                <div className={`text-sm font-bold ${
+                                  jour.ecart > 0 ? 'text-green-600' :
+                                  jour.ecart < 0 ? 'text-amber-600' :
+                                  'text-gray-500'
+                                }`}>
+                                  {jour.ecart > 0 ? '+' : ''}{jour.ecart || 0}h
+                                </div>
                               </div>
                             </div>
                           </div>
+                        );
+                      })}
+                      {/* Total Mobile */}
+                      <div className="p-4 bg-gray-900 text-white">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-bold uppercase tracking-wider">Total</span>
+                          <span className="text-lg font-bold text-[#cf292c]">{rapportDetaille.totaux?.heuresRealisees || 0}h</span>
                         </div>
-                      ))}
+                        <div className="flex gap-3 text-xs text-gray-300">
+                          <span>{rapportDetaille.totaux?.joursPresents || 0}j présents</span>
+                          <span>•</span>
+                          <span>{rapportDetaille.totaux?.nombreRetards || 0} retard(s)</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -789,7 +876,7 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
                     </div>
                   )}
 
-                  {/* Récapitulatif retards */}
+                  {/* Récapitulatif retards - indicateur de ponctualité */}
                   {rapportDetaille.totaux && rapportDetaille.totaux.nombreRetards > 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <div className="flex items-start gap-3">
@@ -797,16 +884,93 @@ const RapportHeuresEmploye = ({ employeId, onClose }) => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <div className="flex-1">
-                          <h4 className="text-sm font-semibold text-yellow-800 mb-1">Retards</h4>
+                          <h4 className="text-sm font-semibold text-yellow-800 mb-1">Ponctualité</h4>
                           <p className="text-sm text-yellow-700">
                             {rapportDetaille.totaux.nombreRetards} retard{rapportDetaille.totaux.nombreRetards > 1 ? 's' : ''} cumulé{rapportDetaille.totaux.nombreRetards > 1 ? 's' : ''} : {rapportDetaille.totaux.minutesRetardTotal} minutes
-                            {rapportDetaille.totaux.heuresRetardTotal > 0 && (
-                              <span className="font-medium"> ({rapportDetaille.totaux.heuresRetardTotal}h à déduire)</span>
-                            )}
+                            <span className="text-yellow-600 ml-1">(indicateur de ponctualité)</span>
+                          </p>
+                          <p className="text-xs text-yellow-600 mt-1">
+                            Note : L'écart réel d'heures dépend aussi de l'heure de départ effective
                           </p>
                         </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* Bilan final - Écart réel */}
+                  {rapportDetaille.totaux && (
+                    (() => {
+                      const heuresRealisees = rapportDetaille.totaux.heuresRealisees || 0;
+                      const heuresPrevues = rapportDetaille.totaux.heuresPrevues || 0;
+                      const ecart = heuresRealisees - heuresPrevues;
+                      return (
+                    <div className={`rounded-lg p-4 ${
+                      ecart < 0 
+                        ? 'bg-red-50 border border-red-200' 
+                        : ecart > 0 
+                          ? 'bg-green-50 border border-green-200'
+                          : 'bg-gray-50 border border-gray-200'
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <svg className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                          ecart < 0 
+                            ? 'text-red-600' 
+                            : ecart > 0 
+                              ? 'text-green-600'
+                              : 'text-gray-600'
+                        }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <div className="flex-1">
+                          <h4 className={`text-sm font-semibold mb-2 ${
+                            ecart < 0 
+                              ? 'text-red-800' 
+                              : ecart > 0 
+                                ? 'text-green-800'
+                                : 'text-gray-800'
+                          }`}>Bilan final</h4>
+                          <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-500 text-xs">Heures prévues</p>
+                              <p className="font-semibold text-gray-800">{heuresPrevues}h</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 text-xs">Heures réalisées</p>
+                              <p className="font-semibold text-gray-800">{heuresRealisees}h</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500 text-xs">Écart réel</p>
+                              <p className={`font-bold ${
+                                ecart < 0 
+                                  ? 'text-red-600' 
+                                  : ecart > 0 
+                                    ? 'text-green-600'
+                                    : 'text-gray-600'
+                              }`}>
+                                {ecart > 0 ? '+' : ''}{ecart.toFixed(2)}h
+                              </p>
+                            </div>
+                          </div>
+                          {ecart < 0 && (
+                            <p className="text-xs text-red-600 mt-2 font-medium">
+                              → {Math.abs(ecart).toFixed(2)}h à régulariser
+                            </p>
+                          )}
+                          {ecart > 0 && (
+                            <p className="text-xs text-green-600 mt-2 font-medium">
+                              → {ecart.toFixed(2)}h supplémentaires
+                            </p>
+                          )}
+                          {ecart === 0 && (
+                            <p className="text-xs text-gray-600 mt-2">
+                              → Heures conformes au planning
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                      );
+                    })()
                   )}
                 </>
               ) : (

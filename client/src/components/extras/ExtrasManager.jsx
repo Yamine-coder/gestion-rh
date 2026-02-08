@@ -573,6 +573,7 @@ const PaiementCard = ({ paiement, onOpenDetail, onPayer, onAnnuler, isPriority, 
     switch (src) {
       case 'shift_extra': return { label: 'Shift', color: 'bg-blue-100 text-blue-700', Icon: Calendar };
       case 'anomalie_heures_sup': return { label: 'H.Sup', color: 'bg-purple-100 text-purple-700', Icon: Timer };
+      case 'anomalie_extra': return { label: 'Anomalie', color: 'bg-orange-100 text-orange-700', Icon: Timer };
       case 'manuel': return { label: 'Manuel', color: 'bg-gray-100 text-gray-600', Icon: FileText };
       case 'ajustement': return { label: 'Ajust.', color: 'bg-amber-100 text-amber-700', Icon: AlertTriangle };
       default: return { label: 'Extra', color: 'bg-gray-100 text-gray-600', Icon: Euro };
@@ -974,6 +975,7 @@ const PaiementDetailModal = ({ paiement, onClose, onPayer, onAnnuler, loading, a
   const getSourceLabel = (src) => {
     switch (src) {
       case 'shift_extra': return 'Shift Extra';
+      case 'anomalie_extra': return 'Anomalie';
       case 'anomalie_heures_sup': return 'Heures supplémentaires';
       case 'manuel': return 'Saisie manuelle';
       default: return src;

@@ -1,37 +1,44 @@
-const SibApiV3Sdk = require('sib-api-v3-sdk');
+const nodemailer = require('nodemailer');
 
-// Configuration Brevo (Sendinblue) - API HTTP sans restriction de domaine
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+// Configuration Gmail avec nodemailer
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD // App Password Gmail
+    }
+  });
+};
 
 // Petite aide: délai asynchrone
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// Fonction d'envoi universelle via Brevo
+// Fonction d'envoi universelle via Gmail
 async function sendEmail({ to, subject, html, from }) {
   const restaurantName = 'Chez Antoine';
-  const fromEmail = from || process.env.EMAIL_FROM || 'moussaouiyamine1@gmail.com';
+  const fromEmail = from || process.env.EMAIL_FROM || process.env.EMAIL_USER;
   
-  if (!process.env.BREVO_API_KEY) {
-    throw new Error('BREVO_API_KEY non configurée');
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    throw new Error('Configuration Gmail manquante (EMAIL_USER / EMAIL_PASSWORD)');
   }
   
-  console.log('📧 Envoi via Brevo...');
+  console.log('📧 Envoi via Gmail...');
   try {
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = html;
-    sendSmtpEmail.sender = { name: restaurantName, email: fromEmail };
-    sendSmtpEmail.to = [{ email: to }];
+    const transporter = createTransporter();
     
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('✅ Email envoyé via Brevo:', data.messageId);
-    return { success: true, provider: 'brevo', id: data.messageId };
+    const mailOptions = {
+      from: `"${restaurantName}" <${fromEmail}>`,
+      to: to,
+      subject: subject,
+      html: html
+    };
+    
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email envoyé via Gmail:', info.messageId);
+    return { success: true, provider: 'gmail', id: info.messageId };
   } catch (err) {
-    console.error('❌ Erreur Brevo:', err.message || err);
+    console.error('❌ Erreur Gmail:', err.message || err);
     throw err;
   }
 }
@@ -408,7 +415,277 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
   }
 };
 
+// Template email pour nouvelle demande de congé (envoyé aux admins)
+const envoyerEmailNouvelleDemandeConge = async (adminEmail, demandeData) => {
+  const { employeNom, type, dateDebut, dateFin, nbJours, motif, congeId } = demandeData;
+  
+  const restaurantName = 'Chez Antoine';
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const urlGestion = `${frontendUrl}/conges`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Nouvelle demande de congé</title>
+      <!--[if mso]>
+      <style type="text/css">
+        table { border-collapse: collapse; }
+        .button { padding: 16px 32px !important; }
+      </style>
+      <![endif]-->
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+      
+      <!-- Wrapper -->
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f5f5f5;">
+        <tr>
+          <td align="center" style="padding: 32px 16px;">
+            
+            <!-- Container - max 560px pour lisibilité -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 560px; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+              
+              <!-- Header -->
+              <tr>
+                <td style="background-color: #cf292c; padding: 32px 24px; text-align: center;">
+                  <p style="color: rgba(255,255,255,0.9); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 8px 0; font-weight: 500;">${restaurantName}</p>
+                  <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 600;">
+                    Nouvelle demande de congé
+                  </h1>
+                </td>
+              </tr>
+              
+              <!-- Body -->
+              <tr>
+                <td style="padding: 32px 24px;">
+                  
+                  <p style="color: #333333; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
+                    <strong>${employeNom}</strong> a soumis une demande de congé.
+                  </p>
+                  
+                  <!-- Détails -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #fafafa; border-radius: 6px; margin-bottom: 24px;">
+                    <tr>
+                      <td style="padding: 20px;">
+                        
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                          <tr>
+                            <td style="padding-bottom: 12px; border-bottom: 1px solid #eee;">
+                              <p style="color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Type</p>
+                              <p style="color: #222; font-size: 15px; font-weight: 600; margin: 0;">${type}</p>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 12px 0; border-bottom: 1px solid #eee;">
+                              <p style="color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Période</p>
+                              <p style="color: #222; font-size: 15px; font-weight: 600; margin: 0;">${dateDebut} au ${dateFin}</p>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding-top: 12px;">
+                              <p style="color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Durée</p>
+                              <p style="color: #222; font-size: 15px; font-weight: 600; margin: 0;">${nbJours} jour${nbJours > 1 ? 's' : ''}</p>
+                            </td>
+                          </tr>
+                        </table>
+                        
+                        ${motif ? `
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+                          <tr>
+                            <td>
+                              <p style="color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0;">Motif</p>
+                              <p style="color: #555; font-size: 14px; margin: 0; line-height: 1.5;">${motif}</p>
+                            </td>
+                          </tr>
+                        </table>
+                        ` : ''}
+                        
+                      </td>
+                    </tr>
+                  </table>
+                  
+                  <!-- CTA -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr>
+                      <td align="center">
+                        <a href="${urlGestion}" style="display: inline-block; background-color: #cf292c; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                          Voir la demande
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                  
+                </td>
+              </tr>
+              
+              <!-- Footer -->
+              <tr>
+                <td style="padding: 20px 24px; border-top: 1px solid #eee;">
+                  <p style="color: #999; font-size: 12px; margin: 0; text-align: center; line-height: 1.5;">
+                    ${restaurantName} · Gestion RH
+                  </p>
+                </td>
+              </tr>
+              
+            </table>
+            
+          </td>
+        </tr>
+      </table>
+      
+    </body>
+    </html>
+  `;
+
+  const mailOptions = {
+    to: adminEmail,
+    subject: `Demande de congé - ${employeNom}`,
+    html: htmlContent
+  };
+
+  try {
+    const result = await sendEmail(mailOptions);
+    console.log(`✅ Email nouvelle demande congé envoyé à ${adminEmail}`);
+    return { success: true, provider: result.provider };
+  } catch (error) {
+    console.error('❌ Erreur envoi email nouvelle demande:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Template email rappel congés non traités > 48h
+const envoyerEmailRappelConges = async (adminEmail, congesEnAttente) => {
+  const restaurantName = 'Chez Antoine';
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const urlGestion = `${frontendUrl}/conges`;
+
+  // Générer les lignes pour chaque demande
+  const congesRows = congesEnAttente.map(c => `
+    <tr>
+      <td style="padding: 12px 0; border-bottom: 1px solid #eee;">
+        <p style="margin: 0 0 4px 0;">
+          <strong style="color: #222; font-size: 14px;">${c.employeNom}</strong>
+          <span style="color: #888; font-size: 13px;"> · ${c.type}</span>
+        </p>
+        <p style="margin: 0; color: #666; font-size: 13px;">
+          ${c.dateDebut} au ${c.dateFin}
+          <span style="color: #cf292c; font-weight: 500; margin-left: 8px;">${c.joursAttente}j d'attente</span>
+        </p>
+      </td>
+    </tr>
+  `).join('');
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Rappel - Demandes en attente</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+      
+      <!-- Wrapper -->
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #f5f5f5;">
+        <tr>
+          <td align="center" style="padding: 32px 16px;">
+            
+            <!-- Container -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 560px; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
+              
+              <!-- Header -->
+              <tr>
+                <td style="background-color: #b91c1c; padding: 32px 24px; text-align: center;">
+                  <p style="color: rgba(255,255,255,0.9); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0 0 8px 0; font-weight: 500;">${restaurantName}</p>
+                  <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 600;">
+                    ${congesEnAttente.length} demande${congesEnAttente.length > 1 ? 's' : ''} en attente
+                  </h1>
+                  <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0 0; font-size: 14px;">
+                    depuis plus de 48h
+                  </p>
+                </td>
+              </tr>
+              
+              <!-- Body -->
+              <tr>
+                <td style="padding: 24px;">
+                  
+                  <!-- Alerte -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #fef2f2; border-left: 3px solid #cf292c; margin-bottom: 20px;">
+                    <tr>
+                      <td style="padding: 12px 16px;">
+                        <p style="color: #991b1b; font-size: 13px; margin: 0; line-height: 1.5;">
+                          Ces demandes nécessitent votre attention.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                  
+                  <!-- Liste -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #fafafa; border-radius: 6px;">
+                    <tr>
+                      <td style="padding: 16px 20px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                          ${congesRows}
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                  
+                  <!-- CTA -->
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 24px;">
+                    <tr>
+                      <td align="center">
+                        <a href="${urlGestion}" style="display: inline-block; background-color: #cf292c; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
+                          Traiter les demandes
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                  
+                </td>
+              </tr>
+              
+              <!-- Footer -->
+              <tr>
+                <td style="padding: 16px 24px; border-top: 1px solid #eee;">
+                  <p style="color: #999; font-size: 12px; margin: 0; text-align: center;">
+                    Rappel automatique · ${restaurantName}
+                  </p>
+                </td>
+              </tr>
+              
+            </table>
+            
+          </td>
+        </tr>
+      </table>
+      
+    </body>
+    </html>
+  `;
+
+  const mailOptions = {
+    to: adminEmail,
+    subject: `Rappel : ${congesEnAttente.length} demande${congesEnAttente.length > 1 ? 's' : ''} de congé en attente`,
+    html: htmlContent
+  };
+
+  try {
+    const result = await sendEmail(mailOptions);
+    console.log(`✅ Email rappel congés envoyé à ${adminEmail}`);
+    return { success: true, provider: result.provider };
+  } catch (error) {
+    console.error('❌ Erreur envoi email rappel congés:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   envoyerEmailAccueil,
-  envoyerEmailRecuperation
+  envoyerEmailRecuperation,
+  envoyerEmailNouvelleDemandeConge,
+  envoyerEmailRappelConges
 };

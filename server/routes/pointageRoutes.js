@@ -6,6 +6,7 @@ const isAdmin = require('../middlewares/isAdminMiddleware');
 const prisma = require('../prisma/client');
 const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
 const {
   getMesPointages,
   getMesPointagesAujourdhui,
@@ -190,8 +191,9 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       });
       
       // Compter les arrivées existantes (avant ce nouveau pointage)
-      const arrivees = pointagesDuJour.filter(p => p.type === 'arrivee');
-      const departs = pointagesDuJour.filter(p => p.type === 'depart');
+      // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
+      const arrivees = filtrerEntrees(pointagesDuJour);
+      const departs = filtrerSorties(pointagesDuJour);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // ☕ DÉTECTION PAUSE EXCESSIVE (retour de pause = 2ème arrivée)
@@ -268,6 +270,9 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       
       // ═══════════════════════════════════════════════════════════════════════════
       // ⏰ DÉTECTION RETARD (uniquement pour la 1ère arrivée)
+      // NOTE: Les retards ne créent plus d'anomalies - pratique standard SIRH
+      // Ils sont comptabilisés dans le score de ponctualité et affichés visuellement
+      // EXCEPTION: Arrivée très en avance = heures sup potentielles à valider
       // ═══════════════════════════════════════════════════════════════════════════
       if (arrivees.length === 0) {
         const [heureDebut, minuteDebut] = shiftHours.heureDebut.split(':').map(Number);
@@ -276,71 +281,58 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         
         const diffMinutes = Math.round((horodatage - debutPrevu) / 60000);
       
-        // 📍 Arrivée très en avance (>30 min)
-        if (diffMinutes < -30) {
+        // 📍 Arrivée très en avance (≥45 min) - EXTRA POTENTIEL
+        // Seuil 45 min : en dessous on ne paie pas d'extra
+        if (diffMinutes <= -45) {
           const avanceMinutes = Math.abs(diffMinutes);
+          const avanceHeures = Math.floor(avanceMinutes / 60);
+          const avanceMin = avanceMinutes % 60;
+          const tempsExtra = avanceHeures > 0 
+            ? (avanceMin > 0 ? `${avanceHeures}h${avanceMin}min` : `${avanceHeures}h`)
+            : `${avanceMinutes}min`;
+          
           const anomalie = await creerAnomalieTempsReel({
             userId,
             shiftId: shift.id,
-            type: 'hors_plage_in',
-            gravite: 'moyenne',
-            description: `Arrivée hors plage - ${avanceMinutes} minutes en avance (${heurePointageStr} au lieu de ${shiftHours.heureDebut})`,
+            type: 'extra_potentiel',
+            gravite: 'a_valider',
+            description: `Arrivée ${tempsExtra} en avance - Extra potentiel à valider (${heurePointageStr} au lieu de ${shiftHours.heureDebut})`,
             date: new Date(dateJour)
           });
           
           if (anomalie) {
             anomaliesDetectees.push({
-              type: 'hors_plage_in',
-              message: `📍 Vous êtes ${avanceMinutes} min en avance`,
-              detail: `Shift prévu à ${shiftHours.heureDebut}`,
-              gravite: 'moyenne',
-              icon: '📍'
+              type: 'extra_potentiel',
+              message: `⏱️ Arrivée ${tempsExtra} en avance`,
+              detail: `Extra potentiel - Shift prévu à ${shiftHours.heureDebut}`,
+              gravite: 'a_valider',
+              icon: '⏱️'
             });
           }
         }
         
-        // ⏰ Retard modéré (5-30 min)
+        // ⏰ Retard modéré (5-30 min) - Info seulement, pas d'anomalie
         else if (diffMinutes >= 5 && diffMinutes < 30) {
-          const anomalie = await creerAnomalieTempsReel({
-            userId,
-            shiftId: shift.id,
+          console.log(`⏰ RETARD MODÉRÉ (info): ${diffMinutes} min pour employé ${userId}`);
+          anomaliesDetectees.push({
             type: 'retard_modere',
-            gravite: 'moyenne',
-            description: `Retard de ${diffMinutes} minutes - Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
-            date: new Date(dateJour)
+            message: `⏰ Retard de ${diffMinutes} minutes`,
+            detail: `Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
+            gravite: 'info',
+            icon: '⏰'
           });
-          
-          if (anomalie) {
-            anomaliesDetectees.push({
-              type: 'retard_modere',
-              message: `⏰ Retard de ${diffMinutes} minutes`,
-              detail: `Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
-              gravite: 'moyenne',
-              icon: '⏰'
-            });
-          }
         }
       
-        // 🔴 Retard critique (>30 min)
+        // 🔴 Retard critique (>30 min) - Info seulement, pas d'anomalie
         else if (diffMinutes >= 30) {
-          const anomalie = await creerAnomalieTempsReel({
-            userId,
-            shiftId: shift.id,
+          console.log(`🔴 RETARD CRITIQUE (info): ${diffMinutes} min pour employé ${userId}`);
+          anomaliesDetectees.push({
             type: 'retard_critique',
-            gravite: 'haute',
-            description: `Retard critique de ${diffMinutes} minutes - Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
-            date: new Date(dateJour)
+            message: `🔴 Retard critique de ${diffMinutes} minutes`,
+            detail: `Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
+            gravite: 'attention',
+            icon: '🔴'
           });
-          
-          if (anomalie) {
-            anomaliesDetectees.push({
-              type: 'retard_critique',
-              message: `🔴 Retard critique de ${diffMinutes} minutes`,
-              detail: `Arrivée à ${heurePointageStr} au lieu de ${shiftHours.heureDebut}`,
-              gravite: 'haute',
-              icon: '🔴'
-            });
-          }
         }
       } // Fin du bloc if (arrivees.length === 0)
     }
@@ -355,69 +347,60 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       
       const diffMinutes = Math.round((finPrevue - horodatage) / 60000);
       
-      // 🚪 Départ anticipé modéré (15-60 min avant)
+      // 🚪 Départ anticipé modéré (15-60 min avant) - Info seulement, pas d'anomalie
+      // NOTE: Les départs anticipés ne créent plus d'anomalies - pratique standard SIRH
       if (diffMinutes >= 15 && diffMinutes < 60) {
-        const anomalie = await creerAnomalieTempsReel({
-          userId,
-          shiftId: shift.id,
+        console.log(`🚪 DÉPART ANTICIPÉ (info): ${diffMinutes} min pour employé ${userId}`);
+        anomaliesDetectees.push({
           type: 'depart_anticipe',
-          gravite: 'moyenne',
-          description: `Départ anticipé de ${diffMinutes} minutes - Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
-          date: new Date(dateJour)
+          message: `🚪 Départ anticipé de ${diffMinutes} min`,
+          detail: `Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
+          gravite: 'info',
+          icon: '🚪'
         });
-        
-        if (anomalie) {
-          anomaliesDetectees.push({
-            type: 'depart_anticipe',
-            message: `🚪 Départ anticipé de ${diffMinutes} min`,
-            detail: `Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
-            gravite: 'moyenne',
-            icon: '🚪'
-          });
-        }
       }
       
-      // 🚨 Départ prématuré critique (>60 min avant)
+      // 🚨 Départ prématuré critique (>60 min avant) - Info seulement, pas d'anomalie
       else if (diffMinutes >= 60) {
-        const anomalie = await creerAnomalieTempsReel({
-          userId,
-          shiftId: shift.id,
+        console.log(`🚨 DÉPART CRITIQUE (info): ${diffMinutes} min pour employé ${userId}`);
+        anomaliesDetectees.push({
           type: 'depart_premature_critique',
-          gravite: 'critique',
-          description: `⚠️ Départ prématuré critique - ${diffMinutes} minutes avant la fin (${heurePointageStr} au lieu de ${shiftHours.heureFin})`,
-          date: new Date(dateJour)
+          message: `🚨 Départ critique ${diffMinutes} min avant la fin`,
+          detail: `Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
+          gravite: 'attention',
+          icon: '🚨'
         });
-        
-        if (anomalie) {
-          anomaliesDetectees.push({
-            type: 'depart_premature_critique',
-            message: `🚨 Départ critique ${diffMinutes} min avant la fin`,
-            detail: `Sortie à ${heurePointageStr} au lieu de ${shiftHours.heureFin}`,
-            gravite: 'critique',
-            icon: '🚨'
-          });
-        }
       }
       
-      // 📍 Départ très tardif (>2h après)
-      else if (diffMinutes < -120) {
-        const depassementHeures = Math.abs(diffMinutes / 60).toFixed(1);
+      // 📍 Départ très tardif (≥45 min après) - Extra potentiel à valider
+      // Seuil 45 min : en dessous on ne paie pas d'extra
+      else if (diffMinutes <= -45) {
+        const depassementMinutes = Math.abs(diffMinutes);
+        const depassementHeures = Math.floor(depassementMinutes / 60);
+        const depassementMin = Math.round(depassementMinutes - (depassementHeures * 60));
+        const tempsExtra = depassementHeures > 0 
+          ? (depassementMin > 0 ? `${depassementHeures}h${depassementMin}min` : `${depassementHeures}h`)
+          : `${depassementMinutes}min`;
+        
+        console.log(`⏱️ DÉPART TARDIF: ${tempsExtra} après la fin du shift - Extra potentiel`);
+        
+        // ✅ Créer anomalie extra_potentiel
         const anomalie = await creerAnomalieTempsReel({
           userId,
           shiftId: shift.id,
-          type: 'hors_plage_out',
-          gravite: 'haute',
-          description: `Départ hors plage - ${depassementHeures}h après la fin prévue (${heurePointageStr} au lieu de ${shiftHours.heureFin})`,
+          type: 'extra_potentiel',
+          gravite: 'a_valider',
+          description: `Départ ${tempsExtra} après la fin - Extra potentiel à valider (${heurePointageStr} au lieu de ${shiftHours.heureFin})`,
           date: new Date(dateJour)
         });
         
         if (anomalie) {
           anomaliesDetectees.push({
-            type: 'hors_plage_out',
-            message: `📍 Départ ${depassementHeures}h après la fin`,
-            detail: `Heures sup potentielles à valider`,
-            gravite: 'haute',
-            icon: '📍'
+            type: 'extra_potentiel',
+            message: `⏱️ Départ ${tempsExtra} après la fin`,
+            detail: `Extra potentiel à valider`,
+            gravite: 'a_valider',
+            icon: '⏱️'
           });
         }
       }
@@ -437,16 +420,19 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         });
         
         // Vérifier si pause prise (au moins 2 paires de pointages)
+        // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
         let paires = 0;
         for (let i = 0; i < pointagesDuJour.length - 1; i++) {
-          if (pointagesDuJour[i].type === 'arrivee' && pointagesDuJour[i + 1].type === 'depart') {
+          if (isEntree(pointagesDuJour[i].type) && isSortie(pointagesDuJour[i + 1].type)) {
             paires++;
           }
         }
         
         if (paires < 2) {
           // Calculer le temps de travail continu
-          const premiereArrivee = pointagesDuJour.find(p => p.type === 'arrivee');
+          // ✅ CORRIGÉ: Utiliser les helpers centralisés pour trouver l'entrée
+          const entrees = filtrerEntrees(pointagesDuJour);
+          const premiereArrivee = entrees.length > 0 ? entrees[0] : null;
           if (premiereArrivee) {
             const heuresTravail = (horodatage - new Date(premiereArrivee.horodatage)) / 3600000;
             
@@ -628,11 +614,12 @@ router.post('/auto', authenticateToken, async (req, res) => {
     const dernier = pointagesDuJour[pointagesDuJour.length - 1];
 
     // 🔢 Compter le nombre de paires "arrivee → depart"
+    // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
     let paires = 0;
     for (let i = 0; i < pointagesDuJour.length - 1; i++) {
       if (
-        pointagesDuJour[i].type === 'arrivee' &&
-        pointagesDuJour[i + 1].type === 'depart'
+        isEntree(pointagesDuJour[i].type) &&
+        isSortie(pointagesDuJour[i + 1].type)
       ) {
         paires++;
       }
@@ -643,15 +630,15 @@ router.post('/auto', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Vous avez terminé votre journée (2 blocs max)." });
     }
 
-    // ✅ Déduction du prochain type
+    // ✅ Déduction du prochain type - UTILISER LES TYPES CANONIQUES
     let type = null;
 
     if (!dernier) {
-      type = 'arrivee';
-    } else if (dernier.type === 'arrivee') {
-      type = 'depart';
-    } else if (dernier.type === 'depart') {
-      type = 'arrivee';
+      type = TYPE_CANONIQUE_ENTREE;
+    } else if (isEntree(dernier.type)) {
+      type = TYPE_CANONIQUE_SORTIE;
+    } else if (isSortie(dernier.type)) {
+      type = TYPE_CANONIQUE_ENTREE;
     }
 
     if (!type) {
@@ -674,10 +661,13 @@ router.post('/auto', authenticateToken, async (req, res) => {
       // Protection anti-spam : 30 secondes entre chaque pointage
       const limiteAntiDoublon = new Date(now.getTime() - 30000); // 30 secondes avant
 
+      // ✅ CORRIGÉ: Utiliser isEntree/isSortie pour chercher les pointages récents du même type logique
       const pointageRecentIdentique = await prisma.pointage.findFirst({
         where: {
           userId,
-          type,
+          type: {
+            in: isEntree(type) ? ['arrivee', 'arrivée', 'ENTRÉE', 'entrée'] : ['depart', 'départ', 'SORTIE', 'sortie']
+          },
           horodatage: {
             gte: limiteAntiDoublon
           }
@@ -687,7 +677,7 @@ router.post('/auto', authenticateToken, async (req, res) => {
       if (pointageRecentIdentique) {
         return res.status(409).json({ 
           message: "Veuillez patienter",
-          details: `Un ${type} a déjà été enregistré récemment. Attendez 30 secondes.`
+          details: `Un ${type === TYPE_CANONIQUE_ENTREE ? 'arrivée' : 'départ'} a déjà été enregistré récemment. Attendez 30 secondes.`
         });
       }
     }
@@ -705,7 +695,7 @@ router.post('/auto', authenticateToken, async (req, res) => {
     const anomaliesDetectees = await detecterAnomaliesTempsReel(userId, type, maintenant);
 
     res.status(201).json({
-      message: `✅ ${type === 'arrivee' ? 'Arrivée' : 'Départ'} enregistré`,
+      message: `✅ ${type === TYPE_CANONIQUE_ENTREE ? 'Arrivée' : 'Départ'} enregistré`,
       pointage: nouveau,
       employe: {
         id: employe.id,
@@ -758,11 +748,11 @@ router.get('/total-aujourdhui', authenticateToken, async (req, res) => {
       const debut = pointages[i];
       const fin = pointages[i + 1];
 
-      // Support des deux formats: arrivee/depart ET ENTRÉE/SORTIE
-      const isDebut = debut.type === 'arrivee' || debut.type === 'ENTRÉE';
-      const isFin = fin.type === 'depart' || fin.type === 'SORTIE';
+      // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
+      const estDebut = isEntree(debut.type);
+      const estFin = isSortie(fin.type);
 
-      if (isDebut && isFin) {
+      if (estDebut && estFin) {
         const debutTime = new Date(debut.horodatage);
         const finTime = new Date(fin.horodatage);
 

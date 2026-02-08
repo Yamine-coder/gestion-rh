@@ -1,6 +1,8 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const scoringService = require('../services/scoringService');
+const { envoyerEmailNouvelleDemandeConge } = require('../services/emailService');
+const notifConfig = require('../services/notificationConfigService');
 
 // @desc Créer une nouvelle demande de congé
 const demanderConge = async (req, res) => {
@@ -103,6 +105,34 @@ const demanderConge = async (req, res) => {
           }))
         });
         console.log(`Notification envoyee aux ${managers.length} manager(s) pour nouvelle demande de ${employeName}`);
+
+        // 📧 Envoyer email - utilise la config centralisée ou fallback sur admins
+        let emailRecipients = notifConfig.getRecipients('conges');
+        
+        // Si aucun destinataire configuré, envoyer aux admins
+        if (emailRecipients.length === 0) {
+          const admins = await prisma.user.findMany({
+            where: { role: 'admin' },
+            select: { email: true }
+          });
+          emailRecipients = admins.map(a => a.email).filter(Boolean);
+        }
+
+        for (const email of emailRecipients) {
+          try {
+            await envoyerEmailNouvelleDemandeConge(email, {
+              employeNom: employeName,
+              type: type,
+              dateDebut: dateDebutStr,
+              dateFin: dateFinStr,
+              nbJours: nbJours,
+              motif: motif || null,
+              congeId: nouveauConge.id
+            });
+          } catch (emailError) {
+            console.error(`Erreur envoi email à ${email}:`, emailError.message);
+          }
+        }
       }
     } catch (notifError) {
       console.error('Erreur création notification nouvelle demande:', notifError);

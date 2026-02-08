@@ -250,52 +250,52 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
   const handleToggleJour = (jour) => setJours(prev => ({ ...prev, [jour]: !prev[jour] }));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Navigation onglets */}
-      <div className="flex border-b gap-4 text-sm font-medium">
+      <div className="flex border-b border-slate-200 gap-4 text-sm font-medium">
         <button
           type="button"
           onClick={()=>setTab('create')}
-          className={`px-3 py-2 -mb-px border-b-2 ${tab==='create' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-3 py-2 -mb-px border-b-2 transition-colors ${tab==='create' ? 'border-[#cf292c] text-[#cf292c]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >Créer</button>
         <button
           type="button"
           onClick={()=>setTab('delete')}
-          className={`px-3 py-2 -mb-px border-b-2 ${tab==='delete' ? 'border-red-600 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-3 py-2 -mb-px border-b-2 transition-colors ${tab==='delete' ? 'border-[#cf292c] text-[#cf292c]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >Supprimer</button>
       </div>
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4">{error}</div>}
-      {deleteError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-md">{deleteError}</div>}
-      {deleteSuccess && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-2 rounded-md">{deleteSuccess}</div>}
+      {error && <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>}
+      {deleteError && <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg text-sm">{deleteError}</div>}
+      {deleteSuccess && <div className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-3 py-2 rounded-lg text-sm">{deleteSuccess}</div>}
 
   {tab==='create' && !showPreview && !creationResult && (
         <>
           <div>
-            <h3 className="font-medium text-gray-700 mb-2">Période</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <h3 className="text-sm font-medium text-slate-600 mb-2">Période</h3>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Date de début</label>
-                <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" value={startDate} onChange={e=>setStartDate(e.target.value)} required />
+                <label className="block text-xs text-slate-500 mb-1">Date de début</label>
+                <input type="date" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300" value={startDate} onChange={e=>setStartDate(e.target.value)} required />
               </div>
               {!indefini && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Date de fin</label>
-                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500" value={endDate} onChange={e=>setEndDate(e.target.value)} required />
+                  <label className="block text-xs text-slate-500 mb-1">Date de fin</label>
+                  <input type="date" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300" value={endDate} onChange={e=>setEndDate(e.target.value)} required />
                 </div>
               )}
             </div>
             <div className="mt-3 flex items-center gap-4 flex-wrap">
-              <label className="inline-flex items-center text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" className="mr-2" checked={indefini} onChange={e=>setIndefini(e.target.checked)} />
+              <label className="inline-flex items-center text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" className="mr-2 accent-[#cf292c]" checked={indefini} onChange={e=>setIndefini(e.target.checked)} />
                 Planning indéfini (récurrent)
               </label>
               {indefini && (
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-600">Durée initiale:</span>
-                  <select value={monthsCount} onChange={e=>setMonthsCount(parseInt(e.target.value,10))} className="border border-gray-300 rounded px-2 py-1 text-sm">
+                  <span className="text-slate-500">Durée initiale:</span>
+                  <select value={monthsCount} onChange={e=>setMonthsCount(parseInt(e.target.value,10))} className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:ring-1 focus:ring-slate-300">
                     {[1,2,3,6,12].map(m=> <option key={m} value={m}>{m} mois</option> )}
                   </select>
-                  <span className="text-gray-400">(création sur {monthsCount} mois)</span>
+                  <span className="text-slate-400 text-xs">(création sur {monthsCount} mois)</span>
                 </div>
               )}
             </div>
@@ -303,28 +303,28 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
 
           {/* Créneaux */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-gray-700">Créneaux horaires</h3>
-              <button type="button" onClick={ajouterCreneau} className="px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 flex items-center">
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6"/></svg>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-slate-600">Créneaux horaires</h3>
+              <button type="button" onClick={ajouterCreneau} className="px-3 py-1.5 bg-[#cf292c] text-white text-xs rounded-lg hover:bg-[#b52528] flex items-center gap-1 transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m6-6H6"/></svg>
                 Ajouter
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {creneaux.map((c,idx)=>(
-                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-md">
+                <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex-1 grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Début {idx+1}</label>
-                      <input type="time" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500" value={c.heureDebut} onChange={e=>modifierCreneau(idx,'heureDebut', e.target.value)} required />
+                      <label className="block text-xs text-slate-500 mb-1">Début {idx+1}</label>
+                      <input type="time" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-slate-300" value={c.heureDebut} onChange={e=>modifierCreneau(idx,'heureDebut', e.target.value)} required />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-1">Fin {idx+1}</label>
-                      <input type="time" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500" value={c.heureFin} onChange={e=>modifierCreneau(idx,'heureFin', e.target.value)} required />
+                      <label className="block text-xs text-slate-500 mb-1">Fin {idx+1}</label>
+                      <input type="time" className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-slate-300" value={c.heureFin} onChange={e=>modifierCreneau(idx,'heureFin', e.target.value)} required />
                     </div>
                   </div>
                   {creneaux.length > 1 && (
-                    <button type="button" onClick={()=>supprimerCreneau(idx)} className="text-red-500 hover:text-red-700" title="Supprimer le créneau">✕</button>
+                    <button type="button" onClick={()=>supprimerCreneau(idx)} className="w-8 h-8 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Supprimer le créneau">✕</button>
                   )}
                 </div>
               ))}
@@ -333,15 +333,15 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
 
           {/* Jours */}
           <div>
-            <h3 className="font-medium text-gray-700 mb-2">Jours de la semaine</h3>
+            <h3 className="text-sm font-medium text-slate-600 mb-2">Jours de la semaine</h3>
             <div className="flex gap-2 mb-2 text-xs">
-              <button type="button" onClick={()=>setJours({lundi:true,mardi:true,mercredi:true,jeudi:true,vendredi:true,samedi:false,dimanche:false})} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Lun→Ven</button>
-              <button type="button" onClick={()=>setJours({lundi:true,mardi:true,mercredi:true,jeudi:true,vendredi:true,samedi:true,dimanche:true})} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Tous</button>
-              <button type="button" onClick={()=>setJours({lundi:false,mardi:false,mercredi:false,jeudi:false,vendredi:false,samedi:false,dimanche:false})} className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200">Aucun</button>
+              <button type="button" onClick={()=>setJours({lundi:true,mardi:true,mercredi:true,jeudi:true,vendredi:true,samedi:false,dimanche:false})} className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors">Lun→Ven</button>
+              <button type="button" onClick={()=>setJours({lundi:true,mardi:true,mercredi:true,jeudi:true,vendredi:true,samedi:true,dimanche:true})} className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors">Tous</button>
+              <button type="button" onClick={()=>setJours({lundi:false,mardi:false,mercredi:false,jeudi:false,vendredi:false,samedi:false,dimanche:false})} className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors">Aucun</button>
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(jours).map(([jour, checked]) => (
-                <button key={jour} type="button" onClick={()=>handleToggleJour(jour)} className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${checked ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{jour.substring(0,3)}</button>
+                <button key={jour} type="button" onClick={()=>handleToggleJour(jour)} className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${checked ? 'bg-[#cf292c] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{jour.substring(0,3)}</button>
               ))}
             </div>
           </div>
@@ -349,16 +349,16 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
           {/* Employés */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-medium text-gray-700">Employés</h3>
-              <button type="button" onClick={handleSelectAllEmployees} className="text-sm text-blue-600 hover:text-blue-800">{selectedEmployees.length === employes.length ? 'Désélectionner tout' : 'Sélectionner tout'}</button>
+              <h3 className="text-sm font-medium text-slate-600">Employés</h3>
+              <button type="button" onClick={handleSelectAllEmployees} className="text-xs text-[#cf292c] hover:text-[#b52528] transition-colors">{selectedEmployees.length === employes.length ? 'Désélectionner tout' : 'Sélectionner tout'}</button>
             </div>
-            <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-md p-1">
-              {employes.length === 0 ? <p className="text-gray-500 p-2">Aucun employé disponible</p> : (
+            <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-1">
+              {employes.length === 0 ? <p className="text-slate-400 p-2 text-sm">Aucun employé disponible</p> : (
                 <div className="grid grid-cols-2 gap-1">
                   {employes.map(emp => (
-                    <div key={emp.id} onClick={()=>handleToggleEmployee(emp.id)} className={`flex items-center p-2 rounded cursor-pointer ${selectedEmployees.includes(emp.id) ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}>
-                      <input type="checkbox" className="h-4 w-4 text-blue-600 rounded mr-2" checked={selectedEmployees.includes(emp.id)} readOnly />
-                      <span>{emp.prenom} {emp.nom}</span>
+                    <div key={emp.id} onClick={()=>handleToggleEmployee(emp.id)} className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${selectedEmployees.includes(emp.id) ? 'bg-red-50 border border-red-200' : 'hover:bg-slate-50'}`}>
+                      <input type="checkbox" className="h-4 w-4 accent-[#cf292c] rounded mr-2" checked={selectedEmployees.includes(emp.id)} readOnly />
+                      <span className="text-sm text-slate-700">{emp.prenom} {emp.nom}</span>
                     </div>
                   ))}
                 </div>
@@ -366,13 +366,13 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Annuler</button>
-            <button type="button" onClick={genererApercu} className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" disabled={loading}>Continuer</button>
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-slate-100">
+            <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors">Annuler</button>
+            <button type="button" onClick={genererApercu} className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-[#cf292c] hover:bg-[#b52528] transition-colors" disabled={loading}>Continuer</button>
           </div>
           {resume && (
-            <div className="text-xs text-gray-600 mt-2">
-              Jours actifs dans la période: <strong>{resume.totalJourValides}</strong> · Employés: <strong>{selectedEmployees.length}</strong> · Plannings potentiels: <strong>{resume.totalPlanningsPotentiels}</strong>
+            <div className="text-xs text-slate-500 mt-2">
+              Jours actifs: <strong className="text-slate-700">{resume.totalJourValides}</strong> · Employés: <strong className="text-slate-700">{selectedEmployees.length}</strong> · Plannings: <strong className="text-slate-700">{resume.totalPlanningsPotentiels}</strong>
             </div>
           )}
         </>
@@ -381,69 +381,77 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
   {tab==='create' && showPreview && !creationResult && (
         <>
           <div>
-            <h3 className="font-medium text-gray-700 mb-2">Aperçu des plannings à créer</h3>
-            <p className="text-sm text-gray-500 mb-3">{creationPreview.length} {creationPreview.length>1 ? 'plannings' : 'planning'} à créer</p>
-            <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-md p-2">
+            <h3 className="text-sm font-medium text-slate-600 mb-2">Aperçu des plannings à créer</h3>
+            <p className="text-xs text-slate-500 mb-3">{creationPreview.length} {creationPreview.length>1 ? 'plannings' : 'planning'} à créer</p>
+            <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-lg p-2">
               {creationPreview.map((pl,idx)=>(
-                <div key={idx} className="mb-2 p-3 bg-gray-50 rounded-md border">
-                  <div className="font-medium text-gray-800 flex justify-between items-center">
+                <div key={idx} className="mb-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="font-medium text-sm text-slate-700 flex justify-between items-center">
                     <span>{pl.nom}</span>
-                    <button type="button" onClick={()=>setCreationPreview(prev=> prev.filter((_,i)=> i!==idx))} className="text-xs text-red-500 hover:text-red-700">Retirer</button>
+                    <button type="button" onClick={()=>setCreationPreview(prev=> prev.filter((_,i)=> i!==idx))} className="text-xs text-red-400 hover:text-red-600">Retirer</button>
                   </div>
-                  <div className="text-sm text-gray-600 capitalize mb-2">{pl.dateFormatee}</div>
+                  <div className="text-xs text-slate-500 capitalize mb-2">{pl.dateFormatee}</div>
                   <div className="space-y-1">
                     {pl.creneaux.map((c,i)=>(
-                      <div key={i} className="flex items-center text-sm">
-                        <span className="w-2 h-2 bg-blue-500 rounded-full mr-2" />
+                      <div key={i} className="flex items-center text-xs text-slate-600">
+                        <span className="w-1.5 h-1.5 bg-[#cf292c] rounded-full mr-2" />
                         <span>Créneau {i+1}: {c.heureDebut} - {c.heureFin}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
-              {creationPreview.length === 0 && <div className="text-center text-sm text-gray-500 py-6">Aucun planning restant</div>}
+              {creationPreview.length === 0 && <div className="text-center text-sm text-slate-400 py-6">Aucun planning restant</div>}
             </div>
           </div>
-          <div className="flex justify-between gap-3 mt-6">
-            <button type="button" onClick={()=>setShowPreview(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Retour</button>
-            <div className="flex gap-3">
-              <button type="button" onClick={genererApercu} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-600 bg-white hover:bg-gray-50">Rafraîchir</button>
-              <button type="button" onClick={creerPlannings} disabled={loading || creationPreview.length===0} className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-[#cf292c] hover:bg-[#b31f22]">{loading ? 'Création...' : (indefini ? 'Créer récurrence' : 'Créer les plannings')}</button>
+          <div className="flex justify-between gap-3 mt-4 pt-4 border-t border-slate-100">
+            <button type="button" onClick={()=>setShowPreview(false)} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors">Retour</button>
+            <div className="flex gap-2">
+              <button type="button" onClick={genererApercu} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-500 bg-white hover:bg-slate-50 transition-colors">Rafraîchir</button>
+              <button type="button" onClick={creerPlannings} disabled={loading || creationPreview.length===0} className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-[#cf292c] hover:bg-[#b52528] transition-colors disabled:opacity-50">{loading ? 'Création...' : (indefini ? 'Créer récurrence' : 'Créer les plannings')}</button>
             </div>
           </div>
         </>
       )}
 
   {tab==='create' && creationResult && (
-        <div className="space-y-4">
-          <div className="p-4 border border-green-200 bg-green-50 rounded-md">
-            <h3 className="font-medium text-green-800 mb-1">Plannings créés avec succès</h3>
-            <p className="text-sm text-green-700">{creationResult.mode === 'batch' && `${creationResult.details.created} planning(s) créés.`}{creationResult.mode === 'recurring' && `${creationResult.details.created} dates sur ${creationResult.details.from} → ${creationResult.details.to}`}</p>
-            {lastCreationRange && <p className="text-xs text-gray-600 mt-2">Plage: {lastCreationRange.startDate} → {lastCreationRange.endDate} ({lastCreationRange.employeIds.length} employé(s))</p>}
+        <div className="text-center py-6">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-100 flex items-center justify-center">
+            <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={supprimerPlanningsCrees} disabled={deleteLoading || !lastCreationRange} className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">{deleteLoading ? 'Suppression...' : 'Supprimer ces plannings'}</button>
-            <button type="button" onClick={()=>onClose()} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300">Fermer</button>
+          <h3 className="font-medium text-slate-800 mb-1">Plannings créés avec succès !</h3>
+          <p className="text-sm text-slate-500 mb-4">
+            {creationResult.mode === 'batch' && `${creationResult.details.created} planning(s) créés`}
+            {creationResult.mode === 'recurring' && `${creationResult.details.created} dates créées`}
+          </p>
+          <div className="flex justify-center gap-2">
+            <button type="button" onClick={()=>{ setCreationResult(null); setShowPreview(false); }} className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors">Créer d'autres</button>
+            <button type="button" onClick={()=>onClose()} className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-[#cf292c] hover:bg-[#b52528] transition-colors">Terminer</button>
           </div>
+          {lastCreationRange && (
+            <p className="text-[11px] text-slate-400 mt-4">Du {lastCreationRange.startDate} au {lastCreationRange.endDate} • {lastCreationRange.employeIds.length} employé(s)</p>
+          )}
         </div>
       )}
 
       {/* Onglet Suppression permanente */}
       {tab==='delete' && (
-        <div className="space-y-6">
-          <div className="mt-2 p-4 border rounded-md bg-gray-50">
-            <h3 className="font-medium text-gray-800 mb-2">Supprimer des plannings existants</h3>
-            <p className="text-xs text-gray-500 mb-4">Sélectionnez une plage de dates et un ou plusieurs employés pour supprimer leurs plannings de présence. Action irréversible.</p>
-            {delError && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded mb-3 text-sm">{delError}</div>}
-            {delSuccess && <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded mb-3 text-sm flex justify-between items-center">{delSuccess}<div className="flex gap-2 ml-4"><button onClick={()=>{ if(autoCloseAfterAction){ onClose(); } else { setDelSuccess(null);} }} className="text-xs text-green-700 underline">{autoCloseAfterAction ? 'Fermer' : 'OK'}</button></div></div>}
-            <div className="grid md:grid-cols-3 gap-4 mb-4">
+        <div className="space-y-5">
+          <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/50">
+            <h3 className="text-sm font-medium text-slate-700 mb-1">Supprimer des plannings existants</h3>
+            <p className="text-xs text-slate-500 mb-4">Sélectionnez une plage de dates et un ou plusieurs employés. Action irréversible.</p>
+            {delError && <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg mb-3 text-sm">{delError}</div>}
+            {delSuccess && <div className="bg-emerald-50 border border-emerald-200 text-emerald-600 px-3 py-2 rounded-lg mb-3 text-sm flex justify-between items-center">{delSuccess}<div className="flex gap-2 ml-4"><button onClick={()=>{ if(autoCloseAfterAction){ onClose(); } else { setDelSuccess(null);} }} className="text-xs text-emerald-600 underline">{autoCloseAfterAction ? 'Fermer' : 'OK'}</button></div></div>}
+            <div className="grid md:grid-cols-3 gap-3 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Date début</label>
-                <input type="date" value={delStartDate} onChange={e=>setDelStartDate(e.target.value)} className="w-full px-3 py-2 border rounded-md focus:ring-1 focus:ring-red-500" />
+                <label className="block text-xs text-slate-500 mb-1">Date début</label>
+                <input type="date" value={delStartDate} onChange={e=>setDelStartDate(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-red-300" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-1">Date fin</label>
-                <input type="date" value={delEndDate} onChange={e=>setDelEndDate(e.target.value)} className="w-full px-3 py-2 border rounded-md focus:ring-1 focus:ring-red-500" />
+                <label className="block text-xs text-slate-500 mb-1">Date fin</label>
+                <input type="date" value={delEndDate} onChange={e=>setDelEndDate(e.target.value)} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-red-300" />
               </div>
               <div className="flex flex-col justify-end">
                 <button
@@ -468,26 +476,26 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                     } finally { setDelLoading(false); }
                   }}
                   disabled={delLoading}
-                  className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-colors"
                 >{delLoading ? 'Suppression...' : 'Supprimer'}</button>
               </div>
             </div>
             <div>
               <div className="flex justify-between items-center mb-2">
-                <h4 className="font-medium text-gray-700 text-sm">Employés</h4>
-                <button type="button" onClick={handleSelectAllDelEmployees} className="text-xs text-red-600 hover:text-red-700">
+                <h4 className="text-xs font-medium text-slate-600">Employés</h4>
+                <button type="button" onClick={handleSelectAllDelEmployees} className="text-xs text-red-500 hover:text-red-600">
                   {delSelectedEmployees.length === employes.length ? 'Tout désélectionner' : 'Tout sélectionner'}
                 </button>
               </div>
-              <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-md p-1">
+              <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-1">
                 {employes.length === 0 ? (
-                  <p className="text-gray-500 p-2 text-sm">Aucun employé</p>
+                  <p className="text-slate-400 p-2 text-sm">Aucun employé</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-1">
                     {employes.map(emp => (
-                      <div key={emp.id} onClick={()=>handleToggleDelEmployee(emp.id)} className={`flex items-center p-2 rounded cursor-pointer ${delSelectedEmployees.includes(emp.id) ? 'bg-red-50 border border-red-200' : 'hover:bg-gray-50'}`}>
-                        <input type="checkbox" className="h-4 w-4 text-red-600 rounded mr-2" checked={delSelectedEmployees.includes(emp.id)} readOnly />
-                        <span className="text-sm">{emp.prenom} {emp.nom}</span>
+                      <div key={emp.id} onClick={()=>handleToggleDelEmployee(emp.id)} className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${delSelectedEmployees.includes(emp.id) ? 'bg-red-50 border border-red-200' : 'hover:bg-slate-50'}`}>
+                        <input type="checkbox" className="h-4 w-4 accent-red-500 rounded mr-2" checked={delSelectedEmployees.includes(emp.id)} readOnly />
+                        <span className="text-sm text-slate-600">{emp.prenom} {emp.nom}</span>
                       </div>
                     ))}
                   </div>
@@ -496,54 +504,51 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
             </div>
           </div>
           {/* Suppression totale */}
-          <div className="p-4 border rounded-md bg-red-50/40 space-y-4">
+          <div className="p-4 border border-red-200 rounded-lg bg-red-50/30 space-y-4">
             <div>
-              <h4 className="font-medium text-red-700 mb-2">Zone Dangereuse – Suppression massive</h4>
-              <p className="text-xs text-red-600 mb-2">Tapez <code className="font-mono bg-white px-1 py-0.5 border rounded">{phrase}</code> puis choisissez :</p>
-              <ul className="list-disc ml-5 text-[11px] text-red-600 space-y-0.5">
-                <li>Sans sélection d'employés: tous les plannings (présence) de toute la base.</li>
+              <h4 className="text-sm font-medium text-red-600 mb-2">Zone Dangereuse – Suppression massive</h4>
+              <p className="text-xs text-red-500 mb-2">Tapez <code className="font-mono bg-white px-1 py-0.5 border border-red-200 rounded text-red-600">{phrase}</code> puis choisissez :</p>
+              <ul className="list-disc ml-5 text-[11px] text-red-500 space-y-0.5">
+                <li>Sans sélection d'employés: tous les plannings de toute la base.</li>
                 <li>Avec employés cochés: uniquement leurs plannings (toutes les dates).</li>
               </ul>
             </div>
-            {wipeMsg && <div className={`mb-1 text-xs px-3 py-2 rounded border flex justify-between items-center ${/erreur|incorrecte|Erreur/i.test(wipeMsg)?'bg-red-50 border-red-200 text-red-700':'bg-green-50 border-green-200 text-green-700'}`}>
+            {wipeMsg && <div className={`mb-1 text-xs px-3 py-2 rounded-lg border flex justify-between items-center ${/erreur|incorrecte|Erreur/i.test(wipeMsg)?'bg-red-50 border-red-200 text-red-600':'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
               <span>{wipeMsg}</span>
               {wipeSuccess && <button onClick={()=>{ if(autoCloseAfterAction){ onClose(); } else { setWipeMsg(null); } }} className="text-[10px] underline ml-4">{autoCloseAfterAction? 'Fermer' : 'OK'}</button>}
             </div>}
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
               <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Confirmation</label>
-                <input type="text" value={wipeConfirm} onChange={e=>setWipeConfirm(e.target.value.toUpperCase())} placeholder={phrase} className="w-full px-3 py-2 border rounded-md text-sm focus:ring-1 focus:ring-red-500" />
+                <label className="block text-xs text-slate-500 mb-1">Confirmation</label>
+                <input type="text" value={wipeConfirm} onChange={e=>setWipeConfirm(e.target.value.toUpperCase())} placeholder={phrase} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-red-300" />
               </div>
-              <button type="button" disabled={wipeLoading || wipeConfirm!==phrase} onClick={supprimerTousPlannings} className="px-4 py-2 rounded-md text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-40">
+              <button type="button" disabled={wipeLoading || wipeConfirm!==phrase} onClick={supprimerTousPlannings} className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-40 transition-colors">
                 {wipeLoading ? 'Suppression...' : (wipeSelectedEmployees.length? 'Supprimer (employés)' : 'Supprimer tout')}
               </button>
             </div>
             <div>
               <div className="flex justify-between items-center mb-2">
-                <h5 className="text-xs font-medium text-red-700">Employés ciblés (optionnel)</h5>
-                <button type="button" onClick={handleSelectAllWipeEmployees} className="text-[10px] text-red-600 underline">{wipeSelectedEmployees.length===employes.length? 'Tout désélect.' : 'Tout sélectionner'}</button>
+                <h5 className="text-xs font-medium text-red-500">Employés ciblés (optionnel)</h5>
+                <button type="button" onClick={handleSelectAllWipeEmployees} className="text-[10px] text-red-500 underline">{wipeSelectedEmployees.length===employes.length? 'Tout désélect.' : 'Tout sélectionner'}</button>
               </div>
-              <div className="max-h-40 overflow-y-auto border border-red-200 rounded p-1 bg-white/50">
-                {employes.length === 0 ? <p className="text-[11px] text-gray-500 p-2">Aucun employé</p> : (
+              <div className="max-h-32 overflow-y-auto border border-red-200 rounded-lg p-1 bg-white/50">
+                {employes.length === 0 ? <p className="text-[11px] text-slate-400 p-2">Aucun employé</p> : (
                   <div className="grid grid-cols-2 gap-1">
                     {employes.map(emp => (
-                      <div key={emp.id} onClick={()=>handleToggleWipeEmployee(emp.id)} className={`flex items-center p-1.5 rounded cursor-pointer text-[11px] ${wipeSelectedEmployees.includes(emp.id) ? 'bg-red-100 border border-red-300' : 'hover:bg-red-50'}`}>
-                        <input type="checkbox" className="h-3 w-3 text-red-600 rounded mr-1" checked={wipeSelectedEmployees.includes(emp.id)} readOnly />
-                        <span>{emp.prenom} {emp.nom}</span>
+                      <div key={emp.id} onClick={()=>handleToggleWipeEmployee(emp.id)} className={`flex items-center p-1.5 rounded-lg cursor-pointer text-[11px] transition-colors ${wipeSelectedEmployees.includes(emp.id) ? 'bg-red-100 border border-red-300' : 'hover:bg-red-50'}`}>
+                        <input type="checkbox" className="h-3 w-3 accent-red-500 rounded mr-1" checked={wipeSelectedEmployees.includes(emp.id)} readOnly />
+                        <span className="text-slate-600">{emp.prenom} {emp.nom}</span>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2 pt-2 border-t border-red-200/40">
-              <input id="autoCloseToggle" type="checkbox" className="h-4 w-4" checked={autoCloseAfterAction} onChange={e=>setAutoCloseAfterAction(e.target.checked)} />
-              <label htmlFor="autoCloseToggle" className="text-[11px] text-red-700 select-none">Fermer automatiquement après succès</label>
-            </div>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-gray-500">
-            <input id="autoCloseShared" type="checkbox" className="h-4 w-4" checked={autoCloseAfterAction} onChange={e=>setAutoCloseAfterAction(e.target.checked)} />
-            <label htmlFor="autoCloseShared">Fermer automatiquement la fenêtre après une suppression réussie</label>
+          {/* Option fermeture auto - une seule fois en bas */}
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-3 pt-3 border-t border-slate-100">
+            <input id="autoCloseShared" type="checkbox" className="h-4 w-4 accent-[#cf292c]" checked={autoCloseAfterAction} onChange={e=>setAutoCloseAfterAction(e.target.checked)} />
+            <label htmlFor="autoCloseShared" className="cursor-pointer">Fermer automatiquement après une action réussie</label>
           </div>
         </div>
       )}

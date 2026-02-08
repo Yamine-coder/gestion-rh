@@ -2,6 +2,21 @@ const prisma = require('../prisma/client');
 const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
 const scoringService = require('../services/scoringService');
+const { sendAnomalieUrgente } = require('../services/notificationEmailService');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles } = require('../utils/pointageTypeUtils');
+
+// Fonction helper pour parser les segments JSON
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  return [];
+}
 
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
@@ -94,9 +109,10 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
                             pMinutes <= (segmentFinMinutes + tolerance);
 
         if (estDansPlage) {
-          if ((p.type === 'ENTRÉE' || p.type === 'arrivee') && !arrivee) {
+          // ✅ CORRIGÉ: Utiliser les helpers centralisés pour vérifier les types
+          if (isEntree(p.type) && !arrivee) {
             arrivee = pDate;
-          } else if ((p.type === 'SORTIE' || p.type === 'depart') && arrivee && !depart) {
+          } else if (isSortie(p.type) && arrivee && !depart) {
             depart = pDate;
           }
         }
@@ -162,13 +178,14 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
     }
   });
 
-  if (!shift || !shift.segments || !Array.isArray(shift.segments)) {
+  if (!shift) {
     console.log('📋 Pas de shift planifié pour la détection d\'anomalie');
     return;
   }
 
   // Filtrer les segments de travail (exclure pauses)
-  const workSegments = shift.segments.filter(seg => {
+  const segments = parseSegments(shift.segments);
+  const workSegments = segments.filter(seg => {
     const segType = seg.type?.toLowerCase();
     return segType !== 'pause' && segType !== 'break';
   });
@@ -192,7 +209,9 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
       }
     });
 
-    // Si c'est la première arrivée, vérifier le retard
+    // Si c'est la première arrivée, vérifier le retard (indicateur seulement, pas d'anomalie)
+    // Les retards sont comptabilisés dans le score de ponctualité et affichés visuellement sur le planning
+    // Pas de création d'anomalie pour éviter le bruit - pratique standard SIRH
     if (!pointagesAvant) {
       const firstSegment = workSegments[0];
       const planStart = firstSegment.start || firstSegment.debut;
@@ -203,47 +222,17 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
         const ecartMinutes = heurePointage - planMinutes;
 
         if (ecartMinutes > TOLERANCE_MINUTES) {
-          // Vérifier si anomalie existe déjà
-          const anomalieExistante = await prisma.anomalie.findFirst({
-            where: {
-              employeId: parseInt(userId),
-              date: {
-                gte: new Date(`${dateStr}T00:00:00.000Z`),
-                lt: new Date(`${dateStr}T23:59:59.999Z`)
-              },
-              type: { contains: 'retard' }
-            }
-          });
-
-          if (!anomalieExistante) {
-            const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
-            const gravite = ecartMinutes > 30 ? 'haute' : ecartMinutes > 15 ? 'moyenne' : 'basse';
-            
-            await prisma.anomalie.create({
-              data: {
-                employeId: parseInt(userId),
-                date: new Date(`${dateStr}T12:00:00.000Z`),
-                type: ecartMinutes > 20 ? 'retard_critique' : 'retard_modere',
-                gravite,
-                statut: 'en_attente',
-                details: {
-                  heurePrevue: planStart,
-                  heureReelle,
-                  ecartMinutes,
-                  shiftId: shift.id,
-                  detecteAutomatiquement: true
-                },
-                description: `Retard de ${ecartMinutes} min (arrivée ${heureReelle}, prévu ${planStart})`
-              }
-            });
-            console.log(`🚨 ANOMALIE CRÉÉE: Retard ${ecartMinutes} min pour employé ${userId}`);
-          }
+          const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
+          // Log informatif seulement - pas de création d'anomalie
+          console.log(`⏰ RETARD DÉTECTÉ (info): ${ecartMinutes} min pour employé ${userId} (arrivée ${heureReelle}, prévu ${planStart})`);
         }
       }
     }
   }
 
   // ===== DÉTECTION DÉPART ANTICIPÉ (sur SORTIE) =====
+  // Les départs anticipés sont comptabilisés dans les stats et affichés visuellement sur le planning
+  // Pas de création d'anomalie pour éviter le bruit - pratique standard SIRH
   if (type === 'SORTIE') {
     const lastSegment = workSegments[workSegments.length - 1];
     const planEnd = lastSegment.end || lastSegment.fin;
@@ -254,41 +243,9 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
       const ecartMinutes = planMinutes - heurePointage;
 
       if (ecartMinutes > TOLERANCE_MINUTES) {
-        // Vérifier si anomalie existe déjà
-        const anomalieExistante = await prisma.anomalie.findFirst({
-          where: {
-            employeId: parseInt(userId),
-            date: {
-              gte: new Date(`${dateStr}T00:00:00.000Z`),
-              lt: new Date(`${dateStr}T23:59:59.999Z`)
-            },
-            type: { contains: 'depart' }
-          }
-        });
-
-        if (!anomalieExistante) {
-          const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
-          const gravite = ecartMinutes > 60 ? 'haute' : ecartMinutes > 30 ? 'moyenne' : 'basse';
-          
-          await prisma.anomalie.create({
-            data: {
-              employeId: parseInt(userId),
-              date: new Date(`${dateStr}T12:00:00.000Z`),
-              type: 'depart_anticipe',
-              gravite,
-              statut: 'en_attente',
-              details: {
-                heurePrevue: planEnd,
-                heureReelle,
-                ecartMinutes,
-                shiftId: shift.id,
-                detecteAutomatiquement: true
-              },
-              description: `Départ anticipé de ${ecartMinutes} min (départ ${heureReelle}, prévu ${planEnd})`
-            }
-          });
-          console.log(`🚨 ANOMALIE CRÉÉE: Départ anticipé ${ecartMinutes} min pour employé ${userId}`);
-        }
+        const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
+        // Log informatif seulement - pas de création d'anomalie
+        console.log(`🚪 DÉPART ANTICIPÉ DÉTECTÉ (info): ${ecartMinutes} min pour employé ${userId} (départ ${heureReelle}, prévu ${planEnd})`);
       }
     }
   }

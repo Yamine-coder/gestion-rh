@@ -1,0 +1,50 @@
+{
+  "conges": {
+    "enabled": true,
+    "recipients": [
+      {
+        "email": "moussaouiyamine1@gmail.com",
+        "name": "yamine",
+        "active": true
+      }
+    ],
+    "notifyOnNew": true,
+    "notifyOnStatus": true,
+    "description": "Nouvelles demandes de congés et rappels"
+  },
+  "avisGoogle": {
+    "enabled": true,
+    "recipients": [],
+    "alertThreshold": 3,
+    "sendDailyReport": false,
+    "description": "Alertes avis négatifs Google"
+  },
+  "anomalies": {
+    "enabled": true,
+    "recipients": [
+      {
+        "email": "moussaouiyamine1@gmail.com",
+        "name": "Yamine",
+        "active": true
+      }
+    ],
+    "graviteMin": "basse",
+    "sendDailyRecap": false,
+    "alertUrgent": false,
+    "description": "Anomalies de pointage détectées"
+  },
+  "remplacements": {
+    "enabled": true,
+    "recipients": [
+      {
+        "email": "moussaouiyamine1@gmail.com",
+        "name": "Yamine",
+        "active": true
+      }
+    ],
+    "notifyOnDemande": false,
+    "notifyOnCandidature": false,
+    "notifyOnValidation": false,
+    "description": "Demandes de remplacement"
+  }
+}

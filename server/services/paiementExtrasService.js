@@ -307,10 +307,11 @@ async function synchroniserTousLesPaiements(adminId) {
     shifts: { traites: 0, crees: 0, erreurs: 0 }
   };
   
-  // 1. Traiter les anomalies d'heures supplémentaires validées
+  // 1. Traiter les anomalies d'extras potentiels validées
   const anomaliesHS = await prisma.anomalie.findMany({
     where: {
       OR: [
+        { type: 'extra_potentiel' },
         { type: 'heures_supplementaires' },
         { type: 'heures_sup_a_valider' },
         { type: { contains: 'heures_sup' } }
@@ -319,7 +320,7 @@ async function synchroniserTousLesPaiements(adminId) {
     }
   });
   
-  console.log(`📋 ${anomaliesHS.length} anomalies d'heures sup à traiter`);
+  console.log(`📋 ${anomaliesHS.length} anomalies d'extras à traiter`);
   
   for (const anomalie of anomaliesHS) {
     resultats.anomalies.traites++;

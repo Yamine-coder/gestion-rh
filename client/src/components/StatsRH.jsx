@@ -19,7 +19,9 @@ import {
 import { 
   Wallet, Calculator, TrendingUp as TrendUp, Clock, Calendar, 
   Euro, Users as UsersIcon, FileText, BarChart3, PieChart as PieChartIcon,
-  Sparkles, Rocket, Construction, Banknote, Receipt, CreditCard
+  Sparkles, Rocket, Construction, Banknote, Receipt, CreditCard,
+  Trophy, Medal, Award, Crown, Star, AlertTriangle, AlertCircle, CheckCircle2,
+  TrendingUp, TrendingDown, Eye, ArrowUpRight, ArrowDownRight, Zap, Target, Users2, Activity
 } from 'lucide-react';
 import { 
   HiUsers, 
@@ -52,66 +54,50 @@ import { saveNavigation, restoreNavigation, getSessionDuration } from "../utils/
 // URL de l'API (utilise la variable d'environnement en production)
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Composant pour les cartes statistiques avec badge d'alerte
+// Composant pour les cartes statistiques - Style Dashboard
 const StatCard = ({ icon, label, value, color = "text-[#cf292c]", bgColor = "bg-gray-50", alert, trend }) => (
-  <div className="group relative bg-white rounded-lg border border-gray-200 p-5 hover:border-gray-300 transition-all duration-200">
-    {/* Barre indicatrice de statut */}
-    <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-lg ${
-      alert === 'critical' ? 'bg-red-500' :
-      alert === 'warning' ? 'bg-amber-500' :
-      alert === 'ok' ? 'bg-green-500' :
-      'bg-gray-300'
-    }`}></div>
-    
-    <div className="flex items-start justify-between">
-      <div className="flex-1">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">{label}</p>
-        <div className="flex items-baseline gap-2">
-          <p className="text-2xl font-semibold text-gray-900">{value}</p>
-          {trend !== undefined && trend !== 0 && (
-            <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${
-              trend > 0 ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {trend > 0 ? <HiTrendingUp size={12} /> : <HiTrendingDown size={12} />}
-              {Math.abs(trend)}%
-            </span>
-          )}
-        </div>
-        {alert && (
-          <div className="mt-2">
-            <span className={`text-xs font-medium ${
-              alert === 'critical' ? 'text-red-600' :
-              alert === 'warning' ? 'text-amber-600' :
-              'text-green-600'
-            }`}>
-              {alert === 'critical' ? '● Critique' : 
-               alert === 'warning' ? '● Attention' : 
-               '● Normal'}
-            </span>
-          </div>
-        )}
+  <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-sm transition-all">
+    <div className="flex items-center justify-between mb-3">
+      <div className={`w-9 h-9 rounded-lg ${bgColor} flex items-center justify-center`}>
+        <span className={`${color} text-lg`}>{icon}</span>
       </div>
-      <div className={`${bgColor} ${color} p-3 rounded-lg text-xl`}>
-        {icon}
+      {alert && (
+        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+          alert === 'critical' ? 'bg-red-100 text-red-600' :
+          alert === 'warning' ? 'bg-amber-100 text-amber-600' :
+          'bg-emerald-100 text-emerald-600'
+        }`}>
+          {alert === 'critical' ? 'Critique' : alert === 'warning' ? 'Attention' : 'OK'}
+        </span>
+      )}
+    </div>
+    <div>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <div className="flex items-baseline gap-2">
+        <p className="text-xl font-semibold text-gray-900">{value}</p>
+        {trend !== undefined && trend !== 0 && (
+          <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+            trend > 0 ? 'text-emerald-600' : 'text-red-600'
+          }`}>
+            {trend > 0 ? <HiTrendingUp size={12} /> : <HiTrendingDown size={12} />}
+            {Math.abs(trend)}%
+          </span>
+        )}
       </div>
     </div>
   </div>
 );
 
-// Composant pour les sections de graphiques
+// Composant pour les sections de graphiques - Style Dashboard
 const ChartSection = ({ title, icon, children, badge }) => (
-  <div className="bg-white rounded-lg border border-gray-200 p-5">
-    <div className="flex items-center justify-between mb-5">
-      <div className="flex items-center gap-2.5">
-        <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg text-gray-700">
-          {icon}
-        </div>
-        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+  <div className="bg-white rounded-xl border border-slate-200 p-4">
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2">
+        <span className="text-slate-400">{icon}</span>
+        <span className="text-sm font-medium text-gray-700">{title}</span>
       </div>
       {badge && (
-        <span className="text-xs text-gray-500">
-          {badge}
-        </span>
+        <span className="text-xs text-gray-400">{badge}</span>
       )}
     </div>
     {children}
@@ -556,791 +542,574 @@ const StatsRH = ({ embedded = false }) => {
 
       {/* ONGLET SYNTHÈSE */}
       {activeTab === 'synthese' && (
-        <div className="space-y-6">
-          {/* 📊 KPIs Critiques - Vue Globale */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* KPI 1: Santé RH Globale */}
-            <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="space-y-4">
+          {/* 📊 KPIs Critiques - Style Dashboard */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* Card Santé RH */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-blue-50 rounded-lg">
-                    <HiCheckCircle className="text-blue-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 font-medium">Santé RH</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {(100 - parseFloat(tauxAbsenteisme.valeur)).toFixed(0)}%
-                    </p>
-                  </div>
+                  <Activity className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-gray-700">Santé RH</span>
                 </div>
-                <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                  parseFloat(tauxAbsenteisme.valeur) < 5 
-                    ? 'bg-green-100 text-green-700' 
-                    : parseFloat(tauxAbsenteisme.valeur) < 10 
-                    ? 'bg-amber-100 text-amber-700' 
-                    : 'bg-red-100 text-red-700'
+                <span className={`text-lg font-semibold ${
+                  parseFloat(tauxAbsenteisme.valeur) < 5 ? 'text-emerald-600' : 
+                  parseFloat(tauxAbsenteisme.valeur) < 10 ? 'text-amber-600' : 'text-red-600'
                 }`}>
-                  {parseFloat(tauxAbsenteisme.valeur) < 5 ? 'Excellent' : 
-                   parseFloat(tauxAbsenteisme.valeur) < 10 ? 'Correct' : 'Critique'}
-                </div>
+                  {(100 - parseFloat(tauxAbsenteisme.valeur)).toFixed(0)}%
+                </span>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Absentéisme</span>
-                  <span className="font-semibold text-gray-900">{tauxAbsenteisme.valeur}%</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Absentéisme</span>
+                  <span className="text-gray-900 font-medium">{tauxAbsenteisme.valeur}%</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Retards</span>
-                  <span className="font-semibold text-gray-900">{tauxRetards.valeur}%</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Retards</span>
+                  <span className="text-gray-900 font-medium">{tauxRetards.valeur}%</span>
                 </div>
               </div>
             </div>
 
-            {/* KPI 2: Effectif & Présence */}
-            <div className="bg-white rounded-lg border border-gray-200 p-5">
+            {/* Card Effectif */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-green-50 rounded-lg">
-                    <HiUsers className="text-green-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 font-medium">Effectif</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.employes || 0}</p>
-                  </div>
+                  <UsersIcon className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-gray-700">Effectif</span>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500">Pointés aujourd'hui</p>
-                  <p className="text-lg font-semibold text-green-600">
-                    {stats.pointes || 0}
-                  </p>
-                </div>
+                <span className="text-lg font-semibold text-gray-800">{stats.employes || 0}</span>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Taux d'utilisation</span>
-                  <span className={`font-semibold ${parseFloat(tauxUtilisation.valeur) >= 90 ? 'text-green-600' : parseFloat(tauxUtilisation.valeur) >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
-                    {tauxUtilisation.valeur}%
-                  </span>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Pointés aujourd'hui</span>
+                  <span className="text-emerald-600 font-medium">{stats.pointes || 0}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Ancienneté moy.</span>
-                  <span className="font-semibold text-gray-900">{ancienneteMoyenne.valeur}</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Taux présence</span>
+                  <span className="text-gray-900 font-medium">{tauxUtilisation.valeur}%</span>
                 </div>
               </div>
             </div>
 
-            {/* KPI 3: Stabilité & Rotation */}
-            <div className="bg-white rounded-lg border border-gray-200 p-5">
+            {/* Card Turn-over */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-purple-50 rounded-lg">
-                    <HiRefresh className="text-purple-600" size={20} />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 font-medium">Turn-over</p>
-                    <p className="text-2xl font-bold text-gray-900">{tauxRotation.valeur}%</p>
-                  </div>
+                  <TrendUp className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-gray-700">Turn-over</span>
                 </div>
-                <div className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                  parseFloat(tauxRotation.valeur) < 10 
-                    ? 'bg-green-100 text-green-700' 
-                    : parseFloat(tauxRotation.valeur) < 20 
-                    ? 'bg-amber-100 text-amber-700' 
-                    : 'bg-red-100 text-red-700'
+                <span className={`text-lg font-semibold ${
+                  parseFloat(tauxRotation.valeur) < 10 ? 'text-emerald-600' : 
+                  parseFloat(tauxRotation.valeur) < 20 ? 'text-amber-600' : 'text-red-600'
                 }`}>
-                  {parseFloat(tauxRotation.valeur) < 10 ? 'Stable' : 
-                   parseFloat(tauxRotation.valeur) < 20 ? 'Modéré' : 'Élevé'}
-                </div>
+                  {tauxRotation.valeur}%
+                </span>
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Entrées</span>
-                  <span className="font-semibold text-green-600">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                    <span className="text-gray-500">Entrées</span>
+                  </div>
+                  <span className="text-emerald-600 font-medium">
                     {evolutionEffectif.reduce((acc, curr) => acc + curr.entrees, 0)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Sorties</span>
-                  <span className="font-semibold text-red-600">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                    <span className="text-gray-500">Sorties</span>
+                  </div>
+                  <span className="text-red-600 font-medium">
                     {evolutionEffectif.reduce((acc, curr) => acc + curr.sorties, 0)}
                   </span>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* 📊 Répartition par Catégorie (données réelles) */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-900">Répartition par Catégorie</h3>
-              <span className="text-xs text-gray-500">{stats.employes || 0} employés actifs</span>
-            </div>
-            
-            {repartitionParService.length > 0 ? (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {repartitionParService.slice(0, 8).map((item, index) => {
-                  const colors = categorieColors[item.categorie] || categorieColors['default'];
-                  const displayName = item.categorie
-                    .replace(/_/g, ' ')
-                    .replace(/\b\w/g, c => c.toUpperCase());
-                  
-                  return (
-                    <div key={index} className={`relative p-4 bg-gradient-to-br ${colors.bg} rounded-lg border ${colors.border}`}>
-                      <div className={`text-3xl font-bold ${colors.text} mb-1`}>
-                        {item.count}
-                      </div>
-                      <div className="text-xs text-gray-700 font-medium mb-2 truncate" title={displayName}>
-                        {displayName}
-                      </div>
-                      <div className={`w-full ${colors.barBg} rounded-full h-1.5`}>
-                        <div className={`${colors.bar} h-1.5 rounded-full`} style={{ width: `${item.pourcentage}%` }}></div>
-                      </div>
-                      <div className={`text-xs ${colors.text} font-medium mt-1`}>{item.pourcentage}%</div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500 text-sm">
-                Aucune donnée de répartition disponible
-              </div>
-            )}
-          </div>
-
-          {/* 📊 Indicateurs de Performance */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-50 rounded-lg mb-2">
-                <HiClock className="text-blue-600" size={20} />
-              </div>
-              <div className="text-2xl font-bold text-gray-900">{dureeMoyenneTravail.valeur}</div>
-              <div className="text-xs text-gray-500 mt-1">Temps moyen / jour</div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-green-50 rounded-lg mb-2">
-                <HiCheckCircle className="text-green-600" size={20} />
-              </div>
-              <div className="text-2xl font-bold text-gray-900">
-                {(100 - parseFloat(tauxRetards.valeur)).toFixed(1)}%
-              </div>
-              <div className="text-xs text-gray-500 mt-1">Ponctualité</div>
-              <div className="text-[10px] text-gray-400">Respect horaires arrivée</div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-teal-50 rounded-lg mb-2">
-                <HiTrendingUp className="text-teal-600" size={20} />
-              </div>
-              <div className={`text-2xl font-bold ${
-                tauxAssiduite.type === 'excellent' ? 'text-green-600' : 
-                tauxAssiduite.type === 'bon' ? 'text-teal-600' : 'text-orange-600'
-              }`}>
-                {tauxAssiduite.valeur}%
-              </div>
-              <div className="text-xs text-gray-500 mt-1">Assiduité</div>
-              <div className="text-[10px] text-gray-400">Heures faites / planifiées</div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-purple-50 rounded-lg mb-2">
-                <HiChartBar className="text-purple-600" size={20} />
-              </div>
-              <div className="text-2xl font-bold text-gray-900">{tauxUtilisation.valeur}%</div>
-              <div className="text-xs text-gray-500 mt-1">Taux d'utilisation</div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-amber-50 rounded-lg mb-2">
-                <HiStar className="text-amber-600" size={20} />
-              </div>
-              <div className="text-2xl font-bold text-gray-900">{topEmployes.length}</div>
-              <div className="text-xs text-gray-500 mt-1">Top Performers</div>
-            </div>
-          </div>
-
-          {/* 🎯 Performance Employés */}
-          <div>
-        {/* Titre de section sobre */}
-        <div className="mb-4 flex items-center gap-2">
-          <div className="w-1 h-5 bg-[#cf292c] rounded"></div>
-          <h2 className="text-base font-semibold text-gray-900">Performance Équipe</h2>
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Top 3 Performers */}
-          <ChartSection 
-            title="Top Performers" 
-            icon={<HiStar size={14} />}
-            badge={`${topEmployes.length} employés`}
-          >
-            <div className="space-y-2">
-              {topEmployes.map((emp, index) => (
-                <div 
-                  key={index}
-                  className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-all"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-white border-2 border-gray-300 text-gray-700 font-semibold text-xs">
-                      {index + 1}
-                      {index === 0 && <span className="ml-0.5 text-xs">🏆</span>}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 text-sm">{emp.nom}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-xs text-green-600">
-                          {emp.presence}%
-                        </span>
-                        <span className="text-gray-300">•</span>
-                        <span className="text-xs text-blue-600">
-                          {emp.ponctualite}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-lg font-semibold text-gray-900">
-                      {emp.score}
-                    </p>
-                    <p className="text-xs text-gray-500">score</p>
-                  </div>
+            {/* Card Assiduité */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-gray-700">Assiduité</span>
                 </div>
-              ))}
+                <span className={`text-lg font-semibold ${
+                  tauxAssiduite.type === 'excellent' ? 'text-emerald-600' : 
+                  tauxAssiduite.type === 'bon' ? 'text-gray-800' : 'text-amber-600'
+                }`}>
+                  {tauxAssiduite.valeur}%
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Temps moy./jour</span>
+                  <span className="text-gray-900 font-medium">{dureeMoyenneTravail.valeur}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Ancienneté moy.</span>
+                  <span className="text-gray-900 font-medium">{ancienneteMoyenne.valeur}</span>
+                </div>
+              </div>
             </div>
-          </ChartSection>
+          </div>
 
-          {/* Alertes Performance */}
-          <ChartSection 
-            title="Alertes Performance" 
-            icon={<HiExclamationCircle size={14} />}
-            badge={employesProblematiques.length > 0 ? `${employesProblematiques.length} signalements` : "Aucune alerte"}
-          >
-            <div className="space-y-2">
-              {employesProblematiques.length > 0 ? (
-                employesProblematiques.map((emp, index) => (
-                  <div 
-                    key={index}
-                    className={`relative flex items-center justify-between p-3 rounded-lg border hover:border-gray-300 transition-all ${
-                      emp.type === 'critical' 
-                        ? 'bg-red-50 border-red-200' 
-                        : 'bg-amber-50 border-amber-200'
-                    }`}
-                  >
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${
-                      emp.type === 'critical' ? 'bg-red-500' : 'bg-amber-500'
-                    }`}></div>
-                    
-                    <div className="flex items-center gap-2.5 ml-2">
-                      <div className={`flex items-center justify-center w-7 h-7 rounded-lg ${
-                        emp.type === 'critical' 
-                          ? 'bg-white text-red-600' 
-                          : 'bg-white text-amber-600'
-                      }`}>
-                        <span className="text-sm font-bold">{emp.type === 'critical' ? '!' : '⚠'}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">{emp.nom}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-xs text-gray-600">
-                            {emp.absences} abs.
-                          </span>
-                          <span className="text-gray-300">•</span>
-                          <span className="text-xs text-gray-600">
-                            {emp.retards} ret.
-                          </span>
+          {/* 🎯 Performance Employés - Style Dashboard */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            
+            {/* Top Performers */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-slate-400" />
+                  <span className="text-sm font-medium text-gray-700">Top Performers</span>
+                </div>
+                <span className="text-xs text-gray-400">{topEmployes.length} employés</span>
+              </div>
+              
+              {topEmployes.length > 0 ? (
+                <div className="space-y-2">
+                  {topEmployes.map((emp, index) => (
+                    <div key={index} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold ${
+                          index === 0 ? 'bg-[#cf292c] text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {index + 1}
                         </div>
+                        <span className="text-gray-700">{emp.nom}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-400">{emp.presence}%</span>
+                        <span className="font-semibold text-gray-900">{emp.score} pts</span>
                       </div>
                     </div>
-                    
-                    <button 
-                      onClick={() => setSelectedEmployee(emp)}
-                      className="px-2.5 py-1 text-xs font-medium bg-white text-gray-700 border border-gray-200 rounded hover:bg-gray-50 transition-all"
-                    >
-                      Voir
-                    </button>
-                  </div>
-                ))
+                  ))}
+                </div>
               ) : (
-                <div className="text-center py-8">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-green-50 mb-2">
-                    <HiCheckCircle className="text-green-500" size={24} />
-                  </div>
-                  <p className="font-medium text-gray-900 text-sm mb-0.5">Tout va bien</p>
-                  <p className="text-xs text-gray-500">Aucun problème détecté</p>
+                <div className="text-center py-4 text-xs text-gray-400">
+                  Pas assez de données
                 </div>
               )}
             </div>
-          </ChartSection>
-        </div>
-      </div>
 
-      {/* 📈 Tendances - Version compacte */}
-      <div>
-        {/* Titre de section sobre */}
-        <div className="mb-4 flex items-center gap-2">
-          <div className="w-1 h-5 bg-[#cf292c] rounded"></div>
-          <h2 className="text-base font-semibold text-gray-900">Tendances</h2>
-          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">Vue rapide</span>
-        </div>
-        
-        {/* Graphiques côte à côte - Version compacte */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Graphique Évolution effectif - Compact */}
-          <ChartSection 
-            title="Évolution de l'effectif" 
-            icon={<HiUsers size={14} />} 
-            badge={`${evolutionEffectif.reduce((acc, curr) => acc + curr.entrees, 0)} entrées · ${evolutionEffectif.reduce((acc, curr) => acc + curr.sorties, 0)} sorties`}
-          >
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={evolutionEffectif} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="mois" 
-                  axisLine={false} 
-                  tickLine={false}
-                  style={{ fontSize: '11px', fill: '#6B7280' }}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false}
-                  style={{ fontSize: '11px', fill: '#6B7280' }}
-                  width={30}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '8px', 
-                    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
-                    border: 'none',
-                    padding: '8px',
-                    fontSize: '12px'
-                  }} 
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="entrees" 
-                  stroke="#10B981" 
-                  strokeWidth={2} 
-                  name="Entrées"
-                  dot={{ stroke: '#10B981', strokeWidth: 1.5, r: 3, fill: 'white' }}
-                  activeDot={{ r: 5, fill: '#10B981' }}
-                  animationDuration={1200}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="sorties" 
-                  stroke="#EF4444" 
-                  strokeWidth={2} 
-                  name="Sorties"
-                  dot={{ stroke: '#EF4444', strokeWidth: 1.5, r: 3, fill: 'white' }}
-                  activeDot={{ r: 5, fill: '#EF4444' }}
-                  animationDuration={1200}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="effectif" 
-                  stroke="#cf292c" 
-                  strokeWidth={2.5} 
-                  name="Effectif"
-                  dot={{ stroke: '#cf292c', strokeWidth: 1.5, r: 4, fill: 'white' }}
-                  activeDot={{ r: 6, fill: '#cf292c' }}
-                  animationDuration={1200}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-gray-200 pt-3">
-              <div className="text-center">
-                <p className="text-xs text-gray-500">Turnover</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {(() => {
-                    const effectifDebut = evolutionEffectif.length > 0 ? evolutionEffectif[0].effectif : stats.employes;
-                    const effectifFin = evolutionEffectif.length > 0 ? evolutionEffectif[evolutionEffectif.length - 1].effectif : stats.employes;
-                    const effectifMoyen = (effectifDebut + effectifFin) / 2;
-                    const sorties = evolutionEffectif.reduce((acc, curr) => acc + curr.sorties, 0);
-                    return effectifMoyen > 0 ? ((sorties / effectifMoyen) * 100).toFixed(1) : 0;
-                  })()}%
-                </p>
-              </div>
-              <div className="text-center border-l border-gray-200">
-                <p className="text-xs text-gray-500">Variation</p>
-                <p className={`text-lg font-semibold ${
-                  evolutionEffectif.length > 0 && 
-                  evolutionEffectif[evolutionEffectif.length - 1].effectif > evolutionEffectif[0].effectif
-                    ? 'text-green-600' 
-                    : 'text-red-600'
+            {/* Alertes Performance */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {employesProblematiques.length > 0 ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  )}
+                  <span className="text-sm font-medium text-gray-700">Alertes</span>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded ${
+                  employesProblematiques.length > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
                 }`}>
-                  {evolutionEffectif.length > 0 
-                    ? (evolutionEffectif[evolutionEffectif.length - 1].effectif > evolutionEffectif[0].effectif ? '+' : '')
-                    : ''}
-                  {evolutionEffectif.length > 0 
-                    ? evolutionEffectif[evolutionEffectif.length - 1].effectif - evolutionEffectif[0].effectif
-                    : 0}
-                </p>
+                  {employesProblematiques.length > 0 ? `${employesProblematiques.length} signalements` : 'RAS'}
+                </span>
               </div>
+              
+              {employesProblematiques.length > 0 ? (
+                <div className="space-y-2">
+                  {employesProblematiques.slice(0, 4).map((emp, index) => (
+                    <div key={index} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${emp.type === 'critical' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
+                        <span className="text-gray-700">{emp.nom}</span>
+                      </div>
+                      <span className="text-gray-400">{emp.absences} abs. • {emp.retards} ret.</span>
+                    </div>
+                  ))}
+                  {employesProblematiques.length > 4 && (
+                    <button className="text-xs text-gray-400 hover:text-gray-600">
+                      +{employesProblematiques.length - 4} autres →
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-emerald-600">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Aucun problème détecté</span>
+                </div>
+              )}
             </div>
-          </ChartSection>
+          </div>
 
-          {/* Graphique Assiduité - Compact */}
-          <ChartSection 
-            title="Assiduité hebdomadaire" 
-            icon={<HiCheckCircle size={14} />}
-            badge={`Moy. ${evolutionPresenceHebdo.length > 0 ? (evolutionPresenceHebdo.reduce((acc, curr) => acc + curr.taux, 0) / evolutionPresenceHebdo.length).toFixed(1) : 0}%`}
-          >
-            <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={evolutionPresenceHebdo} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
-                <defs>
-                  <linearGradient id="colorPresence" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10B981" stopOpacity={0.05}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="semaine" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  style={{ fontSize: '11px', fill: '#6B7280' }} 
-                />
-                <YAxis 
-                  domain={[0, 100]} 
-                  axisLine={false} 
-                  tickLine={false} 
-                  style={{ fontSize: '11px', fill: '#6B7280' }}
-                  width={30}
-                />
-                <Tooltip 
-                  formatter={(value) => [`${value}%`, 'Présence']}
-                  contentStyle={{ 
-                    borderRadius: '8px', 
-                    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.1)',
-                    border: 'none',
-                    padding: '8px',
-                    fontSize: '12px'
-                  }} 
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="taux" 
-                  stroke="#10B981" 
-                  strokeWidth={2}
-                  fillOpacity={1} 
-                  fill="url(#colorPresence)"
-                  animationDuration={1200}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-gray-200 pt-3">
-              <div className="text-center">
-                <p className="text-xs text-gray-500">Meilleur</p>
-                <p className="text-lg font-semibold text-green-600">
-                  {evolutionPresenceHebdo.length > 0 
-                    ? Math.max(...evolutionPresenceHebdo.map(s => s.taux))
-                    : 0}%
-                </p>
-              </div>
-              <div className="text-center border-l border-gray-200">
-                <p className="text-xs text-gray-500">Plus faible</p>
-                <p className="text-lg font-semibold text-amber-600">
-                  {evolutionPresenceHebdo.length > 0 
-                    ? Math.min(...evolutionPresenceHebdo.map(s => s.taux))
-                    : 0}%
-                </p>
+      {/* 📈 Tendances - Style Dashboard */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Graphique Évolution effectif */}
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <UsersIcon className="w-4 h-4 text-slate-400" />
+              <span className="text-sm font-medium text-gray-700">Évolution effectif</span>
+            </div>
+            <span className="text-xs text-gray-400">6 derniers mois</span>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={evolutionEffectif} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis 
+                dataKey="mois" 
+                axisLine={false} 
+                tickLine={false}
+                style={{ fontSize: '10px', fill: '#94a3b8' }}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false}
+                style={{ fontSize: '10px', fill: '#94a3b8' }}
+                width={25}
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  borderRadius: '8px', 
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                  border: '1px solid #e2e8f0',
+                  padding: '8px',
+                  fontSize: '11px'
+                }} 
+              />
+              <Line 
+                type="monotone" 
+                dataKey="effectif" 
+                stroke="#cf292c" 
+                strokeWidth={2} 
+                name="Effectif"
+                dot={{ stroke: '#cf292c', strokeWidth: 1.5, r: 3, fill: 'white' }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="entrees" 
+                stroke="#10b981" 
+                strokeWidth={1.5} 
+                name="Entrées"
+                dot={false}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="sorties" 
+                stroke="#ef4444" 
+                strokeWidth={1.5} 
+                name="Sorties"
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Graphique Répartition congés */}
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-slate-400" />
+              <span className="text-sm font-medium text-gray-700">Répartition congés</span>
+            </div>
+            <span className="text-xs text-gray-400">
+              {repartitionConges.length > 0 
+                ? `${repartitionConges.reduce((a, c) => a + (Number(c.value) || 0), 0)} total`
+                : ''}
+            </span>
+          </div>
+          {repartitionConges.length > 0 && repartitionConges.some(c => Number(c.value) > 0) ? (
+            <div className="flex items-center gap-4">
+              <ResponsiveContainer width="50%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={repartitionConges}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={35}
+                    outerRadius={60}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {repartitionConges.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={['#cf292c', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'][index % 9]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value, name) => [`${value} jours`, name]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex-1 space-y-1.5 max-h-[180px] overflow-y-auto">
+                {repartitionConges.filter(c => Number(c.value) > 0).map((item, index) => (
+                  <div key={index} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ['#cf292c', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'][index % 9] }}></div>
+                      <span className="text-gray-600 truncate">{item.name || 'N/A'}</span>
+                    </div>
+                    <span className="font-medium text-gray-900 ml-2">{Number(item.value) || 0}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </ChartSection>
+          ) : (
+            <div className="flex items-center justify-center h-40 text-xs text-gray-400">
+              Aucune donnée disponible
+            </div>
+          )}
         </div>
       </div>
-    </div>
+        </div>
       )}
 
       {/* ONGLET ABSENTÉISME */}
       {activeTab === 'absenteisme' && (
-        <div className="space-y-6">
-          {/* KPIs Absentéisme */}
-          <div>
-            <div className="mb-4 flex items-center gap-2">
-              <div className="w-1 h-5 bg-[#cf292c] rounded"></div>
-              <h2 className="text-base font-semibold text-gray-900">Indicateurs d'Absentéisme</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard 
-                icon={<HiShieldExclamation />} 
-                label="Taux d'absentéisme" 
-                value={`${tauxAbsenteisme.valeur}%`}
-                color={tauxAbsenteisme.estCritique ? "text-red-600" : "text-green-600"}
-                bgColor={tauxAbsenteisme.estCritique ? "bg-red-50" : "bg-green-50"}
-                alert={tauxAbsenteisme.estCritique ? "critical" : "ok"}
-              />
-              <StatCard 
-                icon={<HiUsers />} 
-                label="Effectif moyen" 
-                value={(stats.employes || 0).toFixed(1)}
-                color="text-blue-600"
-                bgColor="bg-blue-50"
-              />
-              <StatCard 
-                icon={<HiCalendar />} 
-                label="Durée moyenne abs." 
-                value="2.3j"
-                color="text-gray-700"
-                bgColor="bg-gray-50"
-              />
-              <StatCard 
-                icon={<HiChartBar />} 
-                label="Nombre total abs." 
-                value={stats.absences || 0}
-                color="text-purple-600"
-                bgColor="bg-purple-50"
-              />
-            </div>
+        <div className="space-y-5">
+          {/* KPIs Absentéisme - Style Dashboard */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard 
+              icon={<HiShieldExclamation />} 
+              label="Taux d'absentéisme" 
+              value={`${tauxAbsenteisme.valeur}%`}
+              color={tauxAbsenteisme.estCritique ? "text-red-600" : "text-green-600"}
+              bgColor={tauxAbsenteisme.estCritique ? "bg-red-50" : "bg-green-50"}
+              alert={tauxAbsenteisme.estCritique ? "critical" : "ok"}
+            />
+            <StatCard 
+              icon={<HiUsers />} 
+              label="Effectif moyen" 
+              value={(stats.employes || 0).toFixed(1)}
+              color="text-blue-600"
+              bgColor="bg-blue-50"
+            />
+            <StatCard 
+              icon={<HiCalendar />} 
+              label="Durée moyenne abs." 
+              value={stats.kpis?.totalAbsences > 0 
+                ? `${(stats.kpis?.totalJoursAbsence / stats.kpis?.totalAbsences).toFixed(1)}j`
+                : '-'}
+              color="text-gray-700"
+              bgColor="bg-gray-50"
+            />
+            <StatCard 
+              icon={<HiChartBar />} 
+              label="Nombre total abs." 
+              value={stats.kpis?.totalAbsences || 0}
+              color="text-purple-600"
+              bgColor="bg-purple-50"
+            />
           </div>
 
-          {/* Graphiques Absentéisme - Données réelles */}
-          <div>
-            <div className="mb-4 flex items-center gap-2">
-              <div className="w-1 h-5 bg-[#cf292c] rounded"></div>
-              <h2 className="text-base font-semibold text-gray-900">Analyses Détaillées</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <ChartSection 
-                title="Absences par motif" 
-                icon={<HiChartBar size={14} />}
-              >
-                {absencesParMotif.length > 0 ? (
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={absencesParMotif} layout="vertical" margin={{ left: 20, right: 20 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis type="number" tick={{ fontSize: 11 }} />
-                        <YAxis dataKey="motif" type="category" width={100} tick={{ fontSize: 11 }} />
-                        <Tooltip 
-                          formatter={(value) => [`${value} jour(s)`, 'Durée']}
-                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                        />
-                        <Bar dataKey="jours" fill="#cf292c" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                    <div className="text-center">
-                      <HiCheckCircle className="mx-auto mb-3 text-green-400" size={48} />
-                      <p className="text-sm text-gray-500">Aucune absence sur la période</p>
-                    </div>
-                  </div>
-                )}
-              </ChartSection>
-
-              <ChartSection 
-                title="Absences par durée" 
-                icon={<HiCalendar size={14} />}
-              >
-                {absencesParDuree.some(d => d.count > 0) ? (
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={absencesParDuree} margin={{ top: 10, bottom: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis dataKey="duree" tick={{ fontSize: 10 }} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip 
-                          formatter={(value) => [`${value} absence(s)`, 'Nombre']}
-                          contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-                        />
-                        <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                    <div className="text-center">
-                      <HiCheckCircle className="mx-auto mb-3 text-green-400" size={48} />
-                      <p className="text-sm text-gray-500">Aucune absence sur la période</p>
-                    </div>
-                  </div>
-                )}
-              </ChartSection>
-            </div>
-
+          {/* Graphiques Absentéisme */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <ChartSection 
-              title="Taux de présence par équipe" 
-              icon={<HiUsers size={14} />}
+              title="Absences par motif" 
+              icon={<HiChartBar size={14} />}
             >
-              {absenteismeParEquipe.length > 0 ? (
-                <div className="h-64">
+              {absencesParMotif.length > 0 ? (
+                <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={absenteismeParEquipe} layout="vertical" margin={{ left: 30, right: 30 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-                      <YAxis dataKey="equipe" type="category" width={100} tick={{ fontSize: 11 }} />
+                    <BarChart data={absencesParMotif} layout="vertical" margin={{ left: 10, right: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis type="number" tick={{ fontSize: 10 }} />
+                      <YAxis dataKey="motif" type="category" width={90} tick={{ fontSize: 10 }} />
                       <Tooltip 
-                        formatter={(value, name) => [
-                          `${value}%`, 
-                          name === 'tauxPresence' ? 'Présence' : 'Absence'
-                        ]}
-                        contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                        formatter={(value) => [`${value} jour(s)`, 'Durée']}
+                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '11px' }}
                       />
-                      <Legend />
-                      <Bar dataKey="tauxPresence" name="Présence" fill="#22c55e" radius={[0, 4, 4, 0]} />
-                      <Bar dataKey="tauxAbsence" name="Absence" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="jours" fill="#cf292c" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
+                <div className="h-56 flex items-center justify-center bg-slate-50 rounded-lg">
                   <div className="text-center">
-                    <HiUsers className="mx-auto mb-3 text-gray-300" size={48} />
-                    <p className="text-sm text-gray-500">Données insuffisantes</p>
+                    <HiCheckCircle className="mx-auto mb-2 text-emerald-400" size={32} />
+                    <p className="text-xs text-gray-500">Aucune absence sur la période</p>
+                  </div>
+                </div>
+              )}
+            </ChartSection>
+
+            <ChartSection 
+              title="Absences par durée" 
+              icon={<HiCalendar size={14} />}
+            >
+              {absencesParDuree.some(d => d.count > 0) ? (
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={absencesParDuree} margin={{ top: 10, bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="duree" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip 
+                        formatter={(value) => [`${value} absence(s)`, 'Nombre']}
+                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '11px' }}
+                      />
+                      <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-56 flex items-center justify-center bg-slate-50 rounded-lg">
+                  <div className="text-center">
+                    <HiCheckCircle className="mx-auto mb-2 text-emerald-400" size={32} />
+                    <p className="text-xs text-gray-500">Aucune absence sur la période</p>
                   </div>
                 </div>
               )}
             </ChartSection>
           </div>
+
+          {/* Taux de présence par équipe */}
+          <ChartSection 
+            title="Taux de présence par équipe" 
+            icon={<HiUsers size={14} />}
+          >
+            {absenteismeParEquipe.length > 0 ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={absenteismeParEquipe} layout="vertical" margin={{ left: 20, right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}%`} />
+                    <YAxis dataKey="equipe" type="category" width={90} tick={{ fontSize: 10 }} />
+                    <Tooltip 
+                      formatter={(value, name) => [
+                        `${value}%`, 
+                        name === 'tauxPresence' ? 'Présence' : 'Absence'
+                      ]}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '11px' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '10px' }} />
+                    <Bar dataKey="tauxPresence" name="Présence" fill="#22c55e" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="tauxAbsence" name="Absence" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-56 flex items-center justify-center bg-slate-50 rounded-lg">
+                <div className="text-center">
+                  <HiUsers className="mx-auto mb-2 text-slate-300" size={32} />
+                  <p className="text-xs text-gray-500">Données insuffisantes</p>
+                </div>
+              </div>
+            )}
+          </ChartSection>
         </div>
       )}
 
       {/* ONGLET TURN-OVER */}
       {activeTab === 'turnover' && (
-        <div className="space-y-6">
-          {/* KPIs Turn-over */}
-          <div>
-            <div className="mb-4 flex items-center gap-2">
-              <div className="w-1 h-5 bg-[#cf292c] rounded"></div>
-              <h2 className="text-base font-semibold text-gray-900">Indicateurs de Rotation</h2>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard 
-                icon={<HiRefresh />} 
-                label="Taux de rotation" 
-                value={`${tauxRotation.valeur}%`}
-                color={tauxRotation.alerte ? "text-orange-600" : "text-green-600"}
-                bgColor={tauxRotation.alerte ? "bg-orange-50" : "bg-green-50"}
-                alert={tauxRotation.alerte ? "warning" : "ok"}
-              />
-              <StatCard 
-                icon={<HiUserAdd />} 
-                label="Entrées (période)" 
-                value={evolutionEffectif.reduce((acc, curr) => acc + curr.entrees, 0)}
-                color="text-green-600"
-                bgColor="bg-green-50"
-              />
-              <StatCard 
-                icon={<HiUserRemove />} 
-                label="Sorties (période)" 
-                value={evolutionEffectif.reduce((acc, curr) => acc + curr.sorties, 0)}
-                color="text-red-600"
-                bgColor="bg-red-50"
-              />
-              <StatCard 
-                icon={<HiClock />} 
-                label="Ancienneté moyenne" 
-                value={ancienneteMoyenne.valeur}
-                color="text-blue-600"
-                bgColor="bg-blue-50"
-              />
-            </div>
+        <div className="space-y-5">
+          {/* KPIs Turn-over - Style Dashboard */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard 
+              icon={<HiRefresh />} 
+              label="Taux de rotation" 
+              value={`${tauxRotation.valeur}%`}
+              color={tauxRotation.alerte ? "text-orange-600" : "text-green-600"}
+              bgColor={tauxRotation.alerte ? "bg-orange-50" : "bg-green-50"}
+              alert={tauxRotation.alerte ? "warning" : "ok"}
+            />
+            <StatCard 
+              icon={<HiUserAdd />} 
+              label="Entrées (période)" 
+              value={evolutionEffectif.reduce((acc, curr) => acc + curr.entrees, 0)}
+              color="text-green-600"
+              bgColor="bg-green-50"
+            />
+            <StatCard 
+              icon={<HiUserRemove />} 
+              label="Sorties (période)" 
+              value={evolutionEffectif.reduce((acc, curr) => acc + curr.sorties, 0)}
+              color="text-red-600"
+              bgColor="bg-red-50"
+            />
+            <StatCard 
+              icon={<HiClock />} 
+              label="Ancienneté moyenne" 
+              value={ancienneteMoyenne.valeur}
+              color="text-blue-600"
+              bgColor="bg-blue-50"
+            />
           </div>
 
-          {/* Graphique Évolution Effectif */}
-          <div>
-            <div className="mb-4 flex items-center gap-2">
-              <div className="w-1 h-5 bg-[#cf292c] rounded"></div>
-              <h2 className="text-base font-semibold text-gray-900">Évolution de l'Effectif</h2>
-            </div>
-            
-            <ChartSection title="Évolution de l'effectif sur 6 mois" icon={<HiUsers size={14} />}>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={evolutionEffectif} margin={{ top: 20, right: 40, left: 10, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                  <XAxis dataKey="mois" axisLine={false} tickLine={false} style={{ fontSize: '12px' }} />
-                  <YAxis axisLine={false} tickLine={false} style={{ fontSize: '12px' }} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      borderRadius: '10px', 
-                      boxShadow: '0px 6px 16px rgba(0, 0, 0, 0.1)',
-                      border: 'none',
-                      padding: '10px'
-                    }} 
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="effectif" 
-                    stroke="#cf292c" 
-                    strokeWidth={2.5}
-                    dot={{ fill: '#cf292c', r: 4 }}
-                    animationDuration={1500}
-                    name="Effectif"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartSection>
-          </div>
+          {/* Graphique Évolution Effectif - Style Dashboard */}
+          <ChartSection title="Évolution de l'effectif sur 6 mois" icon={<HiUsers size={14} />}>
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={evolutionEffectif} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="mois" axisLine={false} tickLine={false} style={{ fontSize: '10px', fill: '#94a3b8' }} />
+                <YAxis axisLine={false} tickLine={false} style={{ fontSize: '10px', fill: '#94a3b8' }} width={25} />
+                <Tooltip 
+                  contentStyle={{ 
+                    borderRadius: '8px', 
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    border: '1px solid #e2e8f0',
+                    padding: '8px',
+                    fontSize: '11px'
+                  }} 
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="effectif" 
+                  stroke="#cf292c" 
+                  strokeWidth={2}
+                  dot={{ stroke: '#cf292c', strokeWidth: 1.5, r: 3, fill: 'white' }}
+                  name="Effectif"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartSection>
         </div>
       )}
 
       {/* ONGLET MASSE SALARIALE */}
       {activeTab === 'masse' && (
-        <div className="space-y-6">
-          {/* Card principale */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Header sobre */}
-            <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-[#cf292c]/10 flex items-center justify-center">
-                  <Wallet className="w-6 h-6 text-[#cf292c]" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Masse Salariale</h3>
-                  <p className="text-sm text-gray-500">Module financier · Version 2.0</p>
-                </div>
+        <div className="space-y-5">
+          {/* Card principale - Style Dashboard */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-lg bg-[#cf292c]/10 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-[#cf292c]" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Masse Salariale</h3>
+                <p className="text-xs text-gray-500">Module financier</p>
               </div>
             </div>
 
-            {/* Contenu */}
-            <div className="p-6">
-              <div className="flex items-start gap-4 mb-6">
-                <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                  <Clock className="w-5 h-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 leading-relaxed">
-                    Les indicateurs financiers détaillés (salaires, charges, heures supplémentaires) 
-                    seront disponibles dans une prochaine mise à jour.
-                  </p>
-                </div>
-              </div>
+            {/* Info */}
+            <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100 mb-5">
+              <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-gray-600">
+                Les indicateurs financiers détaillés seront disponibles dans une prochaine mise à jour.
+              </p>
+            </div>
 
-              {/* Fonctionnalités à venir - grille sobre */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[
-                  { icon: Euro, label: 'Salaires bruts' },
-                  { icon: Calculator, label: 'Charges sociales' },
-                  { icon: Clock, label: 'Heures sup.' },
-                  { icon: Receipt, label: 'Primes & bonus' },
-                  { icon: TrendUp, label: 'Évolution' },
-                  { icon: PieChartIcon, label: 'Répartition' },
-                  { icon: FileText, label: 'Rapports' },
-                  { icon: Banknote, label: 'Prévisionnel' },
-                ].map((item, i) => {
-                  const IconComp = item.icon;
-                  return (
-                    <div key={i} className="flex items-center gap-2.5 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                      <IconComp className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-600">{item.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Fonctionnalités à venir */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {[
+                { icon: Euro, label: 'Salaires bruts' },
+                { icon: Calculator, label: 'Charges sociales' },
+                { icon: Clock, label: 'Heures sup.' },
+                { icon: Receipt, label: 'Primes & bonus' },
+                { icon: TrendUp, label: 'Évolution' },
+                { icon: PieChartIcon, label: 'Répartition' },
+                { icon: FileText, label: 'Rapports' },
+                { icon: Banknote, label: 'Prévisionnel' },
+              ].map((item, i) => {
+                const IconComp = item.icon;
+                return (
+                  <div key={i} className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                    <IconComp className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-xs text-gray-600">{item.label}</span>
+                  </div>
+                );
+              })}
+            </div>
 
-              {/* Badge */}
-              <div className="mt-6 flex justify-center">
-                <span className="inline-flex items-center gap-2 px-4 py-2 bg-[#cf292c]/10 text-[#cf292c] rounded-lg text-sm font-medium">
-                  <Rocket className="w-4 h-4" />
-                  Prévu pour la V2
-                </span>
-              </div>
+            {/* Badge */}
+            <div className="mt-5 flex justify-center">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#cf292c]/10 text-[#cf292c] rounded-lg text-xs font-medium">
+                <Rocket className="w-3.5 h-3.5" />
+                Prévu pour la V2
+              </span>
             </div>
           </div>
         </div>

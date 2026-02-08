@@ -26,10 +26,17 @@ const remplacementRoutes = require('./routes/remplacementRoutes');
 const consignesRoutes = require('./routes/consignesRoutes');
 const fichesPosteRoutes = require('./routes/fichesPosteRoutes');
 const scoringRoutes = require('./routes/scoring');
-const externalApisRoutes = require('./routes/externalApisRoutes');
+const eventsRoutes = require('./routes/eventsRoutes');
+const avisRoutes = require('./routes/avisRoutes');
+const notificationsConfigRoutes = require('./routes/notificationsConfigRoutes');
+const memoRoutes = require('./routes/memoRoutes');
 
 // Import du scheduler d'anomalies temps réel
 const anomalyScheduler = require('./services/anomalyScheduler');
+
+// Import des crons
+const avisAlertCron = require('./cron/avisAlertCron');
+const { startAnomaliesCron } = require('./cron/anomaliesCron');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,7 +56,9 @@ const corsOptions = {
     if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
-      console.log('⚠️ CORS bloqué pour origin:', origin);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('⚠️ CORS bloqué pour origin:', origin);
+      }
       callback(null, true); // En prod, on peut être plus strict
     }
   },
@@ -90,7 +99,10 @@ app.use("/api/remplacements", remplacementRoutes); // Système de remplacement e
 app.use("/api/consignes", consignesRoutes); // Consignes du jour + stats ponctualité
 app.use("/api/fiches-poste", fichesPosteRoutes); // Fiches de poste PDF par catégorie
 app.use("/api/scoring", scoringRoutes); // Système de scoring/points employés
-app.use("/api/external", externalApisRoutes); // APIs externes (météo, matchs, fériés)
+app.use("/api/events", eventsRoutes); // Matchs de foot + événements locaux
+app.use("/api/avis", avisRoutes); // Avis Google du restaurant
+app.use("/api/notifications-config", notificationsConfigRoutes); // Config notifications email
+app.use("/api/memo", memoRoutes); // Rappels mémo par email
 
 // Global Express error handler (placed before health/debug for catching async next(err))
 app.use((err, req, res, next) => {
@@ -138,12 +150,20 @@ app.get('/debug/routes', (req, res) => {
 // Lancement du serveur
 console.log('🟡 [BOOT] Initialisation express terminée, démarrage écoute...');
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Serveur backend lancé sur http://0.0.0.0:${PORT}`);
-  console.log(`🌐 Accessible depuis le réseau sur http://192.168.1.94:${PORT}`);
+  console.log(`🚀 Serveur backend lancé sur port ${PORT}`);
+  console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
   
   // Démarrage du scheduler d'anomalies temps réel
   anomalyScheduler.start();
   console.log('⏰ [SCHEDULER] Détection automatique des anomalies activée');
+  
+  // Démarrage des alertes email pour les avis négatifs
+  avisAlertCron.startCronJobs();
+  console.log('📧 [CRON] Alertes email avis négatifs activées');
+  
+  // Démarrage du cron pour le récap anomalies
+  startAnomaliesCron();
+  console.log('📧 [CRON] Récap quotidien anomalies activé (8h00)');
 });
 
 // Process-level crash diagnostics

@@ -4,6 +4,20 @@ const bcrypt = require('bcrypt');
 const { genererMotDePasseListible } = require('../utils/passwordUtils');
 const { toLocalDateString } = require('../utils/dateUtils');
 const { stringifyCategories, parseCategories, CATEGORIES_VALIDES, enrichUserWithCategories } = require('../utils/categoriesHelper');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties } = require('../utils/pointageTypeUtils');
+
+// Fonction helper pour parser les segments JSON
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  return [];
+}
 
 const creerEmploye = async (req, res) => {
   // Support des catégories multiples : 'categories' (array) OU 'categorie' (string legacy)
@@ -585,15 +599,26 @@ const getDashboardStats = async (req, res) => {
       },
     });
 
-    // Répartition des types de congés (pour la période sélectionnée)
+    // Répartition des types de congés - uniquement les congés validés dans la période
     const congesPeriode = await prisma.conge.findMany({
       where: {
-        dateDebut: { gte: startDate },
-        dateFin: { lte: today },
+        statut: { in: ['approuve', 'approuvé'] },
+        // Congés qui chevauchent la période sélectionnée
+        OR: [
+          // Congé qui commence dans la période
+          { dateDebut: { gte: startDate, lte: today } },
+          // Congé qui finit dans la période
+          { dateFin: { gte: startDate, lte: today } },
+          // Congé qui englobe toute la période
+          { AND: [{ dateDebut: { lte: startDate } }, { dateFin: { gte: today } }] }
+        ]
       },
     });
 
-    const congesParType = {};
+    console.log(`📅 Période congés: ${startDate.toLocaleDateString()} au ${today.toLocaleDateString()} (${periode})`);
+
+    const congesParType = {};;
+    let totalJoursConges = 0;
     congesPeriode.forEach((c) => {
       const nbJours = Math.ceil(
         (new Date(c.dateFin) - new Date(c.dateDebut)) / (1000 * 60 * 60 * 24) + 1
@@ -602,11 +627,16 @@ const getDashboardStats = async (req, res) => {
         congesParType[c.type] = 0;
       }
       congesParType[c.type] += nbJours;
+      totalJoursConges += nbJours;
     });
+    
+    console.log(`📊 Répartition congés: ${congesPeriode.length} demandes, ${totalJoursConges} jours total`);
+    console.log('   Types:', Object.entries(congesParType).map(([t,j]) => `${t}: ${j}j`).join(', '));
 
+    // Format: { name, value } pour le graphique PieChart du frontend
     const repartitionConges = Object.entries(congesParType).map(([type, jours]) => ({
-      type,
-      jours,
+      name: type,
+      value: jours,
     }));
 
     // Statuts des demandes (pour la période sélectionnée)
@@ -735,8 +765,9 @@ const getDashboardStats = async (req, res) => {
 
     for (const [userId, jours] of Object.entries(pointagesParEmploye)) {
       for (const [date, pointages] of Object.entries(jours)) {
-        const entrees = pointages.filter(p => p.type === 'ENTRÉE').sort((a, b) => a.horodatage - b.horodatage);
-        const sorties = pointages.filter(p => p.type === 'SORTIE').sort((a, b) => a.horodatage - b.horodatage);
+        // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes de types
+        const entrees = filtrerEntrees(pointages).sort((a, b) => a.horodatage - b.horodatage);
+        const sorties = filtrerSorties(pointages).sort((a, b) => a.horodatage - b.horodatage);
         if (entrees.length > 0 && sorties.length > 0) {
           const heuresJour = (sorties[sorties.length - 1].horodatage - entrees[0].horodatage) / (1000 * 60 * 60);
           totalHeuresPeriode += heuresJour;
@@ -762,10 +793,11 @@ const getDashboardStats = async (req, res) => {
     // Calculer les heures théoriques totales basées sur les segments des shifts
     const heuresTheorique = shiftsTheorique.reduce((acc, shift) => {
       // Les shifts utilisent le champ 'segments' (JSON array)
-      if (!shift.segments || !Array.isArray(shift.segments)) return acc;
+      const segments = parseSegments(shift.segments);
+      if (segments.length === 0) return acc;
       
       let heuresShift = 0;
-      shift.segments.forEach(segment => {
+      segments.forEach(segment => {
         if (segment.start && segment.end && !segment.isExtra) {
           try {
             const [startH, startM] = segment.start.split(':').map(Number);
@@ -885,12 +917,14 @@ const getDashboardStats = async (req, res) => {
     });
     
     const employesScores = employesAvecStats.map(emp => {
-      const totalPointages = emp.pointages.filter(p => p.type === 'ENTRÉE').length;
+      // ✅ CORRIGÉ: Utiliser le helper centralisé pour compter les entrées
+      const pointagesEntrees = filtrerEntrees(emp.pointages);
+      const totalPointages = pointagesEntrees.length;
       const totalShifts = emp.shifts.length;
       
       // Calculer ponctualité basée sur les shifts planifiés
       let pointagesATemps = 0;
-      emp.pointages.filter(p => p.type === 'ENTRÉE').forEach(pointage => {
+      pointagesEntrees.forEach(pointage => {
         const datePointage = new Date(pointage.horodatage);
         const dateStr = toLocalDateString(datePointage);
         
@@ -942,8 +976,9 @@ const getDashboardStats = async (req, res) => {
         const totalShifts = emp.shifts.length;
         
         // Calculer les retards réels par rapport aux shifts
+        // ✅ CORRIGÉ: Utiliser le helper centralisé pour filtrer les entrées
         let totalRetards = 0;
-        emp.pointages.filter(p => p.type === 'ENTRÉE').forEach(pointage => {
+        filtrerEntrees(emp.pointages).forEach(pointage => {
           const datePointage = new Date(pointage.horodatage);
           const dateStr = toLocalDateString(datePointage);
           
@@ -1255,7 +1290,9 @@ const getDashboardStats = async (req, res) => {
         repartitionParService,  // NOUVEAU: Répartition réelle par catégorie
         absencesParMotif: absencesParMotifArray,  // NOUVEAU: Pour graphique
         absencesParDuree: absencesParDureeArray,  // NOUVEAU: Pour graphique
-        absenteismeParEquipe: absenteismeParEquipeArray  // NOUVEAU: Pour graphique
+        absenteismeParEquipe: absenteismeParEquipeArray,  // NOUVEAU: Pour graphique
+        totalAbsences: congesApprouves.length,  // NOUVEAU: Nombre total d'absences
+        totalJoursAbsence: absencesParMotifArray.reduce((sum, a) => sum + a.jours, 0)  // NOUVEAU: Total jours
       },
       periode,
       timestamp: new Date().toISOString()
@@ -1309,8 +1346,9 @@ const calculerTotalHeures = async (debut, fin) => {
       const current = points[i];
       const next = points[i + 1];
 
-      if (current.type === 'ENTRÉE') {
-        if (next && next.type === 'SORTIE') {
+      // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes
+      if (isEntree(current.type)) {
+        if (next && isSortie(next.type)) {
           const dureeMs = new Date(next.horodatage) - new Date(current.horodatage);
           totalMs += dureeMs;
           const dureeH = Math.floor(dureeMs / 1000 / 60 / 60);
@@ -1381,10 +1419,10 @@ const genererDonneesDemo = () => {
     congesCeMois: 8,
     tempsPresence: '127h30',
     repartitionConges: [
-      { type: 'Congés payés', jours: 12 },
-      { type: 'Maladie', jours: 4 },
-      { type: 'RTT', jours: 6 },
-      { type: 'Autres', jours: 2 },
+      { name: 'Congé payé', value: 12 },
+      { name: 'Maladie', value: 4 },
+      { name: 'RTT', value: 6 },
+      { name: 'Autres', value: 2 },
     ],
     statutsDemandes: [
       { statut: 'Approuvé', value: 8, color: '#10B981' },

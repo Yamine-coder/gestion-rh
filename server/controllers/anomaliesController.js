@@ -28,7 +28,11 @@ const ANOMALIE_TYPES = {
   // Heures supplémentaires (3 zones)
   HEURES_SUP: 'heures_sup',
   HEURES_SUP_AUTO_VALIDEES: 'heures_sup_auto_validees',
-  HEURES_SUP_A_VALIDER: 'heures_sup_a_valider',
+  EXTRA_POTENTIEL: 'extra_potentiel',
+  
+  // Arrivée anticipée (symétrique aux départs tardifs)
+  ARRIVEE_ANTICIPEE_AUTO: 'arrivee_anticipee_auto',
+  ARRIVEE_ANTICIPEE_EXTRA: 'arrivee_anticipee_extra',
   
   // Absences
   ABSENCE_TOTALE: 'absence_totale',
@@ -135,6 +139,7 @@ const determineGravite = (ecart) => {
     case ANOMALIE_TYPES.HORS_PLAGE_OUT_CRITIQUE:
     case 'hors_plage':
     case 'hors_plage_in':
+    case 'hors_plage_in_critique':
     case 'hors_plage_out_critique':
       return 'hors_plage'; // Gravité spéciale pour hors-plage
     
@@ -145,10 +150,15 @@ const determineGravite = (ecart) => {
     // Heures supplémentaires - 3 zones
     case ANOMALIE_TYPES.HEURES_SUP_AUTO_VALIDEES:
     case 'heures_sup_auto_validees':
+    case ANOMALIE_TYPES.ARRIVEE_ANTICIPEE_AUTO:
+    case 'arrivee_anticipee_auto':
       return GRAVITE_LEVELS.INFO; // Auto-validées, pas grave
     
-    case ANOMALIE_TYPES.HEURES_SUP_A_VALIDER:
-    case 'heures_sup_a_valider':
+    case ANOMALIE_TYPES.EXTRA_POTENTIEL:
+    case 'extra_potentiel':
+    case ANOMALIE_TYPES.ARRIVEE_ANTICIPEE_EXTRA:
+    case 'arrivee_anticipee_extra':
+    case 'heures_sup_a_valider': // Rétro-compatibilité
       return 'a_valider'; // Nécessite validation manager
     
     case ANOMALIE_TYPES.HEURES_SUP:
@@ -196,7 +206,7 @@ const isEcartSignificatif = (ecart) => {
   // 1. Types toujours significatifs (critiques par nature)
   const typesToujoursCritiques = [
     'absence_totale', 'absence_planifiee_avec_pointage', 'presence_non_prevue',
-    'hors_plage', 'hors_plage_in', 'hors_plage_out_critique',
+    'hors_plage', 'hors_plage_in', 'hors_plage_in_critique', 'hors_plage_out_critique',
     'retard_critique', 'depart_premature_critique',
     'segment_non_pointe', 'missing_in', 'missing_out', 'pointage_hors_planning'
   ];
@@ -208,7 +218,7 @@ const isEcartSignificatif = (ecart) => {
   
   // 2. Types avec validation requise (toujours significatifs)
   const typesValidation = [
-    'heures_sup_a_valider', 'hors_plage_out'
+    'extra_potentiel', 'arrivee_anticipee_extra', 'heures_sup_a_valider', 'hors_plage_out'
   ];
   
   if (typesValidation.includes(ecart.type)) {
@@ -219,7 +229,7 @@ const isEcartSignificatif = (ecart) => {
   // 3. Types informatifs ignorés (pas d'anomalie à créer)
   const typesIgnores = [
     'absence_conforme', 'arrivee_acceptable', 'depart_acceptable',
-    'arrivee_a_l_heure', 'depart_a_l_heure'
+    'arrivee_a_l_heure', 'depart_a_l_heure', 'arrivee_anticipee_auto'
   ];
   
   if (typesIgnores.includes(ecart.type)) {
@@ -545,7 +555,10 @@ function calculerPenaliteValidation(anomalie) {
     'depart_premature_critique': -8,
     'heures_sup': 0, // Pas de pénalité si validé
     'heures_sup_auto_validees': 0,
-    'heures_sup_a_valider': 0,
+    'extra_potentiel': 0,
+    'arrivee_anticipee_extra': 0, // Pas de pénalité si validé
+    'arrivee_anticipee_auto': 0,
+    'heures_sup_a_valider': 0, // Rétro-compatibilité
     'missing_in': -5,
     'missing_out': -5,
     'absence_totale': -10
@@ -580,8 +593,8 @@ const traiterAnomalie = async (req, res) => {
     return res.status(400).json({ error: "ID de l'anomalie requis" });
   }
 
-  if (!action || !['valider', 'refuser', 'corriger', 'payer_extra', 'reporter', 'convertir_extra'].includes(action)) {
-    return res.status(400).json({ error: "Action invalide (valider, refuser, corriger, payer_extra, reporter, convertir_extra)" });
+  if (!action || !['valider', 'refuser', 'corriger', 'payer_extra', 'reporter', 'convertir_extra', 'justifier', 'ignorer'].includes(action)) {
+    return res.status(400).json({ error: "Action invalide (valider, refuser, corriger, payer_extra, reporter, convertir_extra, justifier, ignorer)" });
   }
 
   try {
@@ -625,13 +638,133 @@ const traiterAnomalie = async (req, res) => {
       traiteAt: new Date()
     };
 
+    console.log('🎯 TRAITEMENT ANOMALIE - action reçue:', action, '| type:', anomalie.type);
+
     switch (action) {
       case 'valider':
-        // ✅ VALIDATION - Pas de modif shift
+        console.log('✅ ENTREE CASE VALIDER');
+        // ✅ VALIDATION
         nouveauStatut = STATUTS.VALIDEE;
         
+        // 🆕 RÉGULARISATION POINTAGE HORS PLANNING - Créer un shift normal
+        if (anomalie.type === 'pointage_hors_planning') {
+          console.log('📌 ANOMALIE TYPE pointage_hors_planning DETECTEE');
+          // Parser les details si c'est une chaîne JSON
+          let details = {};
+          try {
+            details = typeof anomalie.details === 'string' 
+              ? JSON.parse(anomalie.details) 
+              : (anomalie.details || {});
+          } catch (e) {
+            console.log('⚠️ Erreur parsing details:', e.message);
+          }
+          
+          console.log(`🔍 RÉGULARISATION pointage_hors_planning pour employé ${anomalie.employeId}`);
+          
+          // 🔍 RÉCUPÉRER LES VRAIS POINTAGES de la journée (pas les heures de l'anomalie)
+          const dateAnomalie = new Date(anomalie.date);
+          const debutJour = new Date(dateAnomalie);
+          debutJour.setHours(0, 0, 0, 0);
+          const finJour = new Date(dateAnomalie);
+          finJour.setHours(23, 59, 59, 999);
+          
+          console.log(`   Recherche pointages entre ${debutJour.toISOString()} et ${finJour.toISOString()}`);
+          
+          const pointagesJour = await prisma.pointage.findMany({
+            where: {
+              userId: anomalie.employeId,
+              horodatage: { gte: debutJour, lte: finJour }
+            },
+            orderBy: { horodatage: 'asc' }
+          });
+          
+          console.log(`   Pointages trouvés: ${pointagesJour.length}`);
+          pointagesJour.forEach(p => console.log(`   - ${p.type}: ${p.horodatage}`));
+          
+          // Trouver arrivée et départ réels
+          const arrivee = pointagesJour.find(p => 
+            p.type === 'arrivee' || p.type === 'ENTRÉE' || p.type === 'entrée'
+          );
+          const depart = pointagesJour.find(p => 
+            p.type === 'depart' || p.type === 'SORTIE' || p.type === 'sortie'
+          );
+          
+          if (arrivee && depart) {
+            // Extraire les heures réelles (format HH:MM)
+            const heureArriveeReelle = arrivee.horodatage.toLocaleTimeString('fr-FR', { 
+              hour: '2-digit', minute: '2-digit', hour12: false 
+            });
+            const heureDepartReelle = depart.horodatage.toLocaleTimeString('fr-FR', { 
+              hour: '2-digit', minute: '2-digit', hour12: false 
+            });
+            
+            console.log(`📍 Pointages réels trouvés: ${heureArriveeReelle} - ${heureDepartReelle}`);
+            
+            // Créer le shift rétroactif avec les VRAIES heures pointées
+            const nouveauShift = await prisma.shift.create({
+              data: {
+                employeId: anomalie.employeId,
+                date: anomalie.date,
+                type: 'travail',
+                motif: `Régularisation - ${commentaire || 'Pointage validé rétroactivement'}`,
+                segments: JSON.stringify([{
+                  start: heureArriveeReelle,
+                  end: heureDepartReelle,
+                  type: 'travail',
+                  commentaire: 'Shift créé par régularisation - heures = pointages réels'
+                }]),
+                version: 1
+              }
+            });
+            
+            console.log(`✅ RÉGULARISATION: Shift #${nouveauShift.id} créé pour employé ${anomalie.employeId}`);
+            console.log(`   📅 Date: ${anomalie.date.toISOString().split('T')[0]}`);
+            console.log(`   ⏰ Horaires réels: ${heureArriveeReelle} - ${heureDepartReelle}`);
+            
+            // Enrichir les détails avec l'info du shift créé
+            updateData.details = {
+              ...details,
+              shiftCree: true,
+              shiftId: nouveauShift.id,
+              heuresReelles: { arrivee: heureArriveeReelle, depart: heureDepartReelle },
+              regularisationAt: new Date().toISOString()
+            };
+          } else {
+            // Fallback: utiliser les heures de l'anomalie si pas de pointages trouvés
+            const heureArrivee = details.heureArrivee || details.heureDebut;
+            const heureDepart = details.heureDepart || details.heureFin;
+            
+            if (heureArrivee && heureDepart) {
+              const nouveauShift = await prisma.shift.create({
+                data: {
+                  employeId: anomalie.employeId,
+                  date: anomalie.date,
+                  type: 'travail',
+                  motif: `Régularisation - ${commentaire || 'Pointage validé rétroactivement'}`,
+                  segments: JSON.stringify([{
+                    start: heureArrivee,
+                    end: heureDepart,
+                    type: 'travail',
+                    commentaire: 'Shift créé par régularisation (heures depuis anomalie)'
+                  }]),
+                  version: 1
+                }
+              });
+              
+              console.log(`✅ RÉGULARISATION (fallback): Shift #${nouveauShift.id} créé`);
+              updateData.details = {
+                ...details,
+                shiftCree: true,
+                shiftId: nouveauShift.id,
+                regularisationAt: new Date().toISOString()
+              };
+            } else {
+              console.log(`⚠️ Régularisation impossible: aucun pointage trouvé`);
+            }
+          }
+        }
         // Pour les heures sup, on peut ajuster le montant
-        if (anomalie.type.includes('heures_sup')) {
+        else if (anomalie.type.includes('heures_sup')) {
           if (montantExtra !== undefined) updateData.montantExtra = parseFloat(montantExtra);
           if (heuresExtra !== undefined) updateData.heuresExtra = parseFloat(heuresExtra);
         }
@@ -641,7 +774,7 @@ const traiterAnomalie = async (req, res) => {
           updateData.payerHeuresManquantes = true;
           updateData.heuresARecuperer = heuresARecuperer;
           console.log(`💰 Validation avec paiement heures: ${heuresARecuperer}h à récupérer`);
-        } else {
+        } else if (!anomalie.type.includes('pointage_hors_planning')) {
           console.log(`✅ Validation simple: heures réelles payées`);
         }
         break;
@@ -689,17 +822,22 @@ const traiterAnomalie = async (req, res) => {
 
       case 'payer_extra':
         // 💰 PAYER EN EXTRA - Créer un paiement espèces hors fiche de paie
+        // + Ajouter automatiquement un segment isExtra au shift d'origine
         
-        // Vérifier que c'est une anomalie d'heures sup
-        if (!anomalie.type.includes('heures_sup') && !anomalie.type.includes('hors_plage')) {
+        // Vérifier que c'est une anomalie d'extra potentiel (départ tardif OU arrivée anticipée)
+        const typesExtraPayables = ['extra_potentiel', 'heures_sup', 'hors_plage', 'arrivee_anticipee_extra'];
+        const isExtraPayable = typesExtraPayables.some(t => anomalie.type.includes(t));
+        if (!isExtraPayable) {
           return res.status(400).json({ 
-            error: 'Cette action n\'est possible que pour les heures supplémentaires' 
+            error: 'Cette action n\'est possible que pour les extras potentiels'
           });
         }
 
         // Récupérer les heures de l'anomalie
         const heuresAPayer = heuresExtra || anomalie.heuresExtra || 
-          (anomalie.details?.minutesEcart ? anomalie.details.minutesEcart / 60 : 0) ||
+          (anomalie.details?.minutesEcart ? Math.abs(anomalie.details.minutesEcart) / 60 : 0) ||
+          (anomalie.details?.minutesEnAvance ? anomalie.details.minutesEnAvance / 60 : 0) ||
+          (anomalie.details?.minutesApres ? anomalie.details.minutesApres / 60 : 0) ||
           (anomalie.ecartMinutes ? Math.abs(anomalie.ecartMinutes) / 60 : 0);
         
         if (heuresAPayer <= 0) {
@@ -714,26 +852,174 @@ const traiterAnomalie = async (req, res) => {
         // Préparer le commentaire enrichi avec le contexte
         const anomalieDetails = typeof anomalie.details === 'object' ? anomalie.details : {};
         const commentaireEnrichi = commentaire || 
-          `Heures sup du ${new Date(anomalie.date).toLocaleDateString('fr-FR')}` +
+          `Extra du ${new Date(anomalie.date).toLocaleDateString('fr-FR')}` +
           (anomalieDetails.heurePrevueFin ? ` - Prévu fin: ${anomalieDetails.heurePrevueFin}` : '') +
-          (anomalieDetails.heureReelleFin ? ` - Réel fin: ${anomalieDetails.heureReelleFin}` : '');
+          (anomalieDetails.heureReelleDepart || anomalieDetails.heureReelleFin ? ` - Réel: ${anomalieDetails.heureReelleDepart || anomalieDetails.heureReelleFin}` : '');
 
-        // Créer le paiement extra
+        // 🆕 RÉCUPÉRER LES POINTAGES ET LE SHIFT DU JOUR
+        const dateAnomalie = new Date(anomalie.date);
+        const dateDebut = new Date(dateAnomalie);
+        dateDebut.setHours(0, 0, 0, 0);
+        const dateFin = new Date(dateAnomalie);
+        dateFin.setHours(23, 59, 59, 999);
+        
+        // Récupérer les pointages du jour
+        const pointagesDuJour = await prisma.pointage.findMany({
+          where: {
+            userId: anomalie.employeId,
+            horodatage: { gte: dateDebut, lte: dateFin }
+          },
+          orderBy: { horodatage: 'asc' }
+        });
+        
+        // Récupérer le shift du jour
+        let shiftIdFromDetails = anomalieDetails.shiftId;
+        let shiftDuJour = shiftIdFromDetails ? await prisma.shift.findUnique({
+          where: { id: shiftIdFromDetails }
+        }) : null;
+        
+        if (!shiftDuJour) {
+          shiftDuJour = await prisma.shift.findFirst({
+            where: {
+              employeId: anomalie.employeId,
+              date: { gte: dateDebut, lte: dateFin },
+              type: 'travail'
+            }
+          });
+          if (shiftDuJour) shiftIdFromDetails = shiftDuJour.id;
+        }
+        
+        // Extraire les heures des pointages
+        let arriveePointage = null;
+        let departPointage = null;
+        
+        if (pointagesDuJour.length > 0) {
+          const premierPointage = pointagesDuJour[0];
+          arriveePointage = new Date(premierPointage.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+          
+          const dernierPointage = pointagesDuJour[pointagesDuJour.length - 1];
+          if (pointagesDuJour.length > 1) {
+            departPointage = new Date(dernierPointage.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+          }
+        }
+        
+        // Extraire le créneau prévu depuis le shift
+        let creneauPrevu = null;
+        let finPrevue = null;
+        let debutPrevu = null;
+        if (shiftDuJour && shiftDuJour.segments) {
+          const segments = typeof shiftDuJour.segments === 'string' 
+            ? JSON.parse(shiftDuJour.segments) 
+            : shiftDuJour.segments;
+          if (Array.isArray(segments) && segments.length > 0) {
+            const premierSegment = segments[0];
+            const dernierSegment = segments[segments.length - 1];
+            creneauPrevu = `${premierSegment.start}-${dernierSegment.end}`;
+            debutPrevu = premierSegment.start;
+            finPrevue = dernierSegment.end;
+          }
+        }
+
+        // 🆕 AJOUTER SEGMENT isExtra AU SHIFT D'ORIGINE
+        // Distinguer arrivée anticipée vs départ tardif
+        const isArriveeAnticipee = anomalie.type.includes('arrivee_anticipee');
+        let segmentIndexExtra = null;
+        
+        if (shiftDuJour) {
+          let segments = typeof shiftDuJour.segments === 'string' 
+            ? JSON.parse(shiftDuJour.segments) 
+            : (Array.isArray(shiftDuJour.segments) ? [...shiftDuJour.segments] : []);
+          
+          let segmentExtra = null;
+          let existeDeja = false;
+          
+          if (isArriveeAnticipee && arriveePointage && debutPrevu) {
+            // Arrivée anticipée = segment AVANT le début prévu
+            segmentExtra = {
+              start: arriveePointage,
+              end: debutPrevu,
+              isExtra: true,
+              paymentStatus: 'a_payer',
+              commentaire: `Extra - Arrivée anticipée (${Math.round(heuresAPayer * 60)} min)`,
+              paiementExtraId: null
+            };
+            existeDeja = segments.some(s => s.isExtra && s.start === arriveePointage && s.end === debutPrevu);
+          } else if (departPointage && finPrevue) {
+            // Départ tardif = segment APRÈS la fin prévue
+            segmentExtra = {
+              start: finPrevue,
+              end: departPointage,
+              isExtra: true,
+              paymentStatus: 'a_payer',
+              commentaire: `Extra - Départ tardif (${Math.round(heuresAPayer * 60)} min)`,
+              paiementExtraId: null
+            };
+            existeDeja = segments.some(s => s.isExtra && s.start === finPrevue && s.end === departPointage);
+          }
+          
+          if (segmentExtra && !existeDeja) {
+            if (isArriveeAnticipee) {
+              // Insérer au début pour arrivée anticipée
+              segments.unshift(segmentExtra);
+              segmentIndexExtra = 0;
+            } else {
+              // Ajouter à la fin pour départ tardif
+              segments.push(segmentExtra);
+              segmentIndexExtra = segments.length - 1;
+            }
+            
+            await prisma.shift.update({
+              where: { id: shiftDuJour.id },
+              data: { segments: segments }
+            });
+            console.log(`📅 Segment extra ${isArriveeAnticipee ? 'AVANT' : 'APRÈS'} ajouté au shift ${shiftDuJour.id} (index: ${segmentIndexExtra})`);
+          }
+        }
+
+        console.log(`📊 Paiement extra - Pointages trouvés: ${pointagesDuJour.length}, Arrivée: ${arriveePointage}, Départ: ${departPointage}`);
+        console.log(`📊 Créneau prévu: ${creneauPrevu}, Shift ID: ${shiftDuJour?.id || 'aucun'}`);
+        
         const paiementExtra = await prisma.paiementExtra.create({
           data: {
             employeId: anomalie.employeId,
             anomalieId: anomalie.id,
-            shiftId: anomalie.shiftId || null,
+            shiftId: shiftIdFromDetails || null,
+            segmentIndex: segmentIndexExtra,
             date: anomalie.date,
             heures: parseFloat(heuresAPayer.toFixed(2)),
             tauxHoraire: parseFloat(tauxEffectif),
             montant: parseFloat(montantCalcule.toFixed(2)),
-            source: 'anomalie_heures_sup',
+            source: 'anomalie_extra',
             statut: 'a_payer',
             commentaire: commentaireEnrichi,
-            creePar: userId
+            creePar: userId,
+            // Infos du créneau et pointage
+            pointageValide: pointagesDuJour.length > 0,
+            arriveeReelle: arriveePointage,
+            departReelle: departPointage,
+            segmentInitial: creneauPrevu
           }
         });
+
+        // 🆕 Mettre à jour le segment avec l'ID du paiement
+        if (shiftIdFromDetails && segmentIndexExtra !== null) {
+          const shiftMaj = await prisma.shift.findUnique({ where: { id: shiftIdFromDetails } });
+          if (shiftMaj) {
+            let segmentsMaj = typeof shiftMaj.segments === 'string' 
+              ? JSON.parse(shiftMaj.segments) 
+              : (Array.isArray(shiftMaj.segments) ? [...shiftMaj.segments] : []);
+            if (segmentsMaj[segmentIndexExtra]) {
+              segmentsMaj[segmentIndexExtra].paiementExtraId = paiementExtra.id;
+              // Le segment reste en 'a_payer' jusqu'au paiement effectif
+              segmentsMaj[segmentIndexExtra].paymentStatus = 'a_payer';
+              await prisma.shift.update({
+                where: { id: shiftIdFromDetails },
+                data: { segments: segmentsMaj }
+              });
+              console.log(`💳 Segment extra #${segmentIndexExtra} lié au paiement #${paiementExtra.id}`);
+            }
+          }
+        }
 
         nouveauStatut = STATUTS.VALIDEE;
         
@@ -742,12 +1028,16 @@ const traiterAnomalie = async (req, res) => {
           ...(typeof anomalie.details === 'object' ? anomalie.details : {}),
           payeEnExtra: true,
           paiementExtraId: paiementExtra.id,
+          segmentIndexExtra: segmentIndexExtra,
           heuresPayeesExtra: heuresAPayer,
           montantExtra: montantCalcule,
           tauxHoraire: tauxEffectif
         };
 
         console.log(`💰 Paiement extra créé: ${heuresAPayer.toFixed(2)}h à ${tauxEffectif}€/h = ${montantCalcule.toFixed(2)}€ pour ${anomalie.employe.prenom} ${anomalie.employe.nom}`);
+        if (segmentIndexExtra !== null) {
+          console.log(`   ➕ Segment isExtra ajouté au shift ${shiftIdFromDetails}`);
+        }
         
         break;
 
@@ -830,7 +1120,7 @@ const traiterAnomalie = async (req, res) => {
           data: {
             employeId: anomalie.employeId,
             anomalieId: anomalie.id,
-            shiftId: anomalie.shiftId || null,
+            shiftId: anomalieDetailsExtra.shiftId || null,
             date: anomalie.date,
             heures: parseFloat(heuresExtraConversion.toFixed(2)),
             tauxHoraire: parseFloat(tauxConversion),
@@ -921,6 +1211,38 @@ const traiterAnomalie = async (req, res) => {
         };
 
         console.log(`🔄 Anomalie ${id} convertie en extra: ${heuresExtraConversion.toFixed(2)}h à ${tauxConversion}€/h = ${montantConversion.toFixed(2)}€ pour ${anomalie.employe.prenom} ${anomalie.employe.nom}`);
+        
+        break;
+
+      case 'justifier':
+        // ✅ JUSTIFIER - Absence justifiée (maladie, CP, événement familial, etc.)
+        nouveauStatut = STATUTS.VALIDEE;
+        
+        updateData.details = {
+          ...(typeof anomalie.details === 'object' ? anomalie.details : {}),
+          absenceJustifiee: true,
+          motifJustification: commentaire || 'Absence justifiée',
+          justifieePar: userId,
+          justifieeAt: new Date().toISOString()
+        };
+        
+        console.log(`✅ Anomalie ${id} - Absence justifiée: "${commentaire || 'Absence justifiée'}"`);
+        
+        break;
+
+      case 'ignorer':
+        // ⬜ IGNORER - Laisser tel quel sans action (pointage manquant non important)
+        nouveauStatut = STATUTS.VALIDEE; // On marque comme traitée pour ne plus la voir
+        
+        updateData.details = {
+          ...(typeof anomalie.details === 'object' ? anomalie.details : {}),
+          ignoree: true,
+          raisonIgnore: commentaire || 'Ignoré par le manager',
+          ignorePar: userId,
+          ignoreAt: new Date().toISOString()
+        };
+        
+        console.log(`⬜ Anomalie ${id} - Ignorée: "${commentaire || 'Ignoré par le manager'}"`);
         
         break;
     }
@@ -1915,8 +2237,18 @@ const getBilanJournalier = async (req, res) => {
     let minutesTravaillees = 0;
     const detailsSegments = [];
     
-    // Extraire les segments du shift
-    const segments = shift?.segments || [];
+    // Extraire les segments du shift (parser si c'est une string JSON)
+    let segments = shift?.segments || [];
+    if (typeof segments === 'string') {
+      try {
+        segments = JSON.parse(segments);
+      } catch (e) {
+        console.error('Erreur parsing segments:', e);
+        segments = [];
+      }
+    }
+    
+    console.log(`   Segments parsés: ${segments.length}`, segments);
     
     // Regrouper les pointages en paires arrivée/départ
     const pairesPointages = [];
@@ -1991,7 +2323,7 @@ const getBilanJournalier = async (req, res) => {
           description: anomalie.description,
           statut: anomalie.statut
         });
-      } else if (['heures_sup', 'heures_sup_a_valider', 'heures_sup_auto_validees', 'hors_plage_out'].includes(anomalie.type)) {
+      } else if (['heures_sup', 'extra_potentiel', 'heures_sup_a_valider', 'heures_sup_auto_validees', 'hors_plage_out'].includes(anomalie.type)) {
         minutesHeuresSupAnomalies += Math.abs(ecartMinutes);
         detailsPositifs.push({
           id: anomalie.id,

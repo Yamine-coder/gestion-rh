@@ -235,7 +235,7 @@ export default function ScoringManager({ embedded = false }) {
 }
 
 // =====================================================
-// DASHBOARD VIEW - Vue d'ensemble épurée et sobre
+// DASHBOARD VIEW - Vue d'ensemble style Dashboard
 // =====================================================
 
 function DashboardView({ data, onEmployeClick }) {
@@ -245,170 +245,115 @@ function DashboardView({ data, onEmployeClick }) {
   const top3 = data.top5?.slice(0, 3) || [];
 
   return (
-    <div className="space-y-5">
-      {/* Stats globales - Design épuré */}
+    <div className="space-y-4">
+      {/* Stats globales - Style Dashboard compact */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Employés notés</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{data.stats?.nb_employes_notes || 0}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-              <Users className="w-5 h-5 text-gray-600" />
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+              <Users className="w-4 h-4 text-slate-600" />
             </div>
           </div>
+          <p className="text-xs text-gray-500">Employés notés</p>
+          <p className="text-xl font-semibold text-gray-900">{data.stats?.nb_employes_notes || 0}</p>
         </div>
         
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Bonus (30j)</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">+{data.stats?.total_bonus_global || 0}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-green-600" />
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
             </div>
           </div>
+          <p className="text-xs text-gray-500">Bonus (30j)</p>
+          <p className="text-xl font-semibold text-emerald-600">+{data.stats?.total_bonus_global || 0}</p>
         </div>
         
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Malus (30j)</p>
-              <p className="text-2xl font-bold text-[#cf292c] mt-1">-{data.stats?.total_malus_global || 0}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-              <TrendingDown className="w-5 h-5 text-[#cf292c]" />
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+              <TrendingDown className="w-4 h-4 text-[#cf292c]" />
             </div>
           </div>
+          <p className="text-xs text-gray-500">Malus (30j)</p>
+          <p className="text-xl font-semibold text-[#cf292c]">-{data.stats?.total_malus_global || 0}</p>
         </div>
         
-        <div className="bg-white rounded-xl p-4 border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Attributions</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{data.stats?.nb_attributions || 0}</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-              <Star className="w-5 h-5 text-gray-600" />
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
+              <Star className="w-4 h-4 text-slate-600" />
             </div>
           </div>
+          <p className="text-xs text-gray-500">Attributions</p>
+          <p className="text-xl font-semibold text-gray-900">{data.stats?.nb_attributions || 0}</p>
         </div>
       </div>
 
-      {/* Top 3 - Design sobre avec médailles */}
+      {/* Top 3 - Design compact */}
       {top3.length >= 3 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100">
-            <h3 className="font-semibold text-gray-900 text-sm">Top 3 du mois</h3>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Trophy className="w-4 h-4 text-amber-500" />
+            <span className="text-sm font-medium text-gray-700">Top 3 du mois</span>
           </div>
-          <div className="grid grid-cols-3 divide-x divide-gray-100">
-            {/* 1er */}
-            <div 
-              onClick={() => onEmployeClick(top3[0]?.id)}
-              className="p-4 text-center cursor-pointer hover:bg-gray-50 transition-colors relative"
-            >
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-[#cf292c] text-white text-xs font-bold flex items-center justify-center shadow-sm">
-                1
+          <div className="grid grid-cols-3 gap-3">
+            {top3.map((emp, idx) => (
+              <div 
+                key={emp.id}
+                onClick={() => onEmployeClick(emp.id)}
+                className="relative p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors text-center"
+              >
+                <div className={`absolute -top-2 -left-2 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-sm ${
+                  idx === 0 ? 'bg-[#cf292c]' : idx === 1 ? 'bg-gray-500' : 'bg-amber-500'
+                }`}>
+                  {idx + 1}
+                </div>
+                <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full font-semibold text-sm mb-2 ${emp.niveau?.bg || 'bg-gray-100'}`}>
+                  <span className={emp.niveau?.iconColor || 'text-gray-700'}>{emp.prenom?.[0]}{emp.nom?.[0]}</span>
+                </div>
+                <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom}</p>
+                <p className="text-lg font-bold text-gray-900">{emp.score_total}</p>
+                <p className="text-[10px] text-gray-500">{emp.niveau?.label}</p>
               </div>
-              <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full font-bold mb-2 ${top3[0]?.niveau?.bg || 'bg-gray-100'}`}>
-                <span className={top3[0]?.niveau?.iconColor || 'text-gray-700'}>{top3[0]?.prenom?.[0]}{top3[0]?.nom?.[0]}</span>
-              </div>
-              <div className="flex items-center justify-center gap-1 mb-1">
-                {top3[0]?.niveau?.label === 'À surveiller' 
-                  ? <AlertTriangle className={`w-5 h-5 ${top3[0]?.niveau?.iconColor || 'text-gray-400'}`} />
-                  : <Medal className={`w-5 h-5 ${top3[0]?.niveau?.iconColor || 'text-gray-400'}`} />
-                }
-                <span className="font-semibold text-gray-900 text-sm truncate">{top3[0]?.prenom}</span>
-              </div>
-              <p className="text-xl font-bold text-gray-900">{top3[0]?.score_total}</p>
-              <p className="text-xs text-gray-500">{top3[0]?.niveau?.label}</p>
-            </div>
-            
-            {/* 2ème */}
-            <div 
-              onClick={() => onEmployeClick(top3[1]?.id)}
-              className="p-4 text-center cursor-pointer hover:bg-gray-50 transition-colors relative"
-            >
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-gray-600 text-white text-xs font-bold flex items-center justify-center shadow-sm">
-                2
-              </div>
-              <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full font-bold mb-2 ${top3[1]?.niveau?.bg || 'bg-gray-100'}`}>
-                <span className={top3[1]?.niveau?.iconColor || 'text-gray-700'}>{top3[1]?.prenom?.[0]}{top3[1]?.nom?.[0]}</span>
-              </div>
-              <div className="flex items-center justify-center gap-1 mb-1">
-                {top3[1]?.niveau?.label === 'À surveiller' 
-                  ? <AlertTriangle className={`w-5 h-5 ${top3[1]?.niveau?.iconColor || 'text-gray-400'}`} />
-                  : <Medal className={`w-5 h-5 ${top3[1]?.niveau?.iconColor || 'text-gray-400'}`} />
-                }
-                <span className="font-semibold text-gray-900 text-sm truncate">{top3[1]?.prenom}</span>
-              </div>
-              <p className="text-xl font-bold text-gray-900">{top3[1]?.score_total}</p>
-              <p className="text-xs text-gray-500">{top3[1]?.niveau?.label}</p>
-            </div>
-            
-            {/* 3ème */}
-            <div 
-              onClick={() => onEmployeClick(top3[2]?.id)}
-              className="p-4 text-center cursor-pointer hover:bg-gray-50 transition-colors relative"
-            >
-              <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-amber-600 text-white text-xs font-bold flex items-center justify-center shadow-sm">
-                3
-              </div>
-              <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full font-bold mb-2 ${top3[2]?.niveau?.bg || 'bg-gray-100'}`}>
-                <span className={top3[2]?.niveau?.iconColor || 'text-gray-700'}>{top3[2]?.prenom?.[0]}{top3[2]?.nom?.[0]}</span>
-              </div>
-              <div className="flex items-center justify-center gap-1 mb-1">
-                {top3[2]?.niveau?.label === 'À surveiller' 
-                  ? <AlertTriangle className={`w-5 h-5 ${top3[2]?.niveau?.iconColor || 'text-gray-400'}`} />
-                  : <Medal className={`w-5 h-5 ${top3[2]?.niveau?.iconColor || 'text-gray-400'}`} />
-                }
-                <span className="font-semibold text-gray-900 text-sm truncate">{top3[2]?.prenom}</span>
-              </div>
-              <p className="text-xl font-bold text-gray-900">{top3[2]?.score_total}</p>
-              <p className="text-xs text-gray-500">{top3[2]?.niveau?.label}</p>
-            </div>
+            ))}
           </div>
         </div>
       )}
 
+      {/* Top 5 & À surveiller - Côte à côte */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Top 5 complet */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+        <div className="bg-white rounded-xl border border-slate-200">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <Trophy className="w-4 h-4 text-amber-500" />
-              Meilleurs scores
-            </h3>
+              <span className="text-sm font-medium text-gray-700">Meilleurs scores</span>
+            </div>
             <span className="text-xs text-gray-400">3 mois</span>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-slate-50">
             {data.top5?.map((emp, idx) => (
               <div
                 key={emp.id}
                 onClick={() => onEmployeClick(emp.id)}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
               >
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
                   idx === 0 ? 'bg-amber-100 text-amber-700' :
                   idx === 1 ? 'bg-gray-100 text-gray-600' :
                   idx === 2 ? 'bg-orange-50 text-orange-600' :
-                  'bg-gray-50 text-gray-500'
+                  'bg-slate-50 text-gray-500'
                 }`}>
                   {emp.rang}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Award className={`w-4 h-4 ${emp.niveau?.iconColor || 'text-gray-400'}`} />
-                  <span className="font-bold text-gray-900">{emp.score_total}</span>
-                </div>
+                <span className="font-bold text-gray-900 text-sm">{emp.score_total}</span>
               </div>
             ))}
             {(!data.top5 || data.top5.length === 0) && (
-              <div className="p-6 text-center text-gray-500 text-sm">
+              <div className="p-4 text-center text-gray-500 text-xs">
                 Aucun classement disponible
               </div>
             )}
@@ -416,39 +361,36 @@ function DashboardView({ data, onEmployeClick }) {
         </div>
 
         {/* À surveiller */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-orange-500" />
-              À surveiller
-            </h3>
+        <div className="bg-white rounded-xl border border-slate-200">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <span className="text-sm font-medium text-gray-700">À surveiller</span>
+            </div>
             <span className="text-xs text-gray-400">Scores bas</span>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-slate-50">
             {data.bottom5?.map((emp) => (
               <div
                 key={emp.id}
                 onClick={() => onEmployeClick(emp.id)}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
               >
-                <div className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center">
-                  <span className="text-[#cf292c] text-xs">!</span>
+                <div className="w-6 h-6 rounded-full bg-red-50 flex items-center justify-center">
+                  <AlertCircle className="w-3 h-3 text-[#cf292c]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <AlertCircle className={`w-4 h-4 ${emp.niveau?.iconColor || 'text-red-500'}`} />
-                  <span className={`font-bold ${emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'}`}>
-                    {emp.score_total}
-                  </span>
-                </div>
+                <span className={`font-bold text-sm ${emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'}`}>
+                  {emp.score_total}
+                </span>
               </div>
             ))}
             {(!data.bottom5 || data.bottom5.length === 0) && (
-              <div className="p-6 text-center text-gray-500 text-sm">
-                <Check className="w-5 h-5 mx-auto mb-1 text-green-500" />
-                Aucun employé à surveiller
+              <div className="p-4 text-center">
+                <Check className="w-4 h-4 mx-auto mb-1 text-emerald-500" />
+                <p className="text-gray-500 text-xs">Aucun employé à surveiller</p>
               </div>
             )}
           </div>
@@ -456,38 +398,34 @@ function DashboardView({ data, onEmployeClick }) {
       </div>
 
       {/* Activité récente - Design compact */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-400" />
-            Activité récente
-          </h3>
+      <div className="bg-white rounded-xl border border-slate-200">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-slate-400" />
+          <span className="text-sm font-medium text-gray-700">Activité récente</span>
         </div>
-        <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
-          {data.recents?.slice(0, 8).map((point) => (
-            <div key={point.id} className="flex items-center gap-3 px-4 py-3">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                point.points > 0 ? 'bg-green-50' : 'bg-red-50'
+        <div className="divide-y divide-slate-50 max-h-[250px] overflow-y-auto">
+          {data.recents?.slice(0, 6).map((point) => (
+            <div key={point.id} className="flex items-center gap-3 px-4 py-2.5">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
+                point.points > 0 ? 'bg-emerald-50' : 'bg-red-50'
               }`}>
                 {point.points > 0 ? (
-                  <TrendingUp className="w-4 h-4 text-green-600" />
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
                 ) : (
-                  <TrendingDown className="w-4 h-4 text-[#cf292c]" />
+                  <TrendingDown className="w-3.5 h-3.5 text-[#cf292c]" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 text-sm truncate">
-                  {point.prenom} {point.nom}
-                </p>
+                <p className="font-medium text-gray-900 text-sm truncate">{point.prenom} {point.nom}</p>
                 <p className="text-xs text-gray-500 truncate">{point.label || point.rule_code}</p>
               </div>
-              <div className={`font-bold text-sm ${point.points > 0 ? 'text-green-600' : 'text-[#cf292c]'}`}>
+              <span className={`font-bold text-sm ${point.points > 0 ? 'text-emerald-600' : 'text-[#cf292c]'}`}>
                 {point.points > 0 ? '+' : ''}{point.points}
-              </div>
+              </span>
             </div>
           ))}
           {(!data.recents || data.recents.length === 0) && (
-            <div className="p-6 text-center text-gray-500 text-sm">
+            <div className="p-4 text-center text-gray-500 text-xs">
               Aucune activité récente
             </div>
           )}
@@ -498,7 +436,7 @@ function DashboardView({ data, onEmployeClick }) {
 }
 
 // =====================================================
-// CLASSEMENT VIEW - Tableau amélioré
+// CLASSEMENT VIEW - Style Dashboard
 // =====================================================
 
 function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, onEmployeClick, onAttribuer }) {
@@ -508,25 +446,25 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
 
   return (
     <div className="space-y-4">
-      {/* Filtres épurés */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+      {/* Filtres - Style Dashboard compact */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3">
+        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Rechercher un employé..."
+              placeholder="Rechercher..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-colors text-sm"
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-colors text-sm"
             />
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
-            <Calendar className="w-4 h-4 text-gray-400" />
+          <div className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-50 rounded-lg border border-slate-200">
+            <Calendar className="w-3.5 h-3.5 text-gray-400" />
             <select
               value={periode}
               onChange={e => setPeriode(e.target.value)}
-              className="bg-transparent border-none text-sm font-medium text-gray-700 focus:ring-0 cursor-pointer"
+              className="bg-transparent border-none text-xs font-medium text-gray-700 focus:ring-0 cursor-pointer pr-6"
             >
               <option value="1month">1 mois</option>
               <option value="3months">3 mois</option>
@@ -536,10 +474,10 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
           </div>
         </div>
         
-        {/* Compteur de résultats */}
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 text-sm">
-          <span className="text-gray-500 flex items-center gap-2">
-            <Users className="w-4 h-4" />
+        {/* Compteur */}
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs">
+          <span className="text-gray-500 flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5" />
             {filteredData.length} employé{filteredData.length > 1 ? 's' : ''}
           </span>
           {searchTerm && (
@@ -554,81 +492,75 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
         </div>
       </div>
 
-      {/* Tableau - Version Desktop */}
-      <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+      {/* Tableau Desktop - Style Dashboard */}
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">Rang</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employé</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Niveau</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Bonus</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Malus</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">Score</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-16"></th>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th className="px-3 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider w-14">Rang</th>
+              <th className="px-3 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Employé</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider w-20">Niveau</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider w-16">Bonus</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider w-16">Malus</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider w-20">Score</th>
+              <th className="px-3 py-2.5 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider w-12"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-slate-100">
             {filteredData.map((emp) => {
               const niveau = getNiveau(emp.score_total);
               return (
-                <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-3 py-2.5">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
                       emp.rang === 1 ? 'bg-[#cf292c] text-white' :
-                      emp.rang === 2 ? 'bg-gray-600 text-white' :
-                      emp.rang === 3 ? 'bg-amber-600 text-white' :
-                      'bg-gray-100 text-gray-600'
+                      emp.rang === 2 ? 'bg-gray-500 text-white' :
+                      emp.rang === 3 ? 'bg-amber-500 text-white' :
+                      'bg-slate-100 text-gray-600'
                     }`}>
                       {emp.rang}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">
                     <button
                       onClick={() => onEmployeClick(emp.id)}
-                      className="text-left hover:text-[#cf292c] transition-colors group"
+                      className="text-left hover:text-[#cf292c] transition-colors"
                     >
-                      <p className="font-medium text-gray-900 group-hover:text-[#cf292c]">{emp.prenom} {emp.nom}</p>
-                      <p className="text-xs text-gray-500">{emp.poste || 'Employé'}</p>
+                      <p className="font-medium text-gray-900 text-sm">{emp.prenom} {emp.nom}</p>
+                      <p className="text-[10px] text-gray-500">{emp.poste || 'Employé'}</p>
                     </button>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2.5">
                     <div className="flex flex-col items-center">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center ${niveau.bg}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${niveau.bg}`}>
                         {niveau.label === 'À surveiller' 
-                          ? <AlertTriangle className={`w-4 h-4 ${niveau.iconColor}`} />
-                          : <Medal className={`w-4 h-4 ${niveau.iconColor}`} />
+                          ? <AlertTriangle className={`w-3 h-3 ${niveau.iconColor}`} />
+                          : <Medal className={`w-3 h-3 ${niveau.iconColor}`} />
                         }
                       </div>
-                      <span className="text-[10px] text-gray-500 mt-0.5">{niveau.label}</span>
+                      <span className="text-[9px] text-gray-500 mt-0.5">{niveau.label}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-green-50 text-green-700 text-sm font-medium">
-                      <TrendingUp className="w-3 h-3" />
-                      +{emp.total_bonus || 0}
-                    </span>
+                  <td className="px-3 py-2.5 text-right">
+                    <span className="text-xs font-medium text-emerald-600">+{emp.total_bonus || 0}</span>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-[#cf292c] text-sm font-medium">
-                      <TrendingDown className="w-3 h-3" />
-                      -{emp.total_malus || 0}
-                    </span>
+                  <td className="px-3 py-2.5 text-right">
+                    <span className="text-xs font-medium text-[#cf292c]">-{emp.total_malus || 0}</span>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`font-bold text-lg ${
+                  <td className="px-3 py-2.5 text-right">
+                    <span className={`font-bold text-base ${
                       emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'
                     }`}>
                       {emp.score_total}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-3 py-2.5 text-center">
                     <button
                       onClick={() => onAttribuer(emp)}
-                      className="p-2 text-gray-400 hover:text-[#cf292c] hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-[#cf292c] hover:bg-red-50 rounded-lg transition-colors"
                       title="Attribuer des points"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
@@ -638,56 +570,48 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
         </table>
 
         {filteredData.length === 0 && (
-          <div className="p-12 text-center">
-            <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+          <div className="p-8 text-center">
+            <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
             <p className="text-gray-500 text-sm">Aucun employé trouvé</p>
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
-                className="mt-2 text-[#cf292c] hover:underline text-sm"
-              >
-                Effacer la recherche
-              </button>
-            )}
           </div>
         )}
       </div>
 
-      {/* Version Mobile - Cards */}
+      {/* Version Mobile - Cards compactes */}
       <div className="md:hidden space-y-2">
         {filteredData.map((emp) => {
           const niveau = getNiveau(emp.score_total);
           return (
             <div 
               key={emp.id} 
-              className="bg-white rounded-xl border border-gray-200 p-4"
+              className="bg-white rounded-xl border border-slate-200 p-3"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 {/* Rang */}
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
                   emp.rang === 1 ? 'bg-[#cf292c] text-white' :
-                  emp.rang === 2 ? 'bg-gray-600 text-white' :
-                  emp.rang === 3 ? 'bg-amber-600 text-white' :
-                  'bg-gray-100 text-gray-600'
+                  emp.rang === 2 ? 'bg-gray-500 text-white' :
+                  emp.rang === 3 ? 'bg-amber-500 text-white' :
+                  'bg-slate-100 text-gray-600'
                 }`}>
                   {emp.rang}
                 </div>
                 
                 {/* Infos */}
                 <div className="flex-1 min-w-0" onClick={() => onEmployeClick(emp.id)}>
-                  <p className="font-medium text-gray-900 truncate">{emp.prenom} {emp.nom}</p>
-                  <p className="text-xs text-gray-500">{emp.poste || 'Employé'}</p>
+                  <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
+                  <p className="text-[10px] text-gray-500">{emp.poste || 'Employé'}</p>
                 </div>
                 
-                {/* Score & Niveau */}
-                <div className="text-right flex items-center gap-2">
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center ${niveau.bg}`}>
+                {/* Score */}
+                <div className="text-right flex items-center gap-1.5">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${niveau.bg}`}>
                     {niveau.label === 'À surveiller' 
-                      ? <AlertTriangle className={`w-3.5 h-3.5 ${niveau.iconColor}`} />
-                      : <Medal className={`w-3.5 h-3.5 ${niveau.iconColor}`} />
+                      ? <AlertTriangle className={`w-3 h-3 ${niveau.iconColor}`} />
+                      : <Medal className={`w-3 h-3 ${niveau.iconColor}`} />
                     }
                   </div>
-                  <span className={`font-bold text-lg ${
+                  <span className={`font-bold text-base ${
                     emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'
                   }`}>
                     {emp.score_total}
@@ -696,21 +620,20 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
               </div>
               
               {/* Stats */}
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                <div className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-green-50">
-                  <TrendingUp className="w-3.5 h-3.5 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">+{emp.total_bonus || 0}</span>
+              <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-slate-100">
+                <div className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-50">
+                  <TrendingUp className="w-3 h-3 text-emerald-600" />
+                  <span className="text-xs font-medium text-emerald-700">+{emp.total_bonus || 0}</span>
                 </div>
                 <div className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-50">
-                  <TrendingDown className="w-3.5 h-3.5 text-[#cf292c]" />
-                  <span className="text-sm font-medium text-[#cf292c]">-{emp.total_malus || 0}</span>
+                  <TrendingDown className="w-3 h-3 text-[#cf292c]" />
+                  <span className="text-xs font-medium text-[#cf292c]">-{emp.total_malus || 0}</span>
                 </div>
                 <button
                   onClick={() => onAttribuer(emp)}
                   className="p-2 bg-[#cf292c] text-white rounded-lg hover:bg-[#b82329] transition-colors"
-                  title="Attribuer des points"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -718,8 +641,8 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
         })}
 
         {filteredData.length === 0 && (
-          <div className="p-10 text-center bg-white rounded-xl border border-gray-200">
-            <Users className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+          <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
+            <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
             <p className="text-gray-500 text-sm">Aucun employé trouvé</p>
           </div>
         )}

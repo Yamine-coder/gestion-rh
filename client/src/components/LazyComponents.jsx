@@ -18,11 +18,7 @@ export const LazyRapportHeuresEmploye = lazy(() =>
   import('./RapportHeuresEmploye')
 );
 
-export const LazyAnomaliesDebugPanel = lazy(() => 
-  process.env.NODE_ENV === 'development' 
-    ? import('./debug/AnomaliesDebugPanel')
-    : Promise.resolve({ default: () => null })
-);
+
 
 // Composants admin lourds
 export const LazyAdminAnomaliesPanel = lazy(() => 

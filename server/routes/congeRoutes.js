@@ -424,4 +424,23 @@ router.get('/config/justificatif-requis/:type', authenticateToken, (req, res) =>
   });
 });
 
+// ========================================
+// 📧 Admin: Forcer l'envoi du rappel des congés en attente > 48h
+// ========================================
+const congeReminderService = require('../services/congeReminderService');
+
+router.post('/admin/force-reminder', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    console.log('📧 [CONGES] Envoi forcé du rappel des congés en attente...');
+    const result = await congeReminderService.forceReminder();
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Erreur envoi rappel congés:', error);
+    res.status(500).json({ 
+      error: 'Erreur lors de l\'envoi du rappel',
+      details: error.message 
+    });
+  }
+});
+
 module.exports = router;

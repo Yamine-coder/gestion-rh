@@ -447,8 +447,158 @@ const testerConfigurationEmail = async () => {
   }
 };
 
+/**
+ * Envoie un email de rappel pour une tâche mémo
+ * @param {string} email - Email du destinataire
+ * @param {object} task - Tâche à rappeler
+ * @returns {Promise<object>} Résultat de l'opération
+ */
+const envoyerRappelMemo = async (email, task) => {
+  const restaurantName = 'Chez Antoine';
+  
+  try {
+    // Pas de limitation pour les rappels
+    console.log(`⏳ Envoi rappel mémo à ${email}...`);
+    const transporter = createTransporter();
+    
+    // Couleurs selon priorité
+    const priorityColors = {
+      high: { bg: '#FEE2E2', border: '#EF4444', text: '#B91C1C', label: '🔴 URGENT' },
+      normal: { bg: '#FEF3C7', border: '#F59E0B', text: '#B45309', label: '🟡 Normal' },
+      low: { bg: '#DBEAFE', border: '#3B82F6', text: '#1D4ED8', label: '🔵 Faible' }
+    };
+    const priority = priorityColors[task.priority] || priorityColors.normal;
+    
+    // Format date échéance
+    const dueDateStr = task.dueDate 
+      ? new Date(task.dueDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+    
+    // Emojis catégories
+    const categoryEmojis = {
+      'general': '📋', 'Général': '📋',
+      'urgent': '🔥', 'Urgent': '🔥',
+      'stocks': '📦', 'Stocks': '📦',
+      'rh': '👥', 'RH': '👥',
+      'fournisseur': '🚚', 'Fournisseur': '🚚',
+      'service': '🍽️', 'Service': '🍽️',
+      'admin': '📁', 'Admin': '📁',
+      'email': '✉️', 'Email': '✉️'
+    };
+    const categoryEmoji = categoryEmojis[task.category] || '📋';
+    
+    const mailOptions = {
+      from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `⏰ Rappel: ${task.text.substring(0, 50)}${task.text.length > 50 ? '...' : ''}`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="fr">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Rappel Mémo</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #fef2f2;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 480px; margin: 20px auto;">
+            <!-- Header avec logo et couleur charte -->
+            <tr>
+              <td style="background: linear-gradient(135deg, #cf292c 0%, #e63946 100%); padding: 24px 28px; border-radius: 16px 16px 0 0;">
+                <table width="100%">
+                  <tr>
+                    <td style="vertical-align: middle;">
+                      <div style="font-size: 28px; margin-bottom: 6px;">⏰</div>
+                      <h1 style="color: white; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;">Rappel Mémo Manager</h1>
+                      <p style="color: rgba(255,255,255,0.75); margin: 4px 0 0 0; font-size: 12px;">
+                        ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </td>
+                    <td style="text-align: right; vertical-align: top;">
+                      <div style="background: rgba(255,255,255,0.15); border-radius: 8px; padding: 8px 12px;">
+                        <span style="color: white; font-size: 11px; font-weight: 600;">🍽️ ${restaurantName}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            
+            <!-- Corps du message -->
+            <tr>
+              <td style="background: white; padding: 28px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 12px rgba(207,41,44,0.15);">
+                
+                <!-- Badge priorité + catégorie -->
+                <div style="margin-bottom: 18px;">
+                  <span style="background: ${priority.bg}; color: ${priority.text}; padding: 5px 12px; border-radius: 16px; font-size: 11px; font-weight: 600; border: 1px solid ${priority.border}; display: inline-block;">
+                    ${priority.label}
+                  </span>
+                  ${task.category ? `
+                  <span style="background: #f1f5f9; color: #475569; padding: 5px 12px; border-radius: 16px; font-size: 11px; font-weight: 500; margin-left: 6px; display: inline-block;">
+                    ${categoryEmoji} ${task.category}
+                  </span>
+                  ` : ''}
+                </div>
+                
+                <!-- Contenu de la tâche -->
+                <div style="background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%); border-left: 4px solid #cf292c; padding: 18px 20px; border-radius: 0 12px 12px 0; margin-bottom: 20px;">
+                  <p style="margin: 0; color: #1e293b; font-size: 15px; line-height: 1.6; font-weight: 500;">
+                    ${task.text}
+                  </p>
+                </div>
+                
+                ${dueDateStr ? `
+                <!-- Date d'échéance -->
+                <table width="100%" style="margin-bottom: 16px;">
+                  <tr>
+                    <td style="background: #fffbeb; border-radius: 10px; padding: 12px 16px;">
+                      <span style="color: #b45309; font-size: 12px; font-weight: 500;">
+                        📅 Échéance : <strong>${dueDateStr}</strong>
+                      </span>
+                    </td>
+                  </tr>
+                </table>
+                ` : ''}
+                
+                <!-- Séparateur -->
+                <div style="border-top: 1px dashed #e2e8f0; margin: 20px 0;"></div>
+                
+                <!-- Footer -->
+                <div style="text-align: center;">
+                  <p style="color: #94a3b8; font-size: 11px; margin: 0; line-height: 1.5;">
+                    📬 Ce rappel a été envoyé automatiquement<br>
+                    depuis votre <strong style="color: #cf292c;">Mémo Manager</strong>
+                  </p>
+                </div>
+              </td>
+            </tr>
+            
+            <!-- Pied de page -->
+            <tr>
+              <td style="padding: 16px; text-align: center;">
+                <p style="color: #9ca3af; font-size: 10px; margin: 0;">
+                  ${restaurantName} • Gestion RH
+                </p>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email de rappel envoyé:', info.messageId);
+    
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Erreur envoi rappel:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   envoyerEmailRecuperation,
   envoyerIdentifiants,
-  testerConfigurationEmail
+  testerConfigurationEmail,
+  envoyerRappelMemo
 };

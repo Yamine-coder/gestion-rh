@@ -1,0 +1,193 @@
+{
+  "nom": "Chez Antoine",
+  "slogan": "La cantine des petits comme des grands",
+  "depuis": 1970,
+  
+  "contact": {
+    "telephoneVincennes": "01 41 74 10 71",
+    "telephonePrincipal": "01 41 74 10 71",
+    "site": "https://maison-chezantoine.fr",
+    "instagram": "@chezantoine_vincennes"
+  },
+  
+  "livraison": {
+    "plateformes": ["Uber Eats", "Deliveroo", "Just Eat"],
+    "zonesLivraison": "Vincennes et communes limitrophes",
+    "delaiMoyen": "30-45 minutes selon l'affluence",
+    "conseilLivraison": "Préchauffez légèrement les pizzas si elles ont refroidi pendant le trajet",
+    "emballage": "Emballages adaptés pour garder la chaleur, cartons ventilés pour les pizzas"
+  },
+  
+  "restaurants": [
+    { "nom": "Vincennes", "halal": "partiel", "telephone": "01 41 74 10 71" },
+    { "nom": "L'Haÿ-les-Roses", "halal": "partiel", "telephone": "" },
+    { "nom": "Paris 12", "halal": "partiel", "telephone": "" },
+    { "nom": "Bondy", "halal": "100%", "telephone": "" }
+  ],
+  
+  "valeurs": [
+    "Générosité dans les portions",
+    "Prix accessibles pour tous", 
+    "Convivialité familiale",
+    "Tout fait maison",
+    "Ambiance cantine chaleureuse"
+  ],
+  
+  "notrePhilosophieCuisine": {
+    "pateAPizza": "Notre pâte est faite MAISON chaque jour, pas de pâte industrielle surgelée",
+    "cuisson": "Pizzas cuites au four, croustillantes et généreuses",
+    "pates": "Préparées À LA MINUTE à la commande, jamais précuites",
+    "parmesan": "Vrai PARMESAN REGIANO sur toutes nos pâtes, pas d'ersatz",
+    "sauces": "Sauce tomate sélectionnée, crème fraîche de qualité",
+    "fraicheur": "Ingrédients frais, rien de réchauffé, tout préparé à la commande",
+    "quantites": "Portions généreuses - c'est notre marque de fabrique depuis 1970"
+  },
+  
+  "carte": {
+    "pizzas": {
+      "description": "Pâte MAISON faite chaque jour, cuites au four. Généreuses et croustillantes.",
+      "tailles": {
+        "normale": { "diametre": "33cm", "personnes": "1 personne (ou 2 petits appétits)" },
+        "grande": { "diametre": "40cm", "supplement": 2.00, "personnes": "2 personnes ou 1 très gros appétit" }
+      },
+      "baseTomate": [
+        { "nom": "Margherita", "prix": 8.90, "ingredients": "Tomate, mozzarella, basilic" },
+        { "nom": "Napolitaine", "prix": 9.90, "ingredients": "Tomate, mozzarella, anchois, câpres, olives" },
+        { "nom": "Chèvre Miel", "prix": 9.90, "ingredients": "Tomate, mozzarella, chèvre, miel" },
+        { "nom": "Reine", "prix": 9.90, "ingredients": "Tomate, mozzarella, jambon, champignons" },
+        { "nom": "Fermière", "prix": 9.90, "ingredients": "Tomate, mozzarella, poulet*, champignons, poivrons" },
+        { "nom": "Paysanne", "prix": 10.90, "ingredients": "Tomate, mozzarella, pommes de terre, lardons, oignons" },
+        { "nom": "4 Saisons", "prix": 10.90, "ingredients": "Tomate, mozzarella, jambon, champignons, artichauts, olives" },
+        { "nom": "Orientale", "prix": 10.90, "ingredients": "Tomate, mozzarella, merguez*, poivrons, oignons" },
+        { "nom": "Mexicaine", "prix": 10.90, "ingredients": "Tomate, mozzarella, bœuf épicé*, poivrons, oignons" },
+        { "nom": "Végétarienne", "prix": 10.90, "ingredients": "Tomate, mozzarella, légumes de saison" }
+      ],
+      "baseCreme": [
+        { "nom": "Pizza d'Hanna", "prix": 11.90, "ingredients": "Crème, mozzarella, poulet*, champignons, curry" },
+        { "nom": "Normande", "prix": 11.90, "ingredients": "Crème, mozzarella, pommes, camembert, miel" },
+        { "nom": "Raclette", "prix": 11.90, "ingredients": "Crème, mozzarella, raclette, pommes de terre, lardons" },
+        { "nom": "Savoyarde", "prix": 11.90, "ingredients": "Crème, mozzarella, reblochon, pommes de terre, lardons" },
+        { "nom": "4 Fromages", "prix": 11.90, "ingredients": "Crème, mozzarella, chèvre, roquefort, emmental" },
+        { "nom": "Truffe", "prix": 11.90, "ingredients": "Crème, mozzarella, champignons, huile de truffe" },
+        { "nom": "Norvégienne", "prix": 11.90, "ingredients": "Crème, mozzarella, SAUMON fumé, aneth" }
+      ],
+      "options": [
+        { "nom": "Format 2 personnes", "supplement": 2.00, "detail": "Pizza XXL pour les gros appétits ou à partager" },
+        { "nom": "Garniture supplémentaire", "supplement": 1.50, "detail": "Ajoute n'importe quel ingrédient" },
+        { "nom": "Saumon ou Parme en supplément", "supplement": 3.00, "detail": "Ces ingrédients premium comptent double" }
+      ]
+    },
+    
+    "pates": {
+      "description": "Préparées À LA MINUTE avec du vrai PARMESAN REGIANO râpé. Jamais précuites.",
+      "qualite": "Pâtes fraîches, sauce généreuse, parmesan regiano (pas d'ersatz)",
+      "plats": [
+        { "nom": "Arrabiata", "prix": 8.90, "ingredients": "Sauce tomate épicée, ail, piment, parmesan" },
+        { "nom": "Napolitaine", "prix": 8.90, "ingredients": "Sauce tomate, basilic, parmesan" },
+        { "nom": "Fermière", "prix": 9.90, "ingredients": "Poulet*, champignons, crème, parmesan" },
+        { "nom": "Sicilienne", "prix": 9.90, "ingredients": "Tomate, aubergines, mozzarella, parmesan" },
+        { "nom": "Carbonara", "prix": 9.90, "ingredients": "Lardons, crème, œuf, parmesan - la vraie recette" },
+        { "nom": "3 Fromages", "prix": 9.90, "ingredients": "Crème, mozzarella, chèvre, parmesan" },
+        { "nom": "Bolognaise", "prix": 9.90, "ingredients": "Sauce tomate, viande de bœuf* hachée, parmesan" },
+        { "nom": "Saumon", "prix": 9.90, "ingredients": "Crème, SAUMON fumé, aneth, parmesan" },
+        { "nom": "Truffe", "prix": 9.90, "ingredients": "Crème, champignons, huile de truffe, parmesan" }
+      ]
+    },
+    
+    "salades": {
+      "description": "Fraîches et généreuses",
+      "plats": [
+        { "nom": "Végétarienne", "prix": 10.90, "ingredients": "Salade, tomates, concombre, maïs, olives" },
+        { "nom": "César", "prix": 10.90, "ingredients": "Salade romaine, poulet*, croûtons, parmesan, sauce César" },
+        { "nom": "Chèvre", "prix": 10.90, "ingredients": "Salade, chèvre chaud, miel, noix" }
+      ]
+    },
+    
+    "burratas": {
+      "description": "Burrata crémeuse italienne, sur fond de pâte à pizza ou avec pain à l'ail",
+      "plats": [
+        { "nom": "La Véritable", "prix": 6.90, "ingredients": "Burrata, tomates, basilic, huile d'olive" },
+        { "nom": "Di Parma", "prix": 13.90, "ingredients": "Burrata, jambon de Parme, roquette" },
+        { "nom": "Di Salmone", "prix": 13.90, "ingredients": "Burrata, saumon fumé, aneth" }
+      ]
+    },
+    
+    "empanadas": {
+      "description": "Chaussons garnis, parfaits en entrée ou accompagnement",
+      "plats": [
+        { "nom": "3 Fromages", "prix": 3.00 },
+        { "nom": "Bœuf épicé", "prix": 3.00, "halal": true },
+        { "nom": "Poulet thaï", "prix": 3.00, "halal": true }
+      ]
+    },
+    
+    "pains": [
+      { "nom": "Pain à l'ail", "prix": 2.50 },
+      { "nom": "Pain fromage", "prix": 3.00 }
+    ],
+    
+    "desserts": {
+      "description": "Tous faits MAISON",
+      "plats": [
+        { "nom": "Mi-cuit chocolat", "prix": 3.50, "detail": "Cœur coulant, fait maison" },
+        { "nom": "Panini Nutella", "prix": 3.00, "detail": "Chaud et gourmand" },
+        { "nom": "Tiramisu Nutella Café", "prix": 3.90, "detail": "Notre recette maison" },
+        { "nom": "Tiramisu Speculoos", "prix": 3.90, "detail": "Variante gourmande" }
+      ]
+    }
+  },
+  
+  "halal": {
+    "explication": "Les viandes marquées * (bœuf, poulet, merguez) sont HALAL dans tous nos restaurants",
+    "nonHalal": ["Jambon blanc", "Jambon de Parme", "Soubressade", "Lardons"],
+    "bondy": "Le restaurant de Bondy est 100% HALAL",
+    "indication": "Sur notre carte, les ingrédients halal sont marqués d'une astérisque *"
+  },
+  
+  "infosImportantes": [
+    "PAS de formule midi/soir - Prix à la carte uniquement",
+    "Système de commande sur borne pour plus de rapidité",
+    "Tout est préparé À LA MINUTE - rien de précuit ou réchauffé",
+    "En cas de forte affluence (week-end, soir), prévoir un peu d'attente car tout est fait frais",
+    "Possibilité de commander par téléphone pour éviter l'attente : 01 41 74 10 71",
+    "Viandes halal : bœuf, poulet, merguez (marqués *)",
+    "NON halal : jambon blanc, jambon de Parme, soubressade, lardons"
+  ],
+  
+  "pointsForts": [
+    "Pizzeria FAMILIALE depuis 1970 - plus de 50 ans d'expérience",
+    "Pâte à pizza faite MAISON chaque jour",
+    "Vrai PARMESAN REGIANO sur toutes les pâtes",
+    "Prix ACCESSIBLES : pizzas dès 8,90€, pâtes dès 8,90€",
+    "Portions GÉNÉREUSES - notre marque de fabrique",
+    "Tout préparé À LA MINUTE, jamais réchauffé",
+    "Ambiance conviviale type cantine familiale"
+  ],
+  
+  "problemesFrequents": {
+    "attente": "Tout est préparé à la minute, pas de plats précuits. Notre fraîcheur a un prix : quelques minutes de patience. En période d'affluence, vous pouvez appeler au 01 41 74 10 71 pour commander à l'avance.",
+    "portions": "Nos portions sont généreuses depuis 1970. Pour les très gros appétits : format 2 personnes (+2€ seulement) ou accompagnez d'empanadas (3€) ou pain à l'ail (2,50€).",
+    "saumon": "Le saumon est un ingrédient premium. Nos pâtes au saumon contiennent une portion généreuse de saumon fumé de qualité. Si vous trouvez la quantité insuffisante, signalez-le nous sur place, nous ajusterons.",
+    "prix": "Pizzas dès 8,90€, pâtes dès 8,90€ avec du vrai parmesan regiano. Des prix justes pour du 100% fait maison avec des ingrédients de qualité.",
+    "bruit": "L'ambiance animée fait partie de notre ADN de 'cantine familiale'. Pour plus de calme : venez en semaine ou en début de soirée.",
+    "bornes": "Les bornes de commande nous permettent de maintenir des prix bas tout en assurant rapidité et précision des commandes.",
+    "froid": "Tout est servi chaud sorti du four. Pour l'emporter, le transport peut refroidir le plat - dégustez rapidement ou réchauffez légèrement.",
+    "halal": "Nos viandes (bœuf, poulet, merguez) sont halal. Seuls le jambon, Parme, soubressade et lardons ne le sont pas - c'est clairement indiqué sur notre carte."
+  },
+  
+  "tonReponse": {
+    "style": "Professionnel mais chaleureux, jamais servile ni à genoux",
+    "maxMots": 80,
+    "signature": "— L'équipe Chez Antoine 🍕",
+    "telephone": "01 41 74 10 71",
+    "regles": [
+      "TOUJOURS commencer par 'Bonjour [Prénom]'",
+      "Ne JAMAIS s'écraser ni supplier - rester digne",
+      "Reconnaître les critiques légitimes avec sincérité",
+      "Défendre avec tact et arguments les critiques subjectives",
+      "TOUJOURS mentionner le téléphone 01 41 74 10 71 si problème grave",
+      "Ne jamais inventer de plats ou prix qui n'existent pas",
+      "Mettre en avant : fait maison, fraîcheur, parmesan regiano, depuis 1970"
+    ]
+  }
+}

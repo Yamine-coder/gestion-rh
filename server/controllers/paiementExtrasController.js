@@ -3,6 +3,19 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { toLocalDateString } = require('../utils/dateUtils');
 
+// Fonction helper pour parser les segments JSON
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  return [];
+}
+
 /**
  * Récupérer tous les paiements extras avec filtres
  * GET /api/paiements-extras?statut=a_payer&employe=123&dateDebut=2025-01-01&dateFin=2025-01-31
@@ -310,12 +323,16 @@ const marquerPaye = async (req, res) => {
           where: { id: paiement.shiftId }
         });
         
-        if (shift && shift.segments && Array.isArray(shift.segments)) {
-          const segments = [...shift.segments];
+        if (shift && shift.segments) {
+          // Parser les segments si nécessaire
+          let segments = typeof shift.segments === 'string' 
+            ? JSON.parse(shift.segments) 
+            : (Array.isArray(shift.segments) ? [...shift.segments] : []);
+          
           if (segments[paiement.segmentIndex] && segments[paiement.segmentIndex].isExtra) {
             segments[paiement.segmentIndex] = {
               ...segments[paiement.segmentIndex],
-              paymentStatus: 'payé',
+              paymentStatus: 'paye',
               paymentMethod: methodePaiement || 'especes',
               paymentDate: new Date().toISOString()
             };
@@ -325,7 +342,7 @@ const marquerPaye = async (req, res) => {
               data: { segments }
             });
             
-            console.log(`🔄 Segment ${paiement.segmentIndex} du shift ${paiement.shiftId} mis à jour: paymentStatus = 'payé'`);
+            console.log(`🔄 Segment ${paiement.segmentIndex} du shift ${paiement.shiftId} mis à jour: paymentStatus = 'paye'`);
           }
         }
       } catch (syncError) {
@@ -363,7 +380,7 @@ const marquerPaye = async (req, res) => {
 const annulerPaiement = async (req, res) => {
   try {
     const { id } = req.params;
-    const { raison } = req.body;
+    const { raison, forcerAnnulation } = req.body;
     const userId = req.userId || req.user?.userId || req.user?.id;
     
     const paiement = await prisma.paiementExtra.findUnique({
@@ -374,17 +391,29 @@ const annulerPaiement = async (req, res) => {
       return res.status(404).json({ error: 'Paiement non trouvé' });
     }
     
-    if (paiement.statut === 'paye') {
-      return res.status(400).json({ error: 'Impossible d\'annuler un paiement déjà effectué' });
+    // Permettre l'annulation d'un paiement déjà effectué si forcerAnnulation est true
+    if (paiement.statut === 'paye' && !forcerAnnulation) {
+      return res.status(400).json({ 
+        error: 'Ce paiement a déjà été effectué. Confirmez l\'annulation pour continuer.',
+        requireConfirmation: true
+      });
     }
     
-    // Trouver le shift associé
-    const shift = await prisma.shift.findFirst({
-      where: {
-        employeId: paiement.employeId,
-        date: paiement.date
-      }
-    });
+    // Trouver le shift associé (par shiftId ou par date/employé)
+    let shift = null;
+    if (paiement.shiftId) {
+      shift = await prisma.shift.findUnique({
+        where: { id: paiement.shiftId }
+      });
+    }
+    if (!shift) {
+      shift = await prisma.shift.findFirst({
+        where: {
+          employeId: paiement.employeId,
+          date: paiement.date
+        }
+      });
+    }
     
     // Déterminer si on peut retirer le segment
     const now = new Date();
@@ -399,8 +428,9 @@ const annulerPaiement = async (req, res) => {
     
     // Trouver le segment extra et son heure de fin
     let segmentExtra = null;
-    if (shift && Array.isArray(shift.segments)) {
-      segmentExtra = shift.segments.find(s => s.isExtra);
+    const segments = parseSegments(shift?.segments);
+    if (shift && segments.length > 0) {
+      segmentExtra = segments.find(s => s.isExtra);
     }
     
     // Vérifier si des pointages existent pour ce jour
@@ -471,11 +501,19 @@ const annulerPaiement = async (req, res) => {
       }
     }
     
-    // Retirer le segment si autorisé
-    if (canRemoveSegment && shift && Array.isArray(shift.segments) && (paiement.source === 'shift' || paiement.source === 'shift_extra')) {
-      const segmentsSansExtra = shift.segments.filter(s => !s.isExtra);
+    // Si forcerAnnulation est true, on retire TOUJOURS le segment (annulation manuelle confirmée)
+    if (forcerAnnulation && !canRemoveSegment) {
+      canRemoveSegment = true;
+      reason = 'Annulation forcée - segment retiré du planning';
+      console.log(`   ⚡ FORÇAGE → retrait segment autorisé malgré pointage`);
+    }
+    
+    // Retirer le segment si autorisé (pour toutes les sources qui créent un segment)
+    const sourcesAvecSegment = ['shift', 'shift_extra', 'anomalie_extra', 'anomalie_heures_sup'];
+    if (canRemoveSegment && shift && segments.length > 0 && sourcesAvecSegment.includes(paiement.source)) {
+      const segmentsSansExtra = segments.filter(s => !s.isExtra);
       
-      if (segmentsSansExtra.length !== shift.segments.length) {
+      if (segmentsSansExtra.length !== segments.length) {
         await prisma.shift.update({
           where: { id: shift.id },
           data: { segments: segmentsSansExtra }
@@ -484,10 +522,15 @@ const annulerPaiement = async (req, res) => {
       }
     }
     
+    // Si forçage d'annulation (paiement déjà effectué), ajouter une note
+    const noteForce = (paiement.statut === 'paye' && forcerAnnulation) 
+      ? ' [ANNULATION FORCÉE - Paiement déjà effectué]' 
+      : '';
+    
     // Mettre à jour le paiement
     const commentaire = raison 
-      ? `[Annulé] ${raison} (${reason})`
-      : `[Annulé] ${reason}`;
+      ? `[Annulé] ${raison} (${reason})${noteForce}`
+      : `[Annulé] ${reason}${noteForce}`;
     
     const paiementMAJ = await prisma.paiementExtra.update({
       where: { id: parseInt(id) },
@@ -497,15 +540,46 @@ const annulerPaiement = async (req, res) => {
       }
     });
     
-    console.log(`❌ Paiement ${id} annulé. Segment retiré: ${canRemoveSegment}`);
+    // 🔄 Si le paiement était lié à une anomalie, la remettre en "en_attente"
+    let anomalieReactivee = false;
+    if (paiement.anomalieId) {
+      const anomalie = await prisma.anomalie.findUnique({
+        where: { id: paiement.anomalieId }
+      });
+      if (anomalie && anomalie.statut === 'validee') {
+        // Nettoyer les détails liés au paiement
+        const details = typeof anomalie.details === 'object' ? { ...anomalie.details } : {};
+        delete details.payeEnExtra;
+        delete details.paiementExtraId;
+        delete details.segmentIndexExtra;
+        delete details.heuresPayeesExtra;
+        delete details.montantExtra;
+        delete details.tauxHoraire;
+        details.paiementAnnuleLe = new Date().toISOString();
+        details.paiementAnnuleRaison = raison || 'Annulation manuelle';
+        
+        await prisma.anomalie.update({
+          where: { id: paiement.anomalieId },
+          data: {
+            statut: 'en_attente',
+            details
+          }
+        });
+        anomalieReactivee = true;
+        console.log(`🔄 Anomalie #${paiement.anomalieId} remise en "en_attente"`);
+      }
+    }
+    
+    console.log(`❌ Paiement ${id} annulé. Segment retiré: ${canRemoveSegment}. Anomalie réactivée: ${anomalieReactivee}`);
     
     res.json({
       success: true,
       message: canRemoveSegment 
-        ? `Paiement annulé - ${reason}`
-        : `Paiement annulé (${reason})`,
+        ? `Paiement annulé - ${reason}${anomalieReactivee ? ' - Anomalie réactivée' : ''}`
+        : `Paiement annulé (${reason})${anomalieReactivee ? ' - Anomalie réactivée' : ''}`,
       paiement: paiementMAJ,
       segmentRetire: canRemoveSegment,
+      anomalieReactivee,
       raison: reason
     });
     

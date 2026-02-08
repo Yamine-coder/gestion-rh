@@ -3,58 +3,103 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { 
   AlertTriangle, Filter, RefreshCw, Search, Calendar, User, 
   X, Check, Clock, ChevronDown, AlertCircle, ChevronRight, Zap,
-  ClipboardList, Timer, Ban, UserX, HelpCircle, LogOut, Plus, MapPin, CheckCircle, XCircle, Wrench, AlertOctagon
+  ClipboardList, Timer, Ban, UserX, HelpCircle, LogOut, Plus, MapPin, CheckCircle, XCircle, Wrench, AlertOctagon,
+  Sparkles, TrendingUp, MoreHorizontal, Eye, FileText, UserCheck, Banknote
 } from 'lucide-react';
 import ModalTraiterAnomalie from './ModalTraiterAnomalie';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Couleur brand
-const BRAND_COLOR = '#cf292c';
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPOSANTS UI - Style Dashboard épuré (inspiré widgets dashboard)
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Utilitaires pour les anomalies
+// Mini KPI Card - Style léger comme les widgets dashboard
+const StatKpiCard = ({ label, value, icon: Icon, color = 'slate', active, onClick }) => {
+  const styles = {
+    slate: { text: 'text-slate-900', subtext: 'text-slate-500', icon: 'text-slate-400' },
+    amber: { text: 'text-amber-600', subtext: 'text-amber-600/70', icon: 'text-amber-500' },
+    emerald: { text: 'text-emerald-600', subtext: 'text-emerald-600/70', icon: 'text-emerald-500' },
+    red: { text: 'text-red-600', subtext: 'text-red-600/70', icon: 'text-red-500' },
+    rose: { text: 'text-rose-600', subtext: 'text-rose-600/70', icon: 'text-rose-500' }
+  };
+  const s = styles[color] || styles.slate;
+
+  return (
+    <div 
+      onClick={onClick}
+      className={`
+        bg-white rounded-xl border p-3 transition-all
+        ${active ? 'border-slate-300 shadow-sm' : 'border-slate-200 hover:border-slate-300'}
+        ${onClick ? 'cursor-pointer hover:shadow-sm' : ''}
+      `}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <div className={`text-2xl font-bold ${s.text}`}>{value}</div>
+          <div className={`text-xs ${s.subtext}`}>{label}</div>
+        </div>
+        <Icon className={`w-5 h-5 ${s.icon}`} />
+      </div>
+    </div>
+  );
+};
+
+// Utilitaires pour les anomalies - SIMPLIFIÉ (4 types seulement)
 const anomaliesUtils = {
   getTypeLabel: (type) => {
     const types = {
-      'retard': 'Retard',
-      'retard_critique': 'Retard critique',
-      'retard_attention': 'Retard',
-      'hors_plage': 'Hors plage',
-      'absence_totale': 'Absence totale',
-      'presence_non_prevue': 'Présence non prévue',
+      // Les 4 types actifs
+      'absence_injustifiee': 'Absence injustifiée',
+      'extra_potentiel': 'Extra potentiel',
+      'arrivee_anticipee_extra': 'Extra potentiel (arrivée)',
+      'arrivee_anticipee_auto': 'Arrivée anticipée',
+      'missing_out': 'Sortie manquante',
+      'missing_in': 'Entrée manquante',
       'pointage_hors_planning': 'Pointage hors planning',
-      'depart_anticipe': 'Départ anticipé',
-      'heures_sup': 'Heures supplémentaires',
-      'pointage_manquant': 'Pointage manquant'
+      // Rétro-compatibilité ancien type
+      'heures_sup_a_valider': 'Extra potentiel',
+      // Anciens types (rétro-compatibilité)
+      'absence_totale': 'Absence',
+      'absence_non_justifiee': 'Absence',
+      'heures_supplementaires': 'Heures sup',
+      'segment_non_pointe': 'Sortie manquante',
+      'pause_non_prise': 'Pause non prise'
     };
-    return types[type] || type;
+    return types[type] || type.replace(/_/g, ' ');
   },
   
   getTypeIcon: (type) => {
     const IconMap = {
-      'retard': Clock,
-      'retard_critique': AlertOctagon,
-      'retard_attention': Clock,
-      'hors_plage': MapPin,
-      'absence_totale': Ban,
-      'presence_non_prevue': HelpCircle,
+      // Les 4 types actifs
+      'absence_injustifiee': Ban,
+      'extra_potentiel': Banknote,
+      'arrivee_anticipee_extra': Banknote,
+      'arrivee_anticipee_auto': Clock,
+      'missing_out': LogOut,
+      'missing_in': UserX,
       'pointage_hors_planning': AlertCircle,
-      'depart_anticipe': LogOut,
-      'heures_sup': Plus,
-      'pointage_manquant': XCircle
+      // Rétro-compatibilité
+      'heures_sup_a_valider': Banknote,
+      // Anciens types
+      'absence_totale': Ban,
+      'heures_supplementaires': Clock,
+      'segment_non_pointe': LogOut,
+      'pause_non_prise': Clock
     };
     return IconMap[type] || AlertTriangle;
   },
   
   getGraviteStyle: (gravite) => {
     const styles = {
-      'critique': { bg: 'bg-red-50', color: 'text-red-700', border: 'border-red-200', dotColor: 'bg-red-500', badge: 'bg-red-100' },
-      'hors_plage': { bg: 'bg-orange-50', color: 'text-orange-700', border: 'border-orange-200', dotColor: 'bg-orange-500', badge: 'bg-orange-100' },
-      'attention': { bg: 'bg-amber-50', color: 'text-amber-700', border: 'border-amber-200', dotColor: 'bg-amber-500', badge: 'bg-amber-100' },
-      'a_valider': { bg: 'bg-blue-50', color: 'text-blue-700', border: 'border-blue-200', dotColor: 'bg-blue-500', badge: 'bg-blue-100' },
-      'info': { bg: 'bg-slate-50', color: 'text-slate-700', border: 'border-slate-200', dotColor: 'bg-slate-400', badge: 'bg-slate-100' }
+      // 4 niveaux de gravité standardisés
+      'critique': { bg: 'bg-red-50', color: 'text-red-700', border: 'border-red-200', dotColor: 'bg-red-500', badge: 'bg-red-100', label: 'Critique' },
+      'moyenne': { bg: 'bg-orange-50', color: 'text-orange-700', border: 'border-orange-200', dotColor: 'bg-orange-500', badge: 'bg-orange-100', label: 'Moyenne' },
+      'attention': { bg: 'bg-amber-50', color: 'text-amber-700', border: 'border-amber-200', dotColor: 'bg-amber-500', badge: 'bg-amber-100', label: 'Attention' },
+      'a_valider': { bg: 'bg-blue-50', color: 'text-blue-700', border: 'border-blue-200', dotColor: 'bg-blue-500', badge: 'bg-blue-100', label: 'À valider' },
+      'info': { bg: 'bg-slate-50', color: 'text-slate-700', border: 'border-slate-200', dotColor: 'bg-slate-400', badge: 'bg-slate-100', label: 'Info' }
     };
-    return styles[gravite] || styles['info'];
+    return styles[gravite] || styles['moyenne'];
   },
   
   getStatutStyle: (statut) => {
@@ -125,7 +170,8 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
       if (filtres.type) params.append('type', filtres.type);
       if (filtres.dateDebut) params.append('dateDebut', filtres.dateDebut);
       if (filtres.dateFin) params.append('dateFin', filtres.dateFin);
-      params.append('limit', '100');
+      // Augmenter la limite pour voir plus d'anomalies historiques
+      params.append('limit', '500');
 
       const response = await fetch(`${API_URL}/api/anomalies?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -245,30 +291,38 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
 
   // Contenu principal
   const content = (
-    <div className="flex flex-col h-full bg-slate-50">
-      {/* Header moderne avec gradient brand */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm">
-        <div className="px-6 py-5">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-4">
-              <div 
-                className="p-3 rounded-xl shadow-lg"
-                style={{ backgroundColor: BRAND_COLOR }}
-              >
-                <AlertTriangle className="h-6 w-6 text-white" />
+    <div className="flex flex-col h-full bg-white">
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          HEADER - Style Dashboard léger et épuré
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200">
+        {/* En-tête principal */}
+        <div className="px-5 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {/* Icône simple */}
+              <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5 text-[#cf292c]" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-slate-900">Gestion des Anomalies</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Suivi et validation des écarts de pointage</p>
+                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  Anomalies
+                  {stats.enAttente > 0 && (
+                    <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
+                      {stats.enAttente}
+                    </span>
+                  )}
+                </h2>
+                <p className="text-sm text-slate-500">Suivi et validation des écarts de pointage</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            
+            <div className="flex items-center gap-2">
               {/* Bouton actualiser */}
               <button
                 onClick={loadAnomalies}
                 disabled={loading}
-                className="px-4 py-2.5 text-sm font-medium text-white rounded-xl transition-all flex items-center gap-2 disabled:opacity-50 shadow-lg hover:shadow-xl active:scale-95"
-                style={{ backgroundColor: BRAND_COLOR }}
+                className="px-3 py-2 text-sm font-medium text-[#cf292c] bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 Actualiser
@@ -276,7 +330,7 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
               {embedded && onClose && (
                 <button
                   onClick={onClose}
-                  className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                  className="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -284,79 +338,77 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
             </div>
           </div>
 
-          {/* Statistiques */}
-          <div className="grid grid-cols-5 gap-3">
-            {[
-              { label: 'Total', value: stats.total, color: 'slate', Icon: ClipboardList },
-              { label: 'En attente', value: stats.enAttente, color: 'amber', Icon: Timer },
-              { label: 'Validées', value: stats.validees, color: 'emerald', Icon: CheckCircle },
-              { label: 'Refusées', value: stats.refusees, color: 'red', Icon: XCircle },
-              { label: 'Critiques', value: stats.critiques, color: 'rose', Icon: AlertOctagon }
-            ].map((stat, idx) => (
-              <div 
-                key={idx}
-                className={`relative overflow-hidden rounded-xl p-4 border transition-all hover:shadow-md cursor-default
-                  ${stat.color === 'slate' ? 'bg-white border-slate-200' : ''}
-                  ${stat.color === 'amber' ? 'bg-amber-50 border-amber-200' : ''}
-                  ${stat.color === 'emerald' ? 'bg-emerald-50 border-emerald-200' : ''}
-                  ${stat.color === 'red' ? 'bg-red-50 border-red-200' : ''}
-                  ${stat.color === 'rose' ? 'bg-rose-50 border-rose-200' : ''}
-                `}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className={`text-2xl font-bold
-                      ${stat.color === 'slate' ? 'text-slate-900' : ''}
-                      ${stat.color === 'amber' ? 'text-amber-700' : ''}
-                      ${stat.color === 'emerald' ? 'text-emerald-700' : ''}
-                      ${stat.color === 'red' ? 'text-red-700' : ''}
-                      ${stat.color === 'rose' ? 'text-rose-700' : ''}
-                    `}>
-                      {stat.value}
-                    </div>
-                    <div className={`text-xs font-medium mt-0.5
-                      ${stat.color === 'slate' ? 'text-slate-500' : ''}
-                      ${stat.color === 'amber' ? 'text-amber-600' : ''}
-                      ${stat.color === 'emerald' ? 'text-emerald-600' : ''}
-                      ${stat.color === 'red' ? 'text-red-600' : ''}
-                      ${stat.color === 'rose' ? 'text-rose-600' : ''}
-                    `}>
-                      {stat.label}
-                    </div>
-                  </div>
-                  <stat.Icon className={`w-5 h-5 opacity-60
-                    ${stat.color === 'slate' ? 'text-slate-500' : ''}
-                    ${stat.color === 'amber' ? 'text-amber-600' : ''}
-                    ${stat.color === 'emerald' ? 'text-emerald-600' : ''}
-                    ${stat.color === 'red' ? 'text-red-600' : ''}
-                    ${stat.color === 'rose' ? 'text-rose-600' : ''}
-                  `} />
-                </div>
-              </div>
-            ))}
+          {/* ═══ KPIs Cards - Style léger ═══ */}
+          <div className="grid grid-cols-5 gap-2 mt-4">
+            <StatKpiCard 
+              label="Total" 
+              value={stats.total} 
+              icon={ClipboardList} 
+              color="slate"
+            />
+            <StatKpiCard 
+              label="En attente" 
+              value={stats.enAttente} 
+              icon={Timer} 
+              color="amber"
+              active={filtres.statut === 'en_attente'}
+              onClick={() => handleFilterChange('statut', filtres.statut === 'en_attente' ? '' : 'en_attente')}
+            />
+            <StatKpiCard 
+              label="Validées" 
+              value={stats.validees} 
+              icon={CheckCircle} 
+              color="emerald"
+              active={filtres.statut === 'validee'}
+              onClick={() => handleFilterChange('statut', filtres.statut === 'validee' ? '' : 'validee')}
+            />
+            <StatKpiCard 
+              label="Refusées" 
+              value={stats.refusees} 
+              icon={XCircle} 
+              color="red"
+              active={filtres.statut === 'refusee'}
+              onClick={() => handleFilterChange('statut', filtres.statut === 'refusee' ? '' : 'refusee')}
+            />
+            <StatKpiCard 
+              label="Critiques" 
+              value={stats.critiques} 
+              icon={AlertOctagon} 
+              color="rose"
+              active={filtres.gravite === 'critique'}
+              onClick={() => handleFilterChange('gravite', filtres.gravite === 'critique' ? '' : 'critique')}
+            />
           </div>
         </div>
 
-        {/* Barre d'outils redesignée */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center gap-4 flex-wrap">
+        {/* ═══ Barre d'outils - Style léger ═══ */}
+        <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center gap-2 flex-wrap">
           {/* Recherche */}
-          <div className="relative flex-1 min-w-[250px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
               placeholder="Rechercher par nom, type..."
-              className="w-full pl-11 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-400 transition-all"
+              className="w-full pl-9 pr-4 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#cf292c]/30 focus:border-[#cf292c]/40 transition-all placeholder:text-slate-400"
             />
+            {recherche && (
+              <button 
+                onClick={() => setRecherche('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Filtres pills */}
+          {/* Filtres rapides pills */}
           <div className="flex items-center gap-2">
             <select
               value={filtres.statut}
               onChange={(e) => handleFilterChange('statut', e.target.value)}
-              className="px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-400 cursor-pointer"
+              className="px-2.5 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#cf292c]/30 cursor-pointer"
             >
               <option value="">Tous statuts</option>
               <option value="en_attente">En attente</option>
@@ -368,120 +420,120 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
             <select
               value={filtres.gravite}
               onChange={(e) => handleFilterChange('gravite', e.target.value)}
-              className="px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-400 cursor-pointer"
+              className="px-2.5 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#cf292c]/30 cursor-pointer"
             >
               <option value="">Toutes gravités</option>
               <option value="critique">Critique</option>
-              <option value="hors_plage">Hors plage</option>
+              <option value="moyenne">Moyenne</option>
               <option value="attention">Attention</option>
               <option value="a_valider">À valider</option>
             </select>
 
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-4 py-2.5 text-sm rounded-xl border flex items-center gap-2 transition-all ${
+              className={`px-2.5 py-1.5 text-sm rounded-lg border flex items-center gap-1.5 transition-colors ${
                 showFilters 
-                  ? 'bg-red-50 text-red-700 border-red-200' 
+                  ? 'bg-red-50 text-[#cf292c] border-red-200' 
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
               }`}
             >
-              <Filter className="w-4 h-4" />
-              Plus de filtres
+              <Filter className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Filtres</span>
               <ChevronDown className={`w-3 h-3 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
+
+            {(recherche || filtres.statut || filtres.gravite || filtres.type) && (
+              <button
+                onClick={resetFilters}
+                className="px-2 py-1.5 text-xs text-slate-500 hover:text-[#cf292c] transition-colors"
+              >
+                Réinitialiser
+              </button>
+            )}
           </div>
         </div>
 
         {/* Filtres avancés */}
         {showFilters && (
-          <div className="px-6 py-4 bg-white border-t border-slate-100">
-            <div className="grid grid-cols-3 gap-4">
+          <div className="px-5 py-3 bg-white border-t border-slate-100">
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Type d'anomalie</label>
+                <label className="block text-xs text-slate-500 mb-1">Type d'anomalie</label>
                 <select
                   value={filtres.type}
                   onChange={(e) => handleFilterChange('type', e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-400"
+                  className="w-full px-2.5 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#cf292c]/30"
                 >
                   <option value="">Tous types</option>
-                  <option value="retard">Retard</option>
-                  <option value="hors_plage">Hors plage</option>
-                  <option value="absence_totale">Absence totale</option>
-                  <option value="presence_non_prevue">Présence non prévue</option>
-                  <option value="depart_anticipe">Départ anticipé</option>
-                  <option value="heures_sup">Heures supplémentaires</option>
+                  <option value="absence_injustifiee">Absence injustifiée</option>
+                  <option value="extra_potentiel">Extra potentiel</option>
+                  <option value="missing_out">Sortie manquante</option>
+                  <option value="missing_in">Entrée manquante</option>
+                  <option value="pointage_hors_planning">Hors planning</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Date début</label>
+                <label className="block text-xs text-slate-500 mb-1">Date début</label>
                 <input
                   type="date"
                   value={filtres.dateDebut}
                   onChange={(e) => handleFilterChange('dateDebut', e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-400"
+                  className="w-full px-2.5 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#cf292c]/30"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">Date fin</label>
+                <label className="block text-xs text-slate-500 mb-1">Date fin</label>
                 <input
                   type="date"
                   value={filtres.dateFin}
                   onChange={(e) => handleFilterChange('dateFin', e.target.value)}
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-400"
+                  className="w-full px-2.5 py-1.5 text-sm bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#cf292c]/30"
                 />
               </div>
-            </div>
-            <div className="flex justify-end mt-4">
-              <button
-                onClick={resetFilters}
-                className="text-sm text-slate-500 hover:text-red-600 transition-colors"
-              >
-                Réinitialiser les filtres
-              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Liste des anomalies redesignée */}
-      <div className="flex-1 overflow-auto p-6">
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          LISTE DES ANOMALIES - Style Dashboard épuré
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-auto p-4 bg-slate-50">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="text-center">
-              <div 
-                className="w-12 h-12 border-4 border-slate-200 rounded-full animate-spin mx-auto mb-4"
-                style={{ borderTopColor: BRAND_COLOR }}
-              ></div>
-              <p className="text-slate-500 font-medium">Chargement des anomalies...</p>
+              <RefreshCw className="w-6 h-6 text-slate-400 animate-spin mx-auto mb-3" />
+              <p className="text-sm text-slate-500">Chargement...</p>
             </div>
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="text-center bg-red-50 rounded-2xl p-8 max-w-md">
-              <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-              <p className="text-red-700 font-medium mb-2">Erreur de chargement</p>
-              <p className="text-red-600 text-sm mb-4">{error}</p>
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center bg-white rounded-xl p-5 border border-slate-200">
+              <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
+              <p className="text-slate-700 font-medium text-sm mb-1">Erreur de chargement</p>
+              <p className="text-slate-500 text-xs mb-3">{error}</p>
               <button 
                 onClick={loadAnomalies} 
-                className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition"
+                className="px-3 py-1.5 text-xs font-medium text-[#cf292c] bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
               >
                 Réessayer
               </button>
             </div>
           </div>
         ) : anomaliesFiltrees.length === 0 ? (
-          <div className="flex items-center justify-center py-16">
+          <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle className="w-8 h-8 text-slate-400" />
+              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mx-auto mb-3">
+                <CheckCircle className="w-6 h-6 text-emerald-500" />
               </div>
-              <p className="text-slate-600 font-medium">Aucune anomalie trouvée</p>
-              <p className="text-slate-400 text-sm mt-1">Modifiez les filtres ou actualisez</p>
+              <p className="text-slate-700 font-medium">Aucune anomalie</p>
+              <p className="text-slate-400 text-sm mt-1">
+                {filtres.statut === 'en_attente' ? 'Tout est en ordre !' : 'Modifiez les filtres'}
+              </p>
               {(recherche || filtres.statut || filtres.gravite) && (
                 <button 
                   onClick={resetFilters} 
-                  className="mt-4 text-sm font-medium hover:underline"
-                  style={{ color: BRAND_COLOR }}
+                  className="mt-3 text-sm text-[#cf292c] hover:underline"
                 >
                   Réinitialiser les filtres
                 </button>
@@ -489,7 +541,7 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {anomaliesFiltrees.map((anomalie) => {
               const graviteStyle = anomaliesUtils.getGraviteStyle(anomalie.gravite);
               const statutStyle = anomaliesUtils.getStatutStyle(anomalie.statut);
@@ -499,124 +551,107 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
               return (
                 <div 
                   key={anomalie.id} 
-                  className={`bg-white rounded-xl border border-slate-200 p-4 transition-all hover:shadow-lg hover:border-slate-300 ${
-                    isProcessing ? 'opacity-50 pointer-events-none' : ''
+                  className={`bg-white rounded-xl border border-slate-200 p-4 transition-all hover:border-slate-300 hover:shadow-sm ${
+                    isProcessing ? 'opacity-50' : ''
                   }`}
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3">
                     {/* Avatar employé */}
-                    <div 
-                      className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md"
-                      style={{ backgroundColor: BRAND_COLOR }}
-                    >
+                    <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-[#cf292c] font-semibold text-sm">
                       {anomalie.employe?.prenom?.[0]}{anomalie.employe?.nom?.[0]}
                     </div>
 
                     {/* Contenu principal */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="font-semibold text-slate-900">
+                      {/* Ligne 1: Nom + Badges */}
+                      <div className="flex items-center flex-wrap gap-2 mb-1">
+                        <span className="font-medium text-slate-900">
                           {anomalie.employe?.prenom} {anomalie.employe?.nom}
                         </span>
                         
                         {/* Badge gravité */}
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${graviteStyle.badge} ${graviteStyle.color}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${graviteStyle.dotColor}`}></span>
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${graviteStyle.badge} ${graviteStyle.color}`}>
+                          <span className={`w-1 h-1 rounded-full ${graviteStyle.dotColor}`}></span>
                           {anomalie.gravite}
                         </span>
                         
-                        {/* Badge statut avec dot */}
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${statutStyle.bg} ${statutStyle.color}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${statutStyle.dot}`}></span>
+                        {/* Badge statut */}
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${statutStyle.bg} ${statutStyle.color}`}>
+                          <span className={`w-1 h-1 rounded-full ${statutStyle.dot}`}></span>
                           {statutStyle.label}
                         </span>
                       </div>
                       
-                      {/* Meta infos */}
-                      <div className="flex items-center gap-4 text-sm text-slate-500 mb-2">
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="w-4 h-4" />
+                      {/* Ligne 2: Date + Type */}
+                      <div className="flex items-center gap-2 text-xs text-slate-500 mb-1.5">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
                           {anomaliesUtils.formatDate(anomalie.date)}
                         </span>
-                        <span className="flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 rounded-lg text-xs font-medium text-slate-600">
-                          <TypeIcon className="w-3.5 h-3.5" />
+                        <span className="flex items-center gap-1 text-slate-600">
+                          <TypeIcon className="w-3 h-3" />
                           {anomaliesUtils.getTypeLabel(anomalie.type)}
                         </span>
                         {anomalie.details?.ecartMinutes && (
-                          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium ${
-                            anomalie.details.ecartMinutes > 0 
-                              ? 'bg-emerald-100 text-emerald-700' 
-                              : 'bg-red-100 text-red-700'
+                          <span className={`font-medium ${
+                            anomalie.details.ecartMinutes > 0 ? 'text-emerald-600' : 'text-red-600'
                           }`}>
-                            <Clock className="w-3 h-3" />
                             {anomalie.details.ecartMinutes > 0 ? '+' : ''}{anomalie.details.ecartMinutes} min
                           </span>
                         )}
                       </div>
 
                       {/* Description */}
-                      <p className="text-sm text-slate-600 line-clamp-2">
+                      <p className="text-sm text-slate-500 line-clamp-1">
                         {anomalie.description}
                       </p>
-
-                      {/* Commentaire */}
-                      {anomalie.commentaire && (
-                        <p className="text-xs text-slate-400 mt-2 italic flex items-center gap-1.5">
-                          <AlertCircle className="w-3 h-3" /> {anomalie.commentaire}
-                        </p>
-                      )}
                     </div>
 
                     {/* Actions */}
                     <div className="flex-shrink-0">
                       {anomalie.statut === 'en_attente' ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           {/* Bouton valider */}
                           <button
                             onClick={() => handleQuickAction(anomalie.id, 'valider')}
                             disabled={isProcessing}
-                            className="p-2.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-xl transition-all hover:scale-105 disabled:opacity-50"
-                            title="Valider rapidement"
+                            className="w-8 h-8 flex items-center justify-center text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Valider"
                           >
-                            <Check className="w-5 h-5" />
+                            <Check className="w-4 h-4" />
                           </button>
                           
                           {/* Bouton refuser */}
                           <button
                             onClick={() => handleQuickAction(anomalie.id, 'refuser')}
                             disabled={isProcessing}
-                            className="p-2.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all hover:scale-105 disabled:opacity-50"
-                            title="Refuser rapidement"
+                            className="w-8 h-8 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            title="Refuser"
                           >
-                            <X className="w-5 h-5" />
+                            <X className="w-4 h-4" />
                           </button>
                           
                           {/* Bouton détails */}
                           <button
                             onClick={() => setAnomalieSelectionnee(anomalie)}
                             disabled={isProcessing}
-                            className="p-2.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl transition-all hover:scale-105 disabled:opacity-50 flex items-center gap-1"
-                            title="Voir les détails et options avancées"
+                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                            title="Plus d'options"
                           >
-                            <Zap className="w-5 h-5" />
+                            <Zap className="w-4 h-4" />
                           </button>
                         </div>
                       ) : (
-                        <div className="text-right">
+                        <div className="flex items-center gap-2">
                           {anomalie.traiteur && (
-                            <p className="text-xs text-slate-500">
-                              Par <span className="font-medium">{anomalie.traiteur.prenom}</span>
-                            </p>
-                          )}
-                          {anomalie.traiteAt && (
-                            <p className="text-xs text-slate-400 mt-0.5">
-                              {anomaliesUtils.formatDateShort(anomalie.traiteAt)}
-                            </p>
+                            <span className="text-xs text-slate-400">
+                              par {anomalie.traiteur.prenom}
+                            </span>
                           )}
                           <button
                             onClick={() => setAnomalieSelectionnee(anomalie)}
-                            className="mt-2 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
-                            title="Voir les détails"
+                            className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Détails"
                           >
                             <ChevronRight className="w-4 h-4" />
                           </button>
@@ -631,7 +666,7 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
         )}
       </div>
 
-      {/* Modale de traitement détaillé */}
+      {/* Modale de traitement */}
       {anomalieSelectionnee && (
         <ModalTraiterAnomalie
           anomalie={anomalieSelectionnee}
@@ -652,7 +687,7 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
 
   // Mode standalone = page complète
   return (
-    <div className="h-full bg-slate-50">
+    <div className="h-full bg-slate-50/50">
       {content}
     </div>
   );

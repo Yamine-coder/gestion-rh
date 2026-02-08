@@ -4,6 +4,20 @@ const { authMiddleware: authenticateToken } = require('../middlewares/authMiddle
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const prisma = require('../prisma/client');
 const { toLocalDateString } = require('../utils/dateUtils');
+const { isEntree, isSortie, trouverPremiereEntree, trouverDerniereSortie } = require('../utils/pointageTypeUtils');
+
+// Fonction helper pour parser les segments JSON
+function parseSegments(segments) {
+  if (!segments) return [];
+  if (Array.isArray(segments)) return segments;
+  if (typeof segments === 'string') {
+    try {
+      const parsed = JSON.parse(segments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) { return []; }
+  }
+  return [];
+}
 
 // 📊 Génération du rapport de présence/absence pour une période donnée
 router.get('/presence/:startDate/:endDate', authenticateToken, isAdmin, async (req, res) => {
@@ -214,13 +228,14 @@ router.get('/ponctualite/:startDate/:endDate', authenticateToken, isAdmin, async
     });
 
     shifts.forEach(shift => {
-      if (!shift.segments || shift.segments.length === 0) return;
+      const segments = parseSegments(shift.segments);
+      if (segments.length === 0) return;
 
       const dateKey = toLocalDateString(shift.date);
       const pointagesKey = `${shift.employeId}-${dateKey}`;
       const pointagesJour = pointagesParEmployeJour.get(pointagesKey) || [];
 
-      shift.segments.forEach((segment, index) => {
+      segments.forEach((segment, index) => {
         if (segment.start && segment.end) {
           const analyse = analyserPonctualiteSegment(segment, pointagesJour, shift.date);
           
@@ -273,22 +288,21 @@ router.get('/heures-supplementaires/:startDate/:endDate', authenticateToken, isA
     const heuresSupplementaires = [];
 
     shifts.forEach(shift => {
-      if (shift.segments) {
-        shift.segments.forEach((segment, index) => {
-          if (segment.isExtra) {
-            heuresSupplementaires.push({
-              employe: shift.employe,
-              date: toLocalDateString(shift.date),
-              segment: segment,
-              heures: calculateSegmentHours(segment),
-              montant: segment.extraMontant || 0,
-              statut: segment.paymentStatus || 'à_payer',
-              validePar: segment.validatedBy,
-              valideAt: segment.validatedAt
-            });
-          }
-        });
-      }
+      const segments = parseSegments(shift.segments);
+      segments.forEach((segment, index) => {
+        if (segment.isExtra) {
+          heuresSupplementaires.push({
+            employe: shift.employe,
+            date: toLocalDateString(shift.date),
+            segment: segment,
+            heures: calculateSegmentHours(segment),
+            montant: segment.extraMontant || 0,
+            statut: segment.paymentStatus || 'à_payer',
+            validePar: segment.validatedBy,
+            valideAt: segment.validatedAt
+          });
+        }
+      });
     });
 
     const resume = {
@@ -336,7 +350,8 @@ function calculateRealHours(pointages) {
     const arrivee = pointages[i];
     const depart = pointages[i + 1];
     
-    if (arrivee.type === 'arrivee' && depart && depart.type === 'depart') {
+    // ✅ CORRIGÉ: Utiliser les helpers centralisés pour gérer TOUTES les variantes de types
+    if (isEntree(arrivee.type) && depart && isSortie(depart.type)) {
       const diffMs = new Date(depart.horodatage) - new Date(arrivee.horodatage);
       totalMinutes += diffMs / (1000 * 60);
     }
@@ -375,9 +390,9 @@ function analyserPonctualiteSegment(segment, pointagesJour, dateShift) {
     };
   }
   
-  // Trouver le premier pointage arrivée et le dernier départ
-  const premiereArrivee = pointagesJour.find(p => p.type === 'arrivee');
-  const dernierDepart = pointagesJour.filter(p => p.type === 'depart').pop();
+  // ✅ CORRIGÉ: Utiliser les helpers centralisés pour trouver entrées/sorties
+  const premiereArrivee = trouverPremiereEntree(pointagesJour);
+  const dernierDepart = trouverDerniereSortie(pointagesJour);
   
   if (!premiereArrivee) {
     return {

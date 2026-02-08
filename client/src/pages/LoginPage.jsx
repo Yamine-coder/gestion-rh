@@ -46,17 +46,20 @@ function LoginPage() {
         password,
       });
 
-      const { token, userId, role, firstLogin } = res.data;
+      const { token, userId, role, prenom, nom, firstLogin } = res.data;
 
       console.log('🔍 LOGIN DEBUG:');
       console.log('- userId reçu:', userId);
       console.log('- role reçu du serveur:', role);
+      console.log('- prenom:', prenom);
       console.log('- firstLogin:', firstLogin);
 
       setToken(token); // Utiliser setToken avec timestamp au lieu de localStorage.setItem direct
       // Normaliser le rôle en minuscule pour cohérence
       localStorage.setItem("role", role?.toLowerCase() || 'employee');
       if (userId) localStorage.setItem("userId", userId.toString());
+      if (prenom) localStorage.setItem("prenom", prenom);
+      if (nom) localStorage.setItem("nom", nom);
       
       // Vérification immédiate après stockage
       const storedRole = localStorage.getItem("role");

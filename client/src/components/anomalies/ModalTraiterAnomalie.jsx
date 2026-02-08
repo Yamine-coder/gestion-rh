@@ -1,7 +1,11 @@
 // client/src/components/anomalies/ModalTraiterAnomalie.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { X, AlertTriangle, CheckCircle, XCircle, MessageSquare, Banknote, Clock, TrendingDown, TrendingUp, AlertCircle, HelpCircle, Send, Eye, Users, Calendar, FileText, Zap } from 'lucide-react';
+import { 
+  X, AlertTriangle, CheckCircle, XCircle, MessageSquare, Banknote, Clock, 
+  TrendingDown, TrendingUp, AlertCircle, HelpCircle, Send, Eye, Users, 
+  Calendar, FileText, Zap, LogIn, LogOut, ArrowRight, Sparkles, CalendarPlus, Calculator 
+} from 'lucide-react';
 import { useTraiterAnomalie } from '../../hooks/useAnomalies';
 import { anomaliesUtils } from '../../hooks/useAnomalies';
 import { toLocalDateString } from '../../utils/parisTimeUtils';
@@ -243,10 +247,13 @@ export default function ModalTraiterAnomalie({
     }
   }, [anomalie?.employeId, anomalie?.employe?.id, anomalie?.date]);
 
-  // 🆕 Charger le bilan automatiquement pour les anomalies heures_sup
+  // 🆕 Charger le bilan automatiquement pour les anomalies extra_potentiel
   useEffect(() => {
-    const isTypeHeuresSup = anomalie?.type?.includes('heures_sup') || anomalie?.type?.includes('hors_plage');
-    if (isTypeHeuresSup && anomalie) {
+    const isTypeExtra = anomalie?.type?.includes('extra_potentiel') || 
+                        anomalie?.type?.includes('heures_sup') || 
+                        anomalie?.type?.includes('hors_plage') ||
+                        anomalie?.type?.includes('arrivee_anticipee_extra');
+    if (isTypeExtra && anomalie) {
       fetchBilanJournalier();
     } else {
       setBilanJournalier(null);
@@ -334,11 +341,14 @@ export default function ModalTraiterAnomalie({
 
   // Initialiser les valeurs selon le type d'anomalie
   useEffect(() => {
-    if (anomalie?.type?.includes('heures_sup') || anomalie?.type?.includes('hors_plage')) {
+    if (anomalie?.type?.includes('extra_potentiel') || anomalie?.type?.includes('heures_sup') || anomalie?.type?.includes('hors_plage') || anomalie?.type?.includes('arrivee_anticipee_extra')) {
       // Calculer les heures à partir des détails de l'anomalie
       // Chercher dans plusieurs emplacements possibles et forcer en nombre
       const heuresRaw = anomalie.heuresExtra || 
+        anomalie.details?.heuresSup ||
         anomalie.details?.heuresSupp ||
+        (anomalie.details?.minutesEnAvance ? anomalie.details.minutesEnAvance / 60 : 0) ||
+        (anomalie.details?.minutesApres ? anomalie.details.minutesApres / 60 : 0) ||
         (anomalie.details?.ecartMinutes ? Math.abs(anomalie.details.ecartMinutes) / 60 : 0) ||
         (anomalie.details?.minutesEcart ? Math.abs(anomalie.details.minutesEcart) / 60 : 0) ||
         (anomalie.ecartMinutes ? Math.abs(anomalie.ecartMinutes) / 60 : 0) ||
@@ -347,7 +357,7 @@ export default function ModalTraiterAnomalie({
       // Forcer la conversion en nombre (Decimal de Prisma -> Number)
       const heures = Number(heuresRaw) || 0;
       
-      console.log('🕐 Heures supp calculées:', { heures, anomalie: anomalie?.id, details: anomalie?.details });
+      console.log('🕐 Heures extra calculées:', { heures, anomalie: anomalie?.id, details: anomalie?.details });
       
       if (heures > 0) {
         setHeuresExtra(heures.toFixed(2));
@@ -419,8 +429,8 @@ export default function ModalTraiterAnomalie({
         commentaire: commentaire.trim() || undefined
       };
 
-      // Pour les heures supplémentaires, inclure les montants
-      if (anomalie.type.includes('heures_sup') || anomalie.type.includes('hors_plage')) {
+      // Pour les extras potentiels, inclure les montants
+      if (anomalie.type.includes('extra_potentiel') || anomalie.type.includes('heures_sup') || anomalie.type.includes('hors_plage')) {
         if (heuresExtra) options.heuresExtra = parseFloat(heuresExtra);
         if (montantExtra) options.montantExtra = parseFloat(montantExtra);
       }
@@ -568,42 +578,98 @@ export default function ModalTraiterAnomalie({
     }
   };
 
-  // Vérifie si l'anomalie permet le paiement en extra (heures sup uniquement ET solde positif)
-  const isHeuresSup = anomalie?.type?.includes('heures_sup') || anomalie?.type?.includes('hors_plage');
+  // Vérifie si l'anomalie permet le paiement en extra (extra_potentiel, arrivee_anticipee_extra ou heures_sup)
+  const isExtraPotentiel = anomalie?.type?.includes('extra_potentiel') || 
+                           anomalie?.type?.includes('arrivee_anticipee_extra') || 
+                           anomalie?.type?.includes('heures_sup') || 
+                           anomalie?.type?.includes('hors_plage');
   const soldePositif = !bilanJournalier || bilanJournalier.soldeNet >= 0;
-  const canPayExtra = isHeuresSup && soldePositif;
+  const canPayExtra = isExtraPotentiel && soldePositif;
   
   // 🆕 Vérifie si l'anomalie peut être convertie en extra (pointage hors planning)
   const typesConvertiblesExtra = ['pointage_hors_planning', 'presence_non_prevue', 'pointage_pendant_conge'];
   const canConvertToExtra = typesConvertiblesExtra.includes(anomalie?.type);
+  
+  // 🆕 Détecter le type d'anomalie pour adapter les actions
+  const isAbsence = anomalie?.type?.includes('absence') || anomalie?.type?.includes('segment_non_pointe');
+  const isPointageManquant = anomalie?.type?.includes('missing_in') || anomalie?.type?.includes('missing_out');
+  const isHorsPlanning = anomalie?.type?.includes('pointage_hors_planning') || anomalie?.type?.includes('presence_non_prevue');
+  
+  // 🆕 Actions adaptées selon le type d'anomalie
+  const getActionsForType = () => {
+    // Extra potentiel (départ tardif OU arrivée anticipée) : actions spécifiques avec Payer Extra en premier
+    if (isExtraPotentiel) {
+      const isArrivee = anomalie?.type?.includes('arrivee_anticipee');
+      return [
+        { value: 'payer_extra', label: 'Payer en Extra', description: isArrivee ? 'Payer l\'arrivée anticipée' : 'Créer un paiement espèces', icon: Banknote, color: 'purple' },
+        { value: 'refuser', label: 'Refuser', description: 'Ne pas payer (travail non demandé)', icon: XCircle, color: 'red' },
+        { value: 'corriger', label: 'Corriger', description: 'Erreur de planning', icon: AlertTriangle, color: 'orange' },
+      ];
+    }
+    
+    if (isAbsence) {
+      return [
+        { value: 'justifier', label: 'Justifier', description: 'Absence justifiée (maladie, CP, etc.)', icon: CheckCircle, color: 'emerald' },
+        { value: 'refuser', label: 'Injustifiée', description: 'Absence non justifiée (avertissement)', icon: XCircle, color: 'red' },
+        { value: 'corriger', label: 'Corriger', description: 'Erreur de planning', icon: AlertTriangle, color: 'orange' },
+        { value: 'reporter', label: 'Reporter', description: 'Demander explication à l\'employé', icon: HelpCircle, color: 'amber' },
+      ];
+    }
+    
+    if (isPointageManquant) {
+      return [
+        { value: 'corriger', label: 'Compléter', description: 'Ajouter l\'heure manquante', icon: CheckCircle, color: 'emerald' },
+        { value: 'ignorer', label: 'Ignorer', description: 'Laisser tel quel', icon: XCircle, color: 'slate' },
+        { value: 'reporter', label: 'Reporter', description: 'Demander l\'heure à l\'employé', icon: HelpCircle, color: 'amber' },
+      ];
+    }
+    
+    if (isHorsPlanning) {
+      return [
+        { value: 'valider', label: 'Régulariser', description: 'Créer le shift et comptabiliser les heures', icon: CheckCircle, color: 'emerald' },
+        { value: 'payer_extra', label: 'Payer en Extra', description: 'Payer ces heures en espèces (hors bulletin)', icon: Banknote, color: 'purple' },
+        { value: 'refuser', label: 'Rejeter', description: 'Ne pas comptabiliser (travail non autorisé)', icon: XCircle, color: 'red' },
+        { value: 'reporter', label: 'Vérifier', description: 'Demander justification à l\'employé', icon: HelpCircle, color: 'amber' },
+      ];
+    }
+    
+    // Fallback pour autres types (anciens types qui pourraient encore exister)
+    return [
+      { value: 'valider', label: 'Valider', description: 'Accepter', icon: CheckCircle, color: 'emerald' },
+      { value: 'refuser', label: 'Refuser', description: 'Rejeter', icon: XCircle, color: 'red' },
+      { value: 'corriger', label: 'Corriger', description: 'Modifier', icon: AlertTriangle, color: 'orange' },
+      { value: 'reporter', label: 'Reporter', description: 'Vérifier plus tard', icon: HelpCircle, color: 'amber' },
+    ];
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div 
+        className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-slate-200"
+        onClick={e => e.stopPropagation()}
+      >
         
-        {/* En-tête moderne */}
-        <div className="flex-shrink-0 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
-          <div className="px-6 py-5">
+        {/* En-tête - Style léger */}
+        <div className="flex-shrink-0 bg-white border-b border-slate-100">
+          <div className="px-5 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div 
-                  className="p-3 rounded-xl shadow-lg"
-                  style={{ backgroundColor: BRAND_COLOR }}
-                >
-                  <Zap className="h-6 w-6 text-white" />
+              <div className="flex items-center gap-3">
+                {/* Icône simple */}
+                <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
+                  <Zap className="h-5 w-5 text-red-600" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base font-semibold text-slate-800">
                     Traiter l'anomalie
                   </h2>
-                  <p className="text-sm text-slate-500 mt-0.5">
+                  <p className="text-sm text-slate-500">
                     {anomalie.employe?.prenom} {anomalie.employe?.nom} • {anomaliesUtils.formatDate(anomalie.date)}
                   </p>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-all"
+                className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -612,56 +678,55 @@ export default function ModalTraiterAnomalie({
         </div>
 
         {/* Contenu scrollable */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-5">
           
-          {/* Carte anomalie */}
-          <div className={`p-5 rounded-xl border-2 mb-6 ${graviteStyle.bg} ${graviteStyle.border}`}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${statutStyle.bg} ${statutStyle.color}`}>
-                  <span className="w-2 h-2 rounded-full bg-current opacity-60"></span>
-                  {statutStyle.label}
-                </span>
-                <span className="text-sm font-medium text-slate-700 bg-white/80 px-3 py-1.5 rounded-lg">
-                  {typeLabel}
-                </span>
-              </div>
-              <span className="text-xs text-slate-500 bg-white/50 px-2 py-1 rounded">
+          {/* Carte anomalie - Style léger */}
+          <div className="p-4 rounded-lg border border-slate-200 bg-slate-50/50 mb-4">
+            {/* Badges statut + type */}
+            <div className="flex items-center flex-wrap gap-2 mb-2">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${statutStyle.bg} ${statutStyle.color}`}>
+                {statutStyle.label}
+              </span>
+              <span className="text-xs text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                {typeLabel}
+              </span>
+              <span className="text-xs text-slate-400 ml-auto">
                 {anomaliesUtils.formatTime(anomalie.createdAt)}
               </span>
             </div>
             
-            <p className="text-sm text-slate-700 mb-4 leading-relaxed">
+            {/* Description */}
+            <p className="text-sm text-slate-600 mb-3">
               {anomalie.description}
             </p>
 
             {/* Détails en grille */}
             {anomalie.details && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {anomalie.details.ecartMinutes && (
-                  <div className="bg-white/80 rounded-lg p-3 text-center">
-                    <div className="text-xs text-slate-500 mb-1">Écart</div>
-                    <div className={`text-lg font-bold ${anomalie.details.ecartMinutes > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                  <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
+                    <div className="text-[10px] text-slate-400 uppercase mb-0.5">Écart</div>
+                    <div className={`text-sm font-semibold ${anomalie.details.ecartMinutes > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                       {anomalie.details.ecartMinutes > 0 ? '+' : ''}{anomalie.details.ecartMinutes} min
                     </div>
                   </div>
                 )}
                 {anomalie.details.heurePrevu && (
-                  <div className="bg-white/80 rounded-lg p-3 text-center">
-                    <div className="text-xs text-slate-500 mb-1">Prévu</div>
-                    <div className="text-lg font-bold text-slate-700">{anomalie.details.heurePrevu}</div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
+                    <div className="text-[10px] text-slate-400 uppercase mb-0.5">Prévu</div>
+                    <div className="text-sm font-semibold text-slate-700">{anomalie.details.heurePrevu}</div>
                   </div>
                 )}
                 {anomalie.details.heureReelle && (
-                  <div className="bg-white/80 rounded-lg p-3 text-center">
-                    <div className="text-xs text-slate-500 mb-1">Réel</div>
-                    <div className="text-lg font-bold text-slate-700">{anomalie.details.heureReelle}</div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
+                    <div className="text-[10px] text-slate-400 uppercase mb-0.5">Réel</div>
+                    <div className="text-sm font-semibold text-slate-700">{anomalie.details.heureReelle}</div>
                   </div>
                 )}
                 {anomalie.heuresExtra && (
-                  <div className="bg-white/80 rounded-lg p-3 text-center">
-                    <div className="text-xs text-slate-500 mb-1">Heures sup</div>
-                    <div className="text-lg font-bold text-blue-600">{Number(anomalie.heuresExtra).toFixed(2)}h</div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
+                    <div className="text-[10px] text-slate-400 uppercase mb-0.5">Heures sup</div>
+                    <div className="text-sm font-semibold text-blue-600">{Number(anomalie.heuresExtra).toFixed(2)}h</div>
                   </div>
                 )}
               </div>
@@ -671,26 +736,26 @@ export default function ModalTraiterAnomalie({
             <button
               onClick={fetchContexteJour}
               disabled={loadingContexte}
-              className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-white hover:bg-slate-50 text-slate-700 rounded-xl border border-slate-200 transition-all"
+              className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-slate-500 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors disabled:opacity-50"
             >
               <Eye className="w-4 h-4" />
               {loadingContexte ? 'Chargement...' : 'Voir le contexte du jour'}
             </button>
           </div>
 
-          {/* 🆕 Panneau contexte du jour */}
+          {/* Panneau contexte du jour */}
           {showContexte && contexteJour && (
-            <div className="mb-6 p-4 rounded-lg border bg-slate-50 border-slate-200">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
+            <div className="mb-4 p-3 rounded-lg border border-slate-200 bg-white">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
                   Contexte du {contexteJour.jourSemaine} {contexteJour.date}
                 </span>
                 <button 
                   onClick={() => setShowContexte(false)}
-                  className="text-slate-400 hover:text-slate-600"
+                  className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-500 hover:bg-slate-100 rounded transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
               
@@ -770,42 +835,42 @@ export default function ModalTraiterAnomalie({
               )}
             </div>
           )}
-          {isHeuresSup && (
-            <div className={`mb-6 p-5 rounded-xl border-2 ${
+          {isExtraPotentiel && (
+            <div className={`mb-4 p-4 rounded-lg border ${
               loadingBilan ? 'bg-slate-50 border-slate-200' :
-              bilanJournalier?.soldeNet >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
+              bilanJournalier?.soldeNet >= 0 ? 'bg-emerald-50/50 border-emerald-200' : 'bg-red-50/50 border-red-200'
             }`}>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <Clock className="w-5 h-5" />
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-slate-400" />
                   Bilan du {anomaliesUtils.formatDate(anomalie.date)}
                 </span>
                 {loadingBilan && (
-                  <span className="text-xs text-slate-500 animate-pulse flex items-center gap-2">
-                    <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                    Calcul en cours...
+                  <span className="text-xs text-slate-400 flex items-center gap-1">
+                    <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin"></div>
+                    Calcul...
                   </span>
                 )}
               </div>
               
               {bilanJournalier && !loadingBilan && (
                 <>
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="text-center p-4 bg-white rounded-xl shadow-sm">
-                      <div className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Prévu</div>
-                      <div className="text-2xl font-bold text-slate-700">
+                  <div className="grid grid-cols-3 gap-3 mb-3">
+                    <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
+                      <div className="text-[10px] text-slate-400 uppercase mb-0.5">Prévu</div>
+                      <div className="text-lg font-semibold text-slate-700">
                         {(bilanJournalier.minutesPrevues / 60 || 0).toFixed(1)}h
                       </div>
                     </div>
-                    <div className="text-center p-4 bg-white rounded-xl shadow-sm">
-                      <div className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Travaillé</div>
-                      <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
+                      <div className="text-[10px] text-slate-400 uppercase mb-0.5">Travaillé</div>
+                      <div className="text-lg font-semibold text-blue-600">
                         {(bilanJournalier.minutesTravaillees / 60 || 0).toFixed(1)}h
                       </div>
                     </div>
-                    <div className="text-center p-4 bg-white rounded-xl shadow-sm">
-                      <div className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-1">Solde</div>
-                      <div className={`text-2xl font-bold ${
+                    <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
+                      <div className="text-[10px] text-slate-400 uppercase mb-0.5">Solde</div>
+                      <div className={`text-lg font-semibold ${
                         bilanJournalier.soldeNet >= 0 ? 'text-emerald-600' : 'text-red-600'
                       }`}>
                         {bilanJournalier.soldeNet >= 0 ? '+' : ''}{bilanJournalier.soldeNet?.toFixed(2) || 0}h
@@ -815,14 +880,14 @@ export default function ModalTraiterAnomalie({
                   
                   {/* Message selon le solde */}
                   {bilanJournalier.soldeNet >= 0 ? (
-                    <div className="flex items-center gap-3 p-3 bg-emerald-100/50 rounded-xl">
-                      <CheckCircle className="w-5 h-5 text-emerald-600" />
-                      <span className="text-sm text-emerald-700 font-medium">Solde positif — Paiement extra recommandé</span>
+                    <div className="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      <span className="text-xs text-emerald-700">Solde positif — Paiement extra recommandé</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-3 p-3 bg-red-100/50 rounded-xl">
-                      <XCircle className="w-5 h-5 text-red-600" />
-                      <span className="text-sm text-red-700 font-medium">Solde négatif — Pas d'extra net ce jour</span>
+                    <div className="flex items-center gap-2 p-2 bg-red-50 rounded-lg border border-red-200">
+                      <XCircle className="w-4 h-4 text-red-500" />
+                      <span className="text-xs text-red-700">Solde négatif — Pas d'extra net ce jour</span>
                     </div>
                   )}
                 </>
@@ -833,60 +898,43 @@ export default function ModalTraiterAnomalie({
           {/* Formulaire de traitement */}
           <form onSubmit={handleSubmit}>
             
-            {/* Choix de l'action - Design moderne */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-slate-700 mb-3">
+            {/* Choix de l'action */}
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-600 mb-2">
                 Action à effectuer
                 {estDejaTraitee && (
-                  <span className="ml-2 text-amber-600 text-xs font-normal">
-                    Cette anomalie a déjà été traitée ({anomalie.statut})
+                  <span className="ml-2 text-amber-500 text-xs font-normal">
+                    (déjà traitée: {anomalie.statut})
                   </span>
                 )}
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { value: 'valider', label: 'Valider', description: 'Accepter dans la fiche de paie', icon: CheckCircle, color: 'emerald' },
-                  { value: 'refuser', label: 'Refuser', description: 'Heures non comptabilisées', icon: XCircle, color: 'red' },
-                  { value: 'corriger', label: 'Corriger', description: 'Erreur administrative', icon: AlertTriangle, color: 'orange' },
-                  { value: 'reporter', label: 'Reporter', description: 'Besoin de vérification', icon: HelpCircle, color: 'amber' },
-                  ...(canPayExtra ? [{ 
-                    value: 'payer_extra', 
-                    label: 'Payer en Extra', 
-                    description: 'Espèces hors fiche de paie',
-                    icon: Banknote,
-                    color: 'purple'
-                  }] : []),
-                  ...(canConvertToExtra ? [{ 
-                    value: 'convertir_extra', 
-                    label: 'Convertir en Extra', 
-                    description: 'Transformer en heures "au noir"',
-                    icon: TrendingUp,
-                    color: 'teal'
-                  }] : [])
-                ].map((option) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {getActionsForType().map((option) => {
                   const Icon = option.icon;
                   const isSelected = action === option.value;
                   const colorClasses = {
-                    emerald: isSelected ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50',
-                    red: isSelected ? 'border-red-500 bg-red-50 ring-2 ring-red-500/20' : 'border-slate-200 hover:border-red-300 hover:bg-red-50/50',
-                    orange: isSelected ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/20' : 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/50',
-                    amber: isSelected ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-500/20' : 'border-slate-200 hover:border-amber-300 hover:bg-amber-50/50',
-                    purple: isSelected ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-500/20' : 'border-purple-200 bg-purple-50/30 hover:border-purple-300 hover:bg-purple-50',
-                    teal: isSelected ? 'border-teal-500 bg-teal-50 ring-2 ring-teal-500/20' : 'border-teal-200 bg-teal-50/30 hover:border-teal-300 hover:bg-teal-50'
+                    emerald: isSelected ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30',
+                    red: isSelected ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-red-300 hover:bg-red-50/30',
+                    orange: isSelected ? 'border-orange-400 bg-orange-50' : 'border-slate-200 hover:border-orange-300 hover:bg-orange-50/30',
+                    amber: isSelected ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-amber-300 hover:bg-amber-50/30',
+                    purple: isSelected ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:border-purple-300 hover:bg-purple-50/30',
+                    teal: isSelected ? 'border-teal-400 bg-teal-50' : 'border-slate-200 hover:border-teal-300 hover:bg-teal-50/30',
+                    slate: isSelected ? 'border-slate-400 bg-slate-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/30'
                   };
                   const iconColors = {
-                    emerald: 'text-emerald-600',
-                    red: 'text-red-600',
-                    orange: 'text-orange-600',
-                    amber: 'text-amber-600',
-                    purple: 'text-purple-600',
-                    teal: 'text-teal-600'
+                    emerald: 'text-emerald-500',
+                    red: 'text-red-500',
+                    orange: 'text-orange-500',
+                    amber: 'text-amber-500',
+                    purple: 'text-purple-500',
+                    teal: 'text-teal-500',
+                    slate: 'text-slate-500'
                   };
                   
                   return (
                     <label
                       key={option.value}
-                      className={`${estDejaTraitee && action !== option.value ? 'opacity-50' : ''} cursor-pointer border-2 rounded-xl p-4 transition-all ${colorClasses[option.color]}`}
+                      className={`${estDejaTraitee && action !== option.value ? 'opacity-50' : ''} cursor-pointer border rounded-lg p-3 transition-colors ${colorClasses[option.color]}`}
                     >
                       <input
                         type="radio"
@@ -897,13 +945,11 @@ export default function ModalTraiterAnomalie({
                         disabled={estDejaTraitee && action !== option.value}
                         className="sr-only"
                       />
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-white shadow-sm' : 'bg-white/50'}`}>
-                          <Icon className={`w-5 h-5 ${iconColors[option.color]}`} />
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <Icon className={`w-4 h-4 ${iconColors[option.color]}`} />
                         <div>
-                          <div className="font-semibold text-slate-800">{option.label}</div>
-                          <p className="text-xs text-slate-500">{option.description}</p>
+                          <div className="text-sm font-medium text-slate-700">{option.label}</div>
+                          <p className="text-xs text-slate-400">{option.description}</p>
                         </div>
                       </div>
                     </label>
@@ -912,41 +958,85 @@ export default function ModalTraiterAnomalie({
               </div>
             </div>
 
-            {/* Champs spécifiques aux heures supplémentaires */}
-            {action === 'valider' && anomalie.type.includes('heures_sup') && (
-              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <h4 className="text-sm font-medium text-blue-900 mb-3">
-                  Paramètres des heures supplémentaires
-                </h4>
-                <div className="grid grid-cols-2 gap-4">
+            {/* 🆕 Explication pour RÉGULARISATION (pointage hors planning) */}
+            {action === 'valider' && isHorsPlanning && (
+              <div className="mb-6 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+                <div className="flex items-start gap-2 mb-4">
+                  <CheckCircle className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nombre d'heures
-                    </label>
-                    <input
-                      type="number"
-                      step="0.25"
-                      min="0"
-                      value={heuresExtra}
-                      onChange={(e) => setHeuresExtra(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Ex: 2.5"
-                    />
+                    <h4 className="text-sm font-medium text-emerald-900 mb-1">
+                      Régularisation du pointage
+                    </h4>
+                    <p className="text-xs text-emerald-700">
+                      Un <strong>shift de travail normal</strong> sera créé automatiquement avec les heures pointées.
+                      Ces heures seront comptabilisées dans les rapports officiels et la paie.
+                    </p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Montant (€)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={montantExtra}
-                      onChange={(e) => setMontantExtra(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Ex: 31.25"
-                    />
+                </div>
+
+                {/* Récapitulatif des heures */}
+                {(() => {
+                  const details = typeof anomalie?.details === 'string' 
+                    ? JSON.parse(anomalie.details) 
+                    : (anomalie?.details || {});
+                  const heureArrivee = details.heureArrivee || details.heureDebut;
+                  const heureDepart = details.heureDepart || details.heureFin;
+                  
+                  return (heureArrivee || heureDepart) ? (
+                    <div className="mb-4 p-3 bg-white rounded-lg border border-emerald-200">
+                      <div className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3">
+                        <Calendar className="h-4 w-4 text-emerald-600" />
+                        <span>Shift qui sera créé</span>
+                      </div>
+                      <div className="flex items-center justify-center gap-6">
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-xs text-gray-500 mb-1">
+                            <LogIn className="h-3 w-3" />
+                            <span>Arrivée</span>
+                          </div>
+                          <div className="text-xl font-bold text-emerald-700">
+                            {heureArrivee || '—'}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-5 w-5 text-gray-400" />
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-xs text-gray-500 mb-1">
+                            <LogOut className="h-3 w-3" />
+                            <span>Départ</span>
+                          </div>
+                          <div className="text-xl font-bold text-emerald-700">
+                            {heureDepart || '—'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Ce qui va se passer */}
+                <div className="p-3 bg-white border border-emerald-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-xs font-medium text-emerald-800 mb-2">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Ce qui va se passer</span>
                   </div>
+                  <ul className="text-xs text-emerald-700 space-y-1.5">
+                    <li className="flex items-center gap-2">
+                      <CalendarPlus className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Un <strong>shift normal</strong> sera ajouté au planning</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Calculator className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Les heures seront <strong>comptabilisées officiellement</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <FileText className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Elles apparaîtront dans les <strong>rapports de paie</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>L'anomalie sera marquée comme <strong>régularisée</strong></span>
+                    </li>
+                  </ul>
                 </div>
               </div>
             )}
@@ -1046,10 +1136,10 @@ export default function ModalTraiterAnomalie({
                   <TrendingUp className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <h4 className="text-sm font-medium text-emerald-900 mb-1">
-                      Convertir en heures extra "au noir"
+                      Payer en heures supplémentaires
                     </h4>
                     <p className="text-xs text-emerald-700">
-                      Ce pointage hors planning sera transformé en paiement extra. 
+                      Ce pointage hors planning sera payé en espèces (hors bulletin de paie). 
                       Un shift avec segment <strong>isExtra</strong> sera créé automatiquement pour traçabilité.
                     </p>
                   </div>
@@ -1249,30 +1339,27 @@ export default function ModalTraiterAnomalie({
             )}
 
             {/* Commentaire */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-600 mb-1.5">
                 Commentaire {action && (
-                  <span className="text-slate-400 font-normal">
+                  <span className="text-slate-400 font-normal text-xs">
                     ({action === 'refuser' ? 'Obligatoire' : 'Optionnel'})
                   </span>
                 )}
               </label>
-              <div className="relative">
-                <MessageSquare className="absolute left-4 top-4 h-4 w-4 text-slate-400" />
-                <textarea
-                  value={commentaire}
-                  onChange={(e) => setCommentaire(e.target.value)}
-                  rows={3}
-                  required={action === 'refuser'}
-                  className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-400 transition-all resize-none"
-                  placeholder={
-                    action === 'valider' ? 'Motif de validation...' :
-                    action === 'refuser' ? 'Motif de refus...' :
-                    action === 'corriger' ? 'Description de la correction...' :
-                    'Votre commentaire...'
-                  }
-                />
-              </div>
+              <textarea
+                value={commentaire}
+                onChange={(e) => setCommentaire(e.target.value)}
+                rows={2}
+                required={action === 'refuser'}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors resize-none"
+                placeholder={
+                  action === 'valider' ? 'Motif de validation...' :
+                  action === 'refuser' ? 'Motif de refus...' :
+                  action === 'corriger' ? 'Description de la correction...' :
+                  'Votre commentaire...'
+                }
+              />
             </div>
 
             {/* Erreur */}
@@ -1288,38 +1375,37 @@ export default function ModalTraiterAnomalie({
           </form>
         </div>
 
-        {/* Footer fixe avec actions */}
-        <div className="flex-shrink-0 px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-4">
+        {/* Footer - Actions */}
+        <div className="flex-shrink-0 px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-all"
+            className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
           >
             Annuler
           </button>
           <button
             onClick={handleSubmit}
             disabled={!action || loading}
-            className={`px-6 py-2.5 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl active:scale-95 flex items-center gap-2 ${
-              action === 'valider' ? 'bg-emerald-600 hover:bg-emerald-700' :
-              action === 'refuser' ? 'bg-red-600 hover:bg-red-700' :
-              action === 'corriger' ? 'bg-orange-600 hover:bg-orange-700' :
-              action === 'reporter' ? 'bg-amber-600 hover:bg-amber-700' :
-              action === 'payer_extra' ? 'bg-purple-600 hover:bg-purple-700' :
-              action === 'convertir_extra' ? 'bg-teal-600 hover:bg-teal-700' :
-              'bg-slate-600 hover:bg-slate-700'
+            className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
+              action === 'valider' ? 'bg-emerald-500 hover:bg-emerald-600' :
+              action === 'refuser' ? 'bg-red-500 hover:bg-red-600' :
+              action === 'corriger' ? 'bg-orange-500 hover:bg-orange-600' :
+              action === 'reporter' ? 'bg-amber-500 hover:bg-amber-600' :
+              action === 'payer_extra' ? 'bg-purple-500 hover:bg-purple-600' :
+              action === 'convertir_extra' ? 'bg-teal-500 hover:bg-teal-600' :
+              action === 'justifier' ? 'bg-emerald-500 hover:bg-emerald-600' :
+              action === 'ignorer' ? 'bg-slate-500 hover:bg-slate-600' :
+              'bg-slate-400'
             }`}
-            style={!action ? {} : { boxShadow: '0 4px 14px 0 rgba(0, 0, 0, 0.2)' }}
           >
             {loading ? (
               <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                 Traitement...
               </>
             ) : (
-              estDejaTraitee ? 
-              `Modifier → ${action === 'valider' ? 'Valider' : action === 'refuser' ? 'Refuser' : action === 'corriger' ? 'Corriger' : action}` :
-              `${action === 'valider' ? '✓ Valider' : action === 'refuser' ? '✗ Refuser' : action === 'corriger' ? '🔧 Corriger' : action === 'reporter' ? '⏳ Reporter' : action === 'payer_extra' ? '💶 Créer paiement' : action === 'convertir_extra' ? '🔄 Convertir' : 'Traiter'}`
+              'Traiter'
             )}
           </button>
         </div>

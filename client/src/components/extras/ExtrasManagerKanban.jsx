@@ -306,18 +306,24 @@ function ExtrasManagerKanban({ embedded = false, onRefresh }) {
     }
   };
 
-  const handleAnnuler = async (paiementId, raison) => {
+  const handleAnnuler = async (paiementId, raison, forcerAnnulation = false) => {
     try {
       setActionLoading(true);
-      await axios.put(`${API_BASE}/api/paiements-extras/${paiementId}/annuler`,
-        { raison },
+      const response = await axios.put(`${API_BASE}/api/paiements-extras/${paiementId}/annuler`,
+        { raison, forcerAnnulation },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setMessage({ type: 'success', text: 'Extra annulé' });
+      const msg = response.data?.segmentRetire 
+        ? 'Extra annulé et segment retiré du planning' 
+        : 'Extra annulé';
+      setMessage({ type: 'success', text: msg });
+      setShowDetailModal(false);
+      setSelectedPaiement(null);
       fetchPaiements();
       if (onRefresh) onRefresh();
     } catch (e) {
-      setMessage({ type: 'error', text: 'Erreur annulation' });
+      setMessage({ type: 'error', text: e.response?.data?.error || 'Erreur annulation' });
+      throw e; // Re-throw pour que le modal sache qu'il y a eu une erreur
     } finally {
       setActionLoading(false);
     }
@@ -682,6 +688,7 @@ function ExtrasManagerKanban({ embedded = false, onRefresh }) {
         <DetailModal
           paiement={selectedPaiement}
           onClose={() => { setShowDetailModal(false); setSelectedPaiement(null); }}
+          onAnnuler={handleAnnuler}
         />
       )}
 
@@ -760,7 +767,12 @@ function ConfirmNonPointeModal({ data, onClose, onConfirm, onConfirmWithAdjust, 
   
   // Extraire les infos du segment
   const segment = paiement?.shift?.segments?.[paiement?.segmentIndex];
-  const horaires = segment ? `${segment.start} - ${segment.end}` : 'Non défini';
+  // Utiliser segmentInitial en fallback (contient le créneau prévu pour anomalie_extra)
+  const horaires = segment 
+    ? `${segment.start} - ${segment.end}` 
+    : paiement?.segmentInitial 
+      ? paiement.segmentInitial.replace('-', ' - ') 
+      : '-';
   
   // Initialiser les valeurs d'ajustement
   useEffect(() => {
@@ -1365,6 +1377,7 @@ function KanbanCard({ paiement, onClick, onAnnuler, onPayerDirect, isPriority, i
   // Source du paiement
   const sourceLabels = {
     shift_extra: { label: 'Extra', color: 'text-blue-500' },
+    anomalie_extra: { label: 'Anomalie', color: 'text-orange-500' },
     anomalie_heures_sup: { label: 'H.Sup', color: 'text-orange-500' },
     ajustement: { label: 'Ajust.', color: 'text-purple-500' },
     manuel: { label: 'Manuel', color: 'text-gray-500' },
@@ -1857,7 +1870,11 @@ function PayerModal({ paiement, onClose, onConfirm, loading }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // MODAL DETAIL
 // ═══════════════════════════════════════════════════════════════════════════
-function DetailModal({ paiement, onClose }) {
+function DetailModal({ paiement, onClose, onAnnuler }) {
+  const [showConfirmAnnulation, setShowConfirmAnnulation] = useState(false);
+  const [raisonAnnulation, setRaisonAnnulation] = useState('');
+  const [isAnnulating, setIsAnnulating] = useState(false);
+  
   const formatDate = (d) => {
     if (!d) return '-';
     return new Date(d).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' });
@@ -1915,101 +1932,79 @@ function DetailModal({ paiement, onClose }) {
 
         {/* Body */}
         <div className='p-4 space-y-3'>
-          {/* Statut */}
-          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-            paiement.statut === 'paye' ? 'bg-emerald-100 text-emerald-700' :
-            paiement.statut === 'annule' ? 'bg-gray-100 text-gray-600' :
-            'bg-amber-100 text-amber-700'
-          }`}>
-            {paiement.statut === 'paye' ? <CheckCircle2 className='w-3.5 h-3.5' /> :
-             paiement.statut === 'annule' ? <Ban className='w-3.5 h-3.5' /> :
-             <Clock className='w-3.5 h-3.5' />}
-            {paiement.statut === 'paye' ? 'Payé' :
-             paiement.statut === 'annule' ? 'Annulé' : 'À payer'}
+          {/* Ligne 1: Statut + Montant */}
+          <div className='flex items-center justify-between'>
+            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+              paiement.statut === 'paye' ? 'bg-emerald-100 text-emerald-700' :
+              paiement.statut === 'annule' ? 'bg-gray-100 text-gray-600' :
+              'bg-amber-100 text-amber-700'
+            }`}>
+              {paiement.statut === 'paye' ? <CheckCircle2 className='w-3.5 h-3.5' /> :
+               paiement.statut === 'annule' ? <Ban className='w-3.5 h-3.5' /> :
+               <Clock className='w-3.5 h-3.5' />}
+              {paiement.statut === 'paye' ? 'Payé' :
+               paiement.statut === 'annule' ? 'Annulé' : 'À payer'}
+            </div>
+            <div className='text-right'>
+              <div className='text-2xl font-bold text-emerald-600'>{Number(paiement.montant).toFixed(0)}€</div>
+              <div className='text-[10px] text-gray-400'>{Number(paiement.heures).toFixed(1)}h × {Number(paiement.tauxHoraire || 10)}€</div>
+            </div>
           </div>
 
-          {/* Infos principales */}
-          <div className='grid grid-cols-3 gap-2'>
+          {/* Ligne 2: Shift prévu vs Extra */}
+          <div className='grid grid-cols-2 gap-2'>
             <div className='bg-gray-50 rounded-lg p-2.5'>
-              <span className='text-[10px] text-gray-500 uppercase'>Créneau</span>
-              <div className='text-sm font-semibold text-gray-800'>
-                {segment ? `${segment.start}-${segment.end}` : '-'}
+              <div className='text-[10px] text-gray-400 uppercase mb-1'>Shift prévu</div>
+              <div className='text-base font-semibold text-gray-800'>
+                {segment ? `${segment.start} - ${segment.end}` : paiement.segmentInitial?.replace('-', ' - ') || '-'}
               </div>
             </div>
-            <div className='bg-gray-50 rounded-lg p-2.5'>
-              <span className='text-[10px] text-gray-500 uppercase'>Durée</span>
-              <div className='text-sm font-semibold text-gray-800'>{Number(paiement.heures).toFixed(1)}h</div>
-            </div>
-            <div className='bg-gray-50 rounded-lg p-2.5'>
-              <span className='text-[10px] text-gray-500 uppercase'>Montant</span>
-              <div className='text-sm font-bold text-gray-800'>{Number(paiement.montant).toFixed(0)}€</div>
+            <div className='bg-emerald-50 rounded-lg p-2.5 border border-emerald-200'>
+              <div className='text-[10px] text-emerald-600 uppercase mb-1'>Extra (+{Number(paiement.heures).toFixed(1)}h)</div>
+              <div className='text-base font-bold text-emerald-700'>
+                {(() => {
+                  const finPrevue = segment?.end || paiement.segmentInitial?.split('-')[1]?.trim();
+                  const departReel = paiement.departReelle;
+                  if (finPrevue && departReel) return `${finPrevue} → ${departReel}`;
+                  return '-';
+                })()}
+              </div>
             </div>
           </div>
           
-          {/* Source + Écart */}
-          <div className='flex items-center gap-2 flex-wrap'>
-            {/* Source */}
-            {paiement.source && (
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                paiement.source === 'shift_extra' ? 'bg-blue-100 text-blue-600' :
-                paiement.source === 'anomalie_heures_sup' ? 'bg-orange-100 text-orange-600' :
-                paiement.source === 'ajustement' ? 'bg-purple-100 text-purple-600' :
-                'bg-gray-100 text-gray-600'
-              }`}>
-                {paiement.source === 'shift_extra' ? 'Shift Extra' :
-                 paiement.source === 'anomalie_heures_sup' ? 'Heures Sup' :
-                 paiement.source === 'ajustement' ? 'Ajustement' :
-                 'Manuel'}
-              </span>
-            )}
-            {/* Écart heures */}
-            {paiement.ecartHeures && Number(paiement.ecartHeures) !== 0 && (
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                Number(paiement.ecartHeures) > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
-              }`}>
-                Écart: {Number(paiement.ecartHeures) > 0 ? '+' : ''}{Number(paiement.ecartHeures).toFixed(1)}h
-              </span>
-            )}
-            {/* Heures prévues vs réelles */}
-            {paiement.heuresPrevues && paiement.heuresReelles && (
-              <span className='px-2 py-1 bg-gray-100 rounded-full text-xs text-gray-600'>
-                Prévu: {Number(paiement.heuresPrevues).toFixed(1)}h → Réel: {Number(paiement.heuresReelles).toFixed(1)}h
-              </span>
-            )}
-          </div>
-
-          {/* Pointage */}
-          <div className={`rounded-lg p-2.5 ${paiement.pointageValide ? 'bg-emerald-50' : 'bg-amber-50'}`}>
-            <span className={`text-[10px] uppercase tracking-wide ${paiement.pointageValide ? 'text-emerald-600' : 'text-amber-600'}`}>
-              Pointage
+          {/* Ligne 3: Source + Pointage */}
+          <div className='flex items-center justify-between'>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              paiement.source === 'shift_extra' ? 'bg-blue-100 text-blue-600' :
+              paiement.source === 'anomalie_extra' ? 'bg-orange-100 text-orange-600' :
+              paiement.source === 'anomalie_heures_sup' ? 'bg-orange-100 text-orange-600' :
+              paiement.source === 'ajustement' ? 'bg-purple-100 text-purple-600' :
+              'bg-gray-100 text-gray-600'
+            }`}>
+              {paiement.source === 'shift_extra' ? 'Shift Extra' :
+               paiement.source === 'anomalie_extra' ? 'Anomalie' :
+               paiement.source === 'anomalie_heures_sup' ? 'Heures Sup' :
+               paiement.source === 'ajustement' ? 'Ajustement' : 'Manuel'}
             </span>
-            {paiement.pointageValide ? (
-              <div className='flex items-center gap-2 mt-1'>
-                <CheckCircle2 className='w-4 h-4 text-emerald-500' />
-                <span className='text-sm font-medium text-emerald-700'>
-                  {paiement.arriveeReelle} → {paiement.departReelle}
-                </span>
-              </div>
-            ) : (
-              <div className='flex items-center gap-2 mt-1'>
-                <CircleDot className='w-4 h-4 text-amber-500' />
-                <span className='text-sm text-amber-700'>Non pointé</span>
-              </div>
+            {paiement.pointageValide && (
+              <span className='text-xs text-emerald-600 flex items-center gap-1'>
+                <CheckCircle2 className='w-3.5 h-3.5' />
+                {paiement.arriveeReelle} → {paiement.departReelle}
+              </span>
             )}
           </div>
 
-          {/* Paiement info */}
+          {/* Ligne 4: Paiement info (si payé) */}
           {paiement.statut === 'paye' && (
-            <div className='bg-emerald-50 rounded-lg p-2.5 space-y-1'>
-              <span className='text-[10px] text-emerald-600 uppercase'>Paiement</span>
+            <div className='bg-gray-50 rounded-lg p-2.5'>
               <div className='flex items-center justify-between text-sm'>
-                <span className='text-emerald-700'>Payé le</span>
-                <span className='font-medium text-emerald-800'>{formatDateTime(paiement.payeLe)}</span>
+                <span className='text-gray-500'>Payé le</span>
+                <span className='font-medium text-gray-700'>{formatDateTime(paiement.payeLe)}</span>
               </div>
               {paiement.payeur && (
-                <div className='flex items-center justify-between text-sm'>
-                  <span className='text-emerald-700'>Par</span>
-                  <span className='font-medium text-emerald-800'>{paiement.payeur.prenom} {paiement.payeur.nom}</span>
+                <div className='flex items-center justify-between text-sm mt-1'>
+                  <span className='text-gray-500'>Par</span>
+                  <span className='font-medium text-gray-700'>{paiement.payeur.prenom} {paiement.payeur.nom}</span>
                 </div>
               )}
               {methodeInfo && (
@@ -2033,13 +2028,78 @@ function DetailModal({ paiement, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className='px-4 py-3 bg-gray-50 border-t'>
-          <button
-            onClick={onClose}
-            className='w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors'
-          >
-            Fermer
-          </button>
+        <div className='px-4 py-3 bg-gray-50 border-t space-y-2'>
+          {/* Bouton Annuler le paiement - seulement si pas déjà annulé */}
+          {paiement.statut !== 'annule' && !showConfirmAnnulation && (
+            <button
+              onClick={() => setShowConfirmAnnulation(true)}
+              className='w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-lg transition-colors border border-red-200 flex items-center justify-center gap-2'
+            >
+              <Ban className='w-4 h-4' />
+              Annuler le paiement
+            </button>
+          )}
+          
+          {/* Confirmation d'annulation */}
+          {showConfirmAnnulation && (
+            <div className='bg-red-50 border border-red-200 rounded-lg p-3 space-y-2'>
+              <div className='flex items-center gap-2 text-red-700 font-medium text-sm'>
+                <AlertTriangle className='w-4 h-4' />
+                Confirmer l'annulation ?
+              </div>
+              {paiement.statut === 'paye' && (
+                <div className='text-xs text-red-600 bg-red-100 p-2 rounded'>
+                  ⚠️ Ce paiement a déjà été effectué. L'annulation ne récupérera pas l'argent.
+                </div>
+              )}
+              <input
+                type='text'
+                placeholder='Raison (optionnel)'
+                value={raisonAnnulation}
+                onChange={(e) => setRaisonAnnulation(e.target.value)}
+                className='w-full px-3 py-2 border border-red-200 rounded-lg text-sm focus:ring-2 focus:ring-red-300 focus:border-red-300'
+              />
+              <div className='flex gap-2'>
+                <button
+                  onClick={() => { setShowConfirmAnnulation(false); setRaisonAnnulation(''); }}
+                  className='flex-1 py-2 bg-white hover:bg-gray-50 text-gray-600 text-sm font-medium rounded-lg border border-gray-200'
+                >
+                  Non
+                </button>
+                <button
+                  onClick={async () => {
+                    setIsAnnulating(true);
+                    try {
+                      await onAnnuler(paiement.id, raisonAnnulation, paiement.statut === 'paye');
+                      onClose();
+                    } catch (err) {
+                      console.error('Erreur annulation:', err);
+                    } finally {
+                      setIsAnnulating(false);
+                    }
+                  }}
+                  disabled={isAnnulating}
+                  className='flex-1 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 flex items-center justify-center gap-1'
+                >
+                  {isAnnulating ? (
+                    <RefreshCw className='w-4 h-4 animate-spin' />
+                  ) : (
+                    <>Oui, annuler</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Bouton Fermer */}
+          {!showConfirmAnnulation && (
+            <button
+              onClick={onClose}
+              className='w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors'
+            >
+              Fermer
+            </button>
+          )}
         </div>
       </div>
     </div>

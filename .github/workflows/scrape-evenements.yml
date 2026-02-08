@@ -1,0 +1,85 @@
+name: 🎉 Scrape Événements Vincennes
+
+on:
+  schedule:
+    # 1x par jour à 6h du matin (données changent rarement)
+    - cron: '0 5 * * *'  # 6h00 Paris
+  
+  workflow_dispatch:  # Lancement manuel
+
+env:
+  GIST_FILENAME: "evenements-vincennes.json"
+
+jobs:
+  scrape-events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: 📦 Install dependencies
+        working-directory: scripts
+        run: npm ci || npm install
+      
+      - name: 🎭 Scrape événements Vincennes
+        working-directory: scripts
+        run: node scrape-evenements-vincennes.js
+      
+      - name: 📤 Update Gist
+        working-directory: scripts
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_FILENAME: ${{ env.GIST_FILENAME }}
+        run: |
+          node -e "
+          const https = require('https');
+          const fs = require('fs');
+          
+          const content = fs.readFileSync('evenements-vincennes.json', 'utf8');
+          const data = JSON.stringify({
+            files: {
+              'evenements-vincennes.json': { content }
+            }
+          });
+          
+          const options = {
+            hostname: 'api.github.com',
+            path: '/gists/' + process.env.GIST_ID,
+            method: 'PATCH',
+            headers: {
+              'Authorization': 'Bearer ' + process.env.GIST_TOKEN,
+              'User-Agent': 'GestionRH-EventsScraper',
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(data)
+            }
+          };
+          
+          const req = https.request(options, (res) => {
+            console.log('Status:', res.statusCode);
+            if (res.statusCode === 200) {
+              console.log('✅ Gist mis à jour avec succès');
+            } else {
+              console.log('⚠️ Erreur mise à jour Gist');
+              process.exit(1);
+            }
+          });
+          
+          req.write(data);
+          req.end();
+          "
+      
+      - name: 📊 Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: evenements-debug-${{ github.run_id }}
+          path: scripts/evenements-vincennes.json
+          retention-days: 7
+        if: always()

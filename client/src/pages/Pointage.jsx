@@ -483,7 +483,7 @@ const Pointage = () => {
       
       if (isWorkShift) {
         let totalMinutes = 0;
-        let totalMinutesExtra = 0; // Heures extra (au noir) - comptées séparément
+        let totalMinutesExtra = 0; // Heures extra (espèces) - comptées séparément
         const segmentDetails = [];
         let latestEndMinutes = 0; // Pour trouver l'heure de fin du shift
 
@@ -514,7 +514,7 @@ const Pointage = () => {
             }
             
             if (duration > 0) {
-              // 💰 Séparer heures officielles et heures extra (au noir)
+              // 💰 Séparer heures officielles et heures extra (espèces)
               if (segment.isExtra) {
                 totalMinutesExtra += duration;
               } else {
@@ -574,7 +574,7 @@ const Pointage = () => {
           color: 'text-blue-600 dark:text-blue-400',
           bgColor: 'bg-blue-50 dark:bg-blue-900/20',
           total: totalMinutes / 60, // Heures officielles uniquement
-          totalExtra: totalMinutesExtra / 60, // Heures extra (au noir) - non comptées officiellement
+          totalExtra: totalMinutesExtra / 60, // Heures extra (espèces) - non comptées officiellement
           segments: segmentDetails,
           isShiftFinished, // Nouveau: indique si le shift est terminé
           shiftEndMinutes: latestEndMinutes // Pour debug
@@ -704,7 +704,7 @@ const Pointage = () => {
     // Écart avec le planning (sur heures officielles seulement)
     const variance = totalHeures - target;
     
-    // Heures extra (au noir) - provient du calcul des segments
+    // Heures extra (espèces) - provient du calcul des segments
     const extraHours = scenario.totalExtra || 0;
 
     return {
