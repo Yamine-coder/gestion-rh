@@ -485,22 +485,16 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     const navigoValue = fichierNavigo ? 'Oui' : '';
     
     if (fichierNavigo) {
-      const filePath = path.join(__dirname, '..', fichierNavigo);
+      const extension = path.extname(fichierNavigo).toLowerCase();
+      const fileName = path.basename(fichierNavigo);
       
-      if (fs.existsSync(filePath)) {
-        const extension = path.extname(filePath).toLowerCase();
-        const fileName = path.basename(filePath);
-        
-        // Créer un lien vers le fichier (relatif ou absolu selon le contexte)
-        navigoLinks.push({
-          rowIndex: index,
-          filePath: fichierNavigo, // Chemin relatif depuis la racine du serveur
-          fileName: fileName,
-          extension: extension
-        });
-      } else {
-        console.warn(`   ❌ Fichier introuvable: ${filePath}`);
-      }
+      // Toujours créer le lien URL (pas de check fs.existsSync car fichier sur serveur distant en prod)
+      navigoLinks.push({
+        rowIndex: index,
+        filePath: fichierNavigo,
+        fileName: fileName,
+        extension: extension
+      });
     }
 
     // Format avec dates : "X j (dates)"
@@ -596,8 +590,9 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       // Récupérer la cellule
       const cell = hrSheet.getCell(`K${excelRow}`); // Colonne K = Justificatif
       
-      // Créer un lien cliquable vers le fichier
-      const fileUrl = `${BASE_URL}/${filePath.replace(/\\/g, '/')}${token ? '?token=' + token : ''}`;
+      // Créer un lien cliquable vers le fichier (filePath commence par / donc pas besoin d'en ajouter)
+      const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
+      const fileUrl = `${BASE_URL}${cleanPath.replace(/\\/g, '/')}${token ? '?token=' + token : ''}`;
       
       // Déterminer l'icône selon le type de fichier
       let iconText = '📄';
