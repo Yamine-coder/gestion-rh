@@ -40,38 +40,50 @@ const recordEmailSent = (email, type) => {
   }, 60 * 60 * 1000); // 1 heure
 };
 
-// Configuration email (à adapter selon votre provider)
-const createTransporter = () => {
-  // Option 1: Gmail (nécessite App Password)
-  if (process.env.EMAIL_SERVICE === 'gmail') {
+// Configuration email - essaie port 587 (STARTTLS) d'abord, puis 465 (SSL)
+const createTransporter = (forcePort = null) => {
+  const port = forcePort || parseInt(process.env.SMTP_PORT || '587');
+  const isSecure = port === 465;
+  
+  console.log(`🔧 Création transporteur SMTP: host=smtp.gmail.com, port=${port}, secure=${isSecure}`);
+  console.log(`🔧 EMAIL_USER=${process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 5) + '***' : 'NON DÉFINI'}`);
+  console.log(`🔧 EMAIL_PASSWORD=${process.env.EMAIL_PASSWORD ? '***' + process.env.EMAIL_PASSWORD.substring(process.env.EMAIL_PASSWORD.length - 4) : 'NON DÉFINI'}`);
+  console.log(`🔧 EMAIL_SERVICE=${process.env.EMAIL_SERVICE || 'NON DÉFINI'}`);
+  
+  if (process.env.EMAIL_SERVICE === 'gmail' || process.env.EMAIL_USER?.includes('gmail')) {
     return nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      port: port,
+      secure: isSecure,
       auth: {
         user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD // App Password, pas le mot de passe normal
+        pass: process.env.EMAIL_PASSWORD
       },
-      connectionTimeout: 10000, // 10s
-      greetingTimeout: 10000,   // 10s
-      socketTimeout: 15000      // 15s
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
+      logger: true,
+      debug: process.env.NODE_ENV !== 'production'
     });
   }
   
-  // Option 2: SMTP personnalisé
-  if (process.env.EMAIL_SERVICE === 'smtp') {
+  // SMTP personnalisé
+  if (process.env.SMTP_HOST) {
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
+      port: process.env.SMTP_PORT || 587,
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS
-      }
+      },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000
     });
   }
   
-  // Option 3: Service test (Ethereal - pour développement)
+  console.warn('⚠️ Aucune configuration email trouvée, utilisation Ethereal (test uniquement)');
   return nodemailer.createTransport({
     host: 'smtp.ethereal.email',
     port: 587,
@@ -80,6 +92,36 @@ const createTransporter = () => {
       pass: 'ethereal.pass'
     }
   });
+};
+
+// Envoi email avec retry automatique (port 587 → 465)
+const sendMailWithRetry = async (mailOptions) => {
+  // Tentative 1: Port 587 (STARTTLS) - plus compatible avec les hébergeurs cloud
+  console.log('📧 Tentative 1: Port 587 (STARTTLS)...');
+  try {
+    const transporter587 = createTransporter(587);
+    const info = await transporter587.sendMail(mailOptions);
+    console.log(`✅ Email envoyé via port 587, Message ID: ${info.messageId}`);
+    return info;
+  } catch (err587) {
+    console.error(`❌ Port 587 échoué: ${err587.code} - ${err587.message}`);
+    
+    // Tentative 2: Port 465 (SSL direct)
+    console.log('📧 Tentative 2: Port 465 (SSL)...');
+    try {
+      const transporter465 = createTransporter(465);
+      const info = await transporter465.sendMail(mailOptions);
+      console.log(`✅ Email envoyé via port 465, Message ID: ${info.messageId}`);
+      return info;
+    } catch (err465) {
+      console.error(`❌ Port 465 échoué: ${err465.code} - ${err465.message}`);
+      
+      // Les deux ont échoué — erreur détaillée
+      const finalError = new Error(`SMTP impossible: Port 587 (${err587.code}: ${err587.message}), Port 465 (${err465.code}: ${err465.message})`);
+      finalError.code = 'SMTP_ALL_FAILED';
+      throw finalError;
+    }
+  }
 };
 
 // Envoi email de récupération de mot de passe
@@ -98,8 +140,6 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
         code: "THROTTLED"
       };
     }
-    
-    const transporter = createTransporter();
     
     const mailOptions = {
       from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
@@ -194,7 +234,7 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
       `
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendMailWithRetry(mailOptions);
     console.log('✅ Email de récupération envoyé:', info.messageId);
     
     // Enregistrer l'envoi dans le cache pour la limitation
@@ -236,9 +276,6 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
         code: "THROTTLED"
       };
     }
-    
-    console.log(`⏳ Création du transporteur d'email...`);
-    const transporter = createTransporter();
     
     console.log(`📧 Préparation de l'email pour ${email}...`);
     console.log(`📋 Catégories: ${categoriesDisplay}`);
@@ -368,7 +405,7 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
     
     console.log(`📬 Envoi de l'email via Gmail/SMTP...`);
     
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendMailWithRetry(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
     
     // Enregistrer l'envoi dans le cache pour la limitation
@@ -425,7 +462,6 @@ const envoyerRappelMemo = async (email, task) => {
   try {
     // Pas de limitation pour les rappels
     console.log(`⏳ Envoi rappel mémo à ${email}...`);
-    const transporter = createTransporter();
     
     // Couleurs selon priorité
     const priorityColors = {
@@ -552,7 +588,7 @@ const envoyerRappelMemo = async (email, task) => {
       `
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await sendMailWithRetry(mailOptions);
     console.log('✅ Email de rappel envoyé:', info.messageId);
     
     return { success: true, messageId: info.messageId };
