@@ -166,6 +166,55 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ message });
 });
 
+// Backfill : migrer les justificatifs Navigo du disque vers la BDD
+const backfillNavigoFiles = async () => {
+  try {
+    const prisma = require('./prisma/client');
+    const fs = require('fs').promises;
+    const path = require('path');
+    
+    // Trouver les justificatifs avec un fichier sur disque mais pas encore en BDD
+    const toMigrate = await prisma.justificatifNavigo.findMany({
+      where: { 
+        fichierData: null
+      },
+      select: { id: true, fichier: true }
+    });
+    
+    if (toMigrate.length === 0) return;
+    
+    console.log(`📦 Backfill Navigo: ${toMigrate.length} fichier(s) à migrer vers BDD...`);
+    let migrated = 0;
+    
+    for (const justif of toMigrate) {
+      try {
+        const filePath = path.join(__dirname, justif.fichier);
+        const fileBuffer = await fs.readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
+        
+        await prisma.justificatifNavigo.update({
+          where: { id: justif.id },
+          data: {
+            fichierData: fileBuffer,
+            fichierNom: path.basename(filePath),
+            fichierMime: mimeTypes[ext] || 'application/octet-stream'
+          }
+        });
+        migrated++;
+      } catch (e) {
+        // Fichier introuvable sur disque (normal après redéploiement Render)
+      }
+    }
+    
+    if (migrated > 0) {
+      console.log(`✅ Backfill Navigo: ${migrated}/${toMigrate.length} fichier(s) migrés vers BDD`);
+    }
+  } catch (e) {
+    console.error('⚠️ Backfill Navigo (non bloquant):', e.message);
+  }
+};
+
 // Lancement du serveur
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur backend lancé sur port ${PORT} (${process.env.NODE_ENV || 'development'})`);
@@ -180,6 +229,9 @@ app.listen(PORT, '0.0.0.0', () => {
   } catch (cronError) {
     console.error('⚠️ Erreur démarrage crons (non bloquant):', cronError.message);
   }
+  
+  // Backfill des fichiers Navigo (non bloquant)
+  backfillNavigoFiles();
 });
 
 // Process-level crash diagnostics
