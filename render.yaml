@@ -15,6 +15,8 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         sync: false # URL Vercel: https://chez-antoine.vercel.app
+      - key: BASE_URL
+        sync: false # URL backend Render: https://gestion-rh-vqof.onrender.com
       - key: EMAIL_USER
         sync: false # Gmail pour envoi emails
       - key: EMAIL_PASSWORD

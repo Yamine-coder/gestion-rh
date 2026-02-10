@@ -580,7 +580,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
 
   // Ajouter les liens Navigo dans les cellules correspondantes
   
-  const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+  const BASE_URL = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://gestion-rh-vqof.onrender.com' : 'http://localhost:5000');
   
   navigoLinks.forEach(({ rowIndex, filePath, fileName, extension }) => {
     try {
