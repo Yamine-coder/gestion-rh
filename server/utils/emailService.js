@@ -362,12 +362,9 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
     };
 
     
-    console.log(`📬 Envoi de l'email...`);
+    console.log(`📬 Envoi de l'email via Gmail/SMTP...`);
     
-    // Priorité 1: Gmail/SMTP (rapide et fiable)
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
-      console.log('📧 Envoi via Gmail/SMTP...');
-      const info = await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
     
     // Enregistrer l'envoi dans le cache pour la limitation
