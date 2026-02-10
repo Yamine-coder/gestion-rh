@@ -106,8 +106,8 @@ app.use('/api/memo', apiSensitiveLimiter);
 app.use('/api/notifications-config', apiSensitiveLimiter);
 
 // Augmenter la limite pour les créations en masse de shifts
-app.use(bodyParser.json({ limit: '2mb' }));
-app.use(bodyParser.urlencoded({ limit: '2mb', extended: true }));
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
 // Servir les fichiers statiques (uploads) - protégé par auth
 const path = require('path');

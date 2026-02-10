@@ -8,6 +8,7 @@ import DatePickerCustom from "../components/DatePickerCustom";
 import { getTypeConge } from "../config/typesConges";
 import useNotificationHighlight from "../hooks/useNotificationHighlight";
 import API_URL from "../config/api";
+import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 // Types nécessitant un justificatif
 const TYPES_JUSTIFICATIF_OBLIGATOIRE = ['maladie', 'maternite', 'paternite', 'deces'];
@@ -478,7 +479,7 @@ function MesConges() {
         {conge.justificatif ? (
           <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 rounded-lg p-3">
             <a 
-              href={`${API_URL}${conge.justificatif}`}
+              href={getAuthenticatedFileUrl(conge.justificatif)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 transition-colors"
@@ -572,7 +573,7 @@ function MesConges() {
           {conge.justificatif ? (
             <div className="mt-2">
               <a 
-                href={`${API_URL}${conge.justificatif}`}
+                href={getAuthenticatedFileUrl(conge.justificatif)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"

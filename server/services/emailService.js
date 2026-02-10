@@ -1,97 +1,60 @@
-const nodemailer = require('nodemailer');
-
-// Configuration Gmail avec nodemailer
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD // App Password Gmail
-    }
-  });
-};
+const { sendMailWithRetry } = require('../utils/emailService');
 
 // Petite aide: délai asynchrone
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// Configuration retry
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [1000, 3000, 8000]; // Backoff exponentiel: 1s, 3s, 8s
-
-// Fonction d'envoi universelle via Gmail avec retry + alerting
+// Fonction d'envoi universelle — utilise Brevo/Resend/SMTP via sendMailWithRetry
 async function sendEmail({ to, subject, html, from }) {
   const restaurantName = 'Chez Antoine';
   const fromEmail = from || process.env.EMAIL_FROM || process.env.EMAIL_USER;
   
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    throw new Error('Configuration Gmail manquante (EMAIL_USER / EMAIL_PASSWORD)');
-  }
-  
-  let lastError = null;
-  
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const transporter = createTransporter();
-      
-      const mailOptions = {
-        from: `"${restaurantName}" <${fromEmail}>`,
-        to: to,
-        subject: subject,
-        html: html
-      };
-      
-      const info = await transporter.sendMail(mailOptions);
-      
-      if (attempt > 1) {
-        console.log(`✅ Email envoyé à ${to} après ${attempt} tentative(s)`);
-      }
-      
-      return { success: true, provider: 'gmail', id: info.messageId, attempts: attempt };
-    } catch (err) {
-      lastError = err;
-      console.error(`⚠️ Tentative ${attempt}/${MAX_RETRIES} échouée pour ${to}: ${err.message}`);
-      
-      if (attempt < MAX_RETRIES) {
-        await delay(RETRY_DELAYS[attempt - 1]);
-      }
-    }
-  }
-  
-  // Toutes les tentatives ont échoué — alerter
-  console.error(`❌ ALERTE: Email définitivement échoué vers ${to} après ${MAX_RETRIES} tentatives`);
-  console.error(`   Sujet: ${subject}`);
-  console.error(`   Erreur: ${lastError?.message}`);
-  
-  // Créer une notification admin pour l'échec d'email
   try {
-    const prisma = require('../prisma/client');
-    const admins = await prisma.user.findMany({
-      where: { role: 'admin', statut: 'actif' },
-      select: { id: true }
-    });
+    const mailOptions = {
+      from: `"${restaurantName}" <${fromEmail}>`,
+      to: to,
+      subject: subject,
+      html: html
+    };
     
-    if (admins.length > 0) {
-      await prisma.notifications.createMany({
-        data: admins.map(admin => ({
-          employe_id: admin.id,
-          type: 'erreur_email',
-          titre: '⚠️ Échec envoi email',
-          message: JSON.stringify({
-            text: `L'envoi d'email à ${to} a échoué après ${MAX_RETRIES} tentatives. Sujet: "${subject}". Erreur: ${lastError?.message}`,
-            destinataire: to,
-            sujet: subject,
-            erreur: lastError?.message,
-            date: new Date().toISOString()
-          }),
-          lue: false
-        }))
+    const info = await sendMailWithRetry(mailOptions);
+    console.log(`✅ Email envoyé à ${to}, ID: ${info.messageId}`);
+    return { success: true, provider: 'auto', id: info.messageId };
+  } catch (lastError) {
+    console.error(`❌ ALERTE: Email définitivement échoué vers ${to}`);
+    console.error(`   Sujet: ${subject}`);
+    console.error(`   Erreur: ${lastError?.message}`);
+    
+    // Créer une notification admin pour l'échec d'email
+    try {
+      const prisma = require('../prisma/client');
+      const admins = await prisma.user.findMany({
+        where: { role: 'admin', statut: 'actif' },
+        select: { id: true }
       });
+      
+      if (admins.length > 0) {
+        await prisma.notifications.createMany({
+          data: admins.map(admin => ({
+            employe_id: admin.id,
+            type: 'erreur_email',
+            titre: '⚠️ Échec envoi email',
+            message: JSON.stringify({
+              text: `L'envoi d'email à ${to} a échoué. Sujet: "${subject}". Erreur: ${lastError?.message}`,
+              destinataire: to,
+              sujet: subject,
+              erreur: lastError?.message,
+              date: new Date().toISOString()
+            }),
+            lue: false
+          }))
+        });
+      }
+    } catch (notifErr) {
+      console.error('❌ Impossible de notifier les admins:', notifErr.message);
     }
-  } catch (notifErr) {
-    console.error('❌ Impossible de notifier les admins de l\'échec email:', notifErr.message);
+    
+    throw lastError;
   }
-  
-  throw lastError;
 }
 
 // Template email professionnel pour nouvel employé

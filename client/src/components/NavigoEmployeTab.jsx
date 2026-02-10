@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Train, Eye, Check, X, Clock, FileText, AlertCircle, AlertTriangle, MessageSquare } from 'lucide-react';
 import { API_URL } from '../config/api';
+import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 /**
  * Composant onglet Navigo pour la fiche employé (Vue Admin)
@@ -227,7 +228,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <a
-                          href={`${API_URL}${justif.fichier}`}
+                          href={getAuthenticatedFileUrl(justif.fichier)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all"
@@ -301,7 +302,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
               </p>
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <a
-                  href={`${API_URL}${selectedJustificatif.fichier}`}
+                  href={getAuthenticatedFileUrl(selectedJustificatif.fichier)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-blue-600 hover:underline flex items-center gap-2"

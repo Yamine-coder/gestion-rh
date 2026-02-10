@@ -655,5 +655,6 @@ module.exports = {
   envoyerEmailRecuperation,
   envoyerIdentifiants,
   testerConfigurationEmail,
-  envoyerRappelMemo
+  envoyerRappelMemo,
+  sendMailWithRetry
 };

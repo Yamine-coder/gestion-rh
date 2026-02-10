@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import api from '../api/axiosInstance';
 import { CameraIcon, TrashIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { getImageUrl } from '../utils/imageUtils';
+import { compressProfilePhoto } from '../utils/imageCompressor';
 
 const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
   const [uploading, setUploading] = useState(false);
@@ -9,7 +10,7 @@ const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
   const [preview, setPreview] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -24,24 +25,33 @@ const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       setMessage({ 
         type: 'error', 
-        text: 'La photo ne doit pas dépasser 2 MB.' 
+        text: 'La photo ne doit pas dépasser 10 MB.' 
       });
       setTimeout(() => setMessage(null), 4000);
       return;
     }
 
-    // Créer une preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result);
-    };
-    reader.readAsDataURL(file);
+    // Compresser l'image avant upload
+    try {
+      const compressedFile = await compressProfilePhoto(file);
+      
+      // Créer une preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result);
+      };
+      reader.readAsDataURL(compressedFile);
 
-    // Upload automatique
-    handleUpload(file);
+      // Upload automatique
+      handleUpload(compressedFile);
+    } catch (compressionError) {
+      console.error('Erreur compression:', compressionError);
+      // En cas d'erreur de compression, upload l'original
+      handleUpload(file);
+    }
   };
 
   const handleUpload = async (file) => {

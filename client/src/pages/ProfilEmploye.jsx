@@ -35,6 +35,7 @@ import { getToken, isTokenValid, setupTokenExpirationCheck, clearToken } from '.
 import { getCategoriesEmploye } from '../utils/categoriesConfig';
 import { getImageUrl } from '../utils/imageUtils';
 import { API_URL } from '../config/api';
+import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 // ============================================
 // LISTE DES PAYS AVEC INDICATIFS (triés par usage fréquent)
@@ -1152,14 +1153,24 @@ const ProfilEmploye = React.memo(() => {
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setErreur('La photo ne doit pas dépasser 2 MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      setErreur('La photo ne doit pas dépasser 10 MB.');
       return;
     }
 
     setUploadingPhoto(true);
+    
+    // Compresser l'image avant upload
+    let fileToUpload = file;
+    try {
+      const { compressProfilePhoto } = await import('../utils/imageCompressor');
+      fileToUpload = await compressProfilePhoto(file);
+    } catch (e) {
+      console.warn('Compression échouée, upload original:', e);
+    }
+    
     const formData = new FormData();
-    formData.append('photo', file);
+    formData.append('photo', fileToUpload);
 
     try {
       const res = await axios.post(`${API_URL}/api/profil/upload-photo`, formData, {
@@ -2377,7 +2388,7 @@ const ProfilEmploye = React.memo(() => {
                               {/* Actions */}
                               <div className="flex gap-2">
                                 <a
-                                  href={`${API_URL}${justifMoisActuel.fichier}`}
+                                  href={getAuthenticatedFileUrl(justifMoisActuel.fichier)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium text-primary-700 dark:text-primary-300 bg-white dark:bg-slate-800 rounded-lg border border-primary-200 dark:border-primary-700/50 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
@@ -2533,7 +2544,7 @@ const ProfilEmploye = React.memo(() => {
                                         </div>
                                         <div className="flex items-center gap-1 flex-shrink-0">
                                           <a
-                                            href={`${API_URL}${justif.fichier}`}
+                                            href={getAuthenticatedFileUrl(justif.fichier)}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="p-1.5 rounded-md hover:bg-white dark:hover:bg-slate-700 transition-colors flex items-center justify-center"

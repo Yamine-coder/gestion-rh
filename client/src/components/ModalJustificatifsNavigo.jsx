@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_URL } from '../config/api';
+import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 export default function ModalJustificatifsNavigo({ onClose, onEmployesUpdate }) {
   const [employes, setEmployes] = useState([]);
@@ -241,7 +242,7 @@ export default function ModalJustificatifsNavigo({ onClose, onEmployesUpdate }) 
                     <div className="flex-shrink-0 w-32">
                       {employe.justificatifNavigo ? (
                         <a
-                          href={`${API_URL}${employe.justificatifNavigo}`}
+                          href={getAuthenticatedFileUrl(employe.justificatifNavigo)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"

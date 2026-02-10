@@ -335,16 +335,24 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
               
               {/* QR Code - Full width */}
               <div className="bg-gray-50 dark:bg-zinc-800 p-3 sm:p-4 rounded-xl aspect-square flex items-center justify-center">
-                <QRCodeCanvas 
-                  value={localStorage.getItem('token') || ''} 
-                  size={280}
-                  className="w-full h-full max-w-full"
-                  level="H"
-                  includeMargin={false}
-                  bgColor="#fafafa"
-                  fgColor="#18181b"
-                  style={{ width: '100%', height: '100%' }}
-                />
+                {localStorage.getItem('token') ? (
+                  <QRCodeCanvas 
+                    value={localStorage.getItem('token')} 
+                    size={280}
+                    className="w-full h-full max-w-full"
+                    level="M"
+                    includeMargin={true}
+                    bgColor="#fafafa"
+                    fgColor="#18181b"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                ) : (
+                  <div className="text-center text-gray-400 dark:text-gray-500">
+                    <QrCode className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm font-medium">Session expirée</p>
+                    <p className="text-xs mt-1">Reconnectez-vous pour générer votre QR code</p>
+                  </div>
+                )}
               </div>
               
               {/* Tips minimalistes avec icônes Lucide */}

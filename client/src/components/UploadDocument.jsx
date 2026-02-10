@@ -9,6 +9,7 @@ import {
   TrashIcon 
 } from '@heroicons/react/24/outline';
 import { API_BASE } from '../config/api';
+import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 const UploadDocument = ({ 
   documentType, // 'domicile', 'rib', 'navigo'
@@ -170,7 +171,7 @@ const UploadDocument = ({
                   <p className="text-sm text-emerald-700 truncate">{currentFile.split('/').pop()}</p>
                   <div className="flex gap-2 mt-2">
                     <a
-                      href={`${API_BASE}${currentFile}`}
+                      href={getAuthenticatedFileUrl(currentFile)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs font-medium text-emerald-600 hover:text-emerald-800 underline"

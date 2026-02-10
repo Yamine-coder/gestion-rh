@@ -85,15 +85,25 @@ const playSound = (type) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔐 VALIDATION JWT (format uniquement, pas la signature)
 // ═══════════════════════════════════════════════════════════════════════════
+const base64UrlDecode = (str) => {
+  // Convertir base64url → base64 standard (remplacer chars + ajouter padding)
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  // Ajouter le padding '=' requis par atob
+  const pad = base64.length % 4;
+  if (pad === 2) base64 += '==';
+  else if (pad === 3) base64 += '=';
+  return atob(base64);
+};
+
 const isValidJWTFormat = (token) => {
   if (!token || typeof token !== 'string') return false;
   const parts = token.split('.');
   if (parts.length !== 3) return false;
   
   try {
-    // Vérifier que les parties sont du base64 valide
+    // Vérifier que les parties sont du base64url valide
     parts.forEach(part => {
-      atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+      base64UrlDecode(part);
     });
     return true;
   } catch {
@@ -391,7 +401,7 @@ const Badgeuse = () => {
       // Extraire les infos pour afficher le nom
       let blockedEmployeInfo = { prenom: 'Employé', nom: '' };
       try {
-        const payload = JSON.parse(atob(result.split('.')[1]));
+        const payload = JSON.parse(base64UrlDecode(result.split('.')[1]));
         blockedEmployeInfo = {
           prenom: payload.prenom || payload.email?.split('@')[0] || 'Employé',
           nom: payload.nom || ''
@@ -412,7 +422,12 @@ const Badgeuse = () => {
     
     // Protection 4: Valider le format JWT
     if (!isValidJWTFormat(result)) {
-      console.warn('🚫 QR Code invalide (pas un JWT)');
+      console.warn('🚫 QR Code invalide (pas un JWT)', { 
+        length: result?.length, 
+        preview: result?.substring(0, 30),
+        hasDots: result?.includes('.'),
+        parts: result?.split('.')?.length 
+      });
       setSuccess(false);
       setMessage('QR Code non reconnu');
       playSound('error');
@@ -428,7 +443,7 @@ const Badgeuse = () => {
     // Extraire les infos du JWT pour l'affichage (fallback si hors-ligne)
     let jwtEmployeInfo = { prenom: 'Employé', nom: '' };
     try {
-      const payload = JSON.parse(atob(result.split('.')[1]));
+      const payload = JSON.parse(base64UrlDecode(result.split('.')[1]));
       jwtEmployeInfo = {
         prenom: payload.prenom || payload.email?.split('@')[0] || 'Employé',
         nom: payload.nom || ''
@@ -492,7 +507,9 @@ const Badgeuse = () => {
         setEmployeInfo(null);
         playSound('error');
         
-        const errorMsg = err.response?.data?.message || 'QR Code invalide';
+        // Lire BOTH .message et .error (authMiddleware retourne {error:...})
+        const errorMsg = err.response?.data?.message || err.response?.data?.error || 'QR Code invalide';
+        console.error('❌ Erreur pointage:', err.response?.status, err.response?.data);
         setMessage(errorMsg);
         
         // Si erreur "trop récent", garder le blocage complet
