@@ -391,16 +391,12 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
         recordEmailSent(email, 'identifiants');
         return { success: true, messageId: result.messageId, provider: 'brevo' };
       } catch (brevoError) {
-        console.error('❌ Erreur Brevo:', brevoError.message || brevoError);
-        return { 
-          success: false, 
-          error: brevoError.message || 'Erreur Brevo',
-          code: 'BREVO_ERROR'
-        };
+        console.error('❌ Erreur Brevo, fallback vers Gmail:', brevoError.message || brevoError);
+        // Ne pas retourner — continuer vers Gmail en fallback
       }
     }
     
-    // Priorité 2: Gmail/SMTP (fallback seulement si pas de clé Brevo)
+    // Priorité 2: Gmail/SMTP (fallback si pas de Brevo ou si Brevo a échoué)
     console.log('📧 Envoi via Gmail/SMTP (pas de BREVO_API_KEY)...');
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
