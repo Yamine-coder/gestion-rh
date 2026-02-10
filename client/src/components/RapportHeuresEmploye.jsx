@@ -254,7 +254,7 @@ const RapportHeuresEmploye = ({ employeId, onClose, initialMois }) => {
       // Notification de succès
       const notification = document.createElement('div');
       notification.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
-      notification.innerHTML = `✓ Export ${format.toUpperCase()} réussi !`;
+      notification.textContent = `✓ Export ${format.toUpperCase()} réussi !`;
       document.body.appendChild(notification);
       setTimeout(() => {
         notification.style.opacity = '0';
@@ -453,7 +453,7 @@ const RapportHeuresEmploye = ({ employeId, onClose, initialMois }) => {
               {(() => {
                 const heuresPrevues = Number(rapportData.heuresPrevues || rapportData.heuresPreveues) || 0;
                 const heuresTrav = Number(rapportData.heuresTravaillees) || 0;
-                const heuresSupp = Number(rapportData.heuresSupplementaires) || 0;
+                const heuresSupp = Number(rapportData.heuresExtra ?? rapportData.heuresSupplementaires) || 0;
                 const absJustJ = Number(rapportData.absencesJustifiees) || 0;
                 const absInjJ = Number(rapportData.absencesInjustifiees) || 0;
                 const retardCount = rapportData.nombreRetards || 0;
@@ -486,8 +486,8 @@ const RapportHeuresEmploye = ({ employeId, onClose, initialMois }) => {
                         </div>
                         <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
                           <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">
-                            <span className="hidden sm:inline">Heures supp.</span>
-                            <span className="sm:hidden">Supp.</span>
+                            <span className="hidden sm:inline">Heures extra</span>
+                            <span className="sm:hidden">Extra</span>
                           </p>
                           <p className="text-xl sm:text-2xl font-bold text-gray-800">{heuresSupp}h</p>
                         </div>

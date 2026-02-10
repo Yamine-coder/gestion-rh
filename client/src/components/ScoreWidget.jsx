@@ -7,13 +7,13 @@ import { getMonScore, getNiveau, CATEGORIES } from '../services/scoringService';
 // =====================================================
 
 // Définition des niveaux pour comparaison
+// Niveaux alignés avec scoringService.js (source unique de vérité)
 const NIVEAUX_CONFIG = [
-  { min: -Infinity, max: 0, label: 'Novice', emoji: '🌱', color: 'from-gray-400 to-gray-500' },
-  { min: 0, max: 50, label: 'Débutant', emoji: '⭐', color: 'from-green-400 to-emerald-500' },
-  { min: 50, max: 150, label: 'Confirmé', emoji: '🌟', color: 'from-blue-400 to-indigo-500' },
-  { min: 150, max: 300, label: 'Expert', emoji: '💫', color: 'from-purple-400 to-violet-500' },
-  { min: 300, max: 500, label: 'Champion', emoji: '🏆', color: 'from-amber-400 to-orange-500' },
-  { min: 500, max: Infinity, label: 'Légende', emoji: '👑', color: 'from-yellow-400 to-amber-500' }
+  { min: -Infinity, max: 0, label: 'À surveiller', emoji: '⚠️', color: 'from-red-400 to-red-500' },
+  { min: 0, max: 100, label: 'Bronze', emoji: '🥉', color: 'from-amber-600 to-amber-700' },
+  { min: 100, max: 300, label: 'Argent', emoji: '🥈', color: 'from-gray-300 to-gray-400' },
+  { min: 300, max: 500, label: 'Or', emoji: '🥇', color: 'from-yellow-400 to-amber-500' },
+  { min: 500, max: Infinity, label: 'Diamant', emoji: '💎', color: 'from-cyan-400 to-blue-500' }
 ];
 
 const getNiveauIndex = (points) => {

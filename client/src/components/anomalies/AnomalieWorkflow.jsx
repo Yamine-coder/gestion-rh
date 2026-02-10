@@ -1,9 +1,7 @@
 // client/src/components/anomalies/AnomalieWorkflow.jsx
 import React, { useState, useEffect } from 'react';
 import { Clock, AlertTriangle, CheckCircle, XCircle, MessageSquare, Upload, TrendingUp } from 'lucide-react';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../../config/api';
 
 /**
  * WORKFLOW AVANCÉ DE GESTION DES ANOMALIES

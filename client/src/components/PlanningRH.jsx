@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import axios from "axios";
+import { API_URL } from '../config/api';
 import { normalizeDateLocal, getCurrentDateString, isToday, toLocalDateString } from '../utils/parisTimeUtils';
 import { getCategorieEmploye as getCategorieEmployeUtil, CATEGORIES } from '../utils/categoriesConfig';
 import { TYPES_CONGES, getTypeConge, getTypesForSelect } from '../config/typesConges';
@@ -266,9 +267,6 @@ const CONGE_ICONS = {
   formation: { icon: GraduationCap, colorClass: 'text-green-600' },
   autre: { icon: FileText, colorClass: 'text-amber-600' }
 };
-
-// Configuration API centralisée
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Fonction utilitaire pour construire les URLs d'API
 const buildApiUrl = (endpoint) => `${API_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
@@ -944,20 +942,9 @@ function CellDrop({
   if (showComparaison && ecarts.length > 0) {
     const retards = ecarts.filter(e => e.type && e.type.includes('retard'));
     if (retards.length > 0) {
-      console.log(`?? CellDrop - RETARDS DANS LA CELLULE employé ${employeId} date ${date}:`, retards);
     }
   }
   
-  // DEBUG: Log pour Léa Garcia le 29 novembre
-  if (showComparaison && employeId === 56 && date.toString().includes('2025-11-29')) {
-    console.log('?? CellDrop Léa 29/11:', {
-      employeId,
-      date: typeof date === 'string' ? date : date.toISOString?.() || date.toString(),
-      ecartsCount: ecarts.length,
-      ecarts: ecarts.map(e => ({ type: e.type, heureArriveeReelle: e.heureArriveeReelle }))
-    });
-  }
-
   // CAS 1: Congé APPROUVÉ - Bloque la création de shift
   if (conge && isCongeApprouve) {
     // Système de couleurs et icônes par type - utilise la config centralisée
@@ -1260,6 +1247,7 @@ function CellDrop({
               // Vérification des anomalies uniquement pour dates passées ou aujourd'hui
               // Les segments isExtra ne sont PAS traités comme des absences
               let hasArriveeAnticipee = false; // 🆕
+              let hasArriveeAnticipeeExtra = false; // >= 30 min → Extra à valider
               
               if (showComparaison && !isFutureDate && !isExtraSegment) {
                 if (ecartsSegment.length === 0 && !hasRealData) {
@@ -1275,10 +1263,11 @@ function CellDrop({
                     if (type.includes('retard_modere')) { hasRetard = true; retardType = 'modere'; }
                     if (type.includes('retard_critique')) { hasRetard = true; retardType = 'critique'; }
                     // 🆕 Hors-plage IN critique = traitement spécial (violet)
-                    if (type.includes('hors_plage_in_critique')) { hasArriveeAnticipee = true; isHorsPlage = true; }
-                    else if (type.includes('hors_plage_in')) { hasArriveeAnticipee = true; }
-                    // 🆕 Arrivée anticipée extra = traitement spécial (orange)
-                    if (type.includes('arrivee_anticipee_extra')) { hasArriveeAnticipee = true; }
+                    if (type.includes('hors_plage_in_critique')) { hasArriveeAnticipeeExtra = true; isHorsPlage = true; }
+                    else if (type.includes('hors_plage_in')) { hasArriveeAnticipeeExtra = true; }
+                    // 🆕 Arrivée anticipée extra (>= 30 min) = à valider
+                    if (type.includes('arrivee_anticipee_extra')) { hasArriveeAnticipeeExtra = true; }
+                    // 🆕 Arrivée anticipée auto (< 30 min) = info seulement
                     if (type.includes('arrivee_anticipee_auto')) { hasArriveeAnticipee = true; }
                     if (type.includes('depart_premature') || type.includes('depart_anticipe')) { hasDepartAnticipe = true; }
                     if (type.includes('heures_sup') || type.includes('hors_plage_out')) { hasHeuresSup = true; }
@@ -1288,7 +1277,10 @@ function CellDrop({
                   if (isAbsent) statutSegment = 'absent';
                   // 🆕 Hors-plage critique = statut spécial violet
                   else if (isHorsPlage) statutSegment = 'hors_plage_critique';
-                  // 🆕 Arrivée anticipée avec heures sup = combo
+                  // 🆕 Arrivée anticipée extra (>= 30 min) avec heures sup = combo
+                  else if (hasArriveeAnticipeeExtra && hasHeuresSup) statutSegment = 'arrivee_anticipee_extra_et_heures_sup';
+                  else if (hasArriveeAnticipeeExtra) statutSegment = 'arrivee_anticipee_extra';
+                  // 🆕 Arrivée anticipée info (< 30 min)
                   else if (hasArriveeAnticipee && hasHeuresSup) statutSegment = 'arrivee_anticipee_et_heures_sup';
                   else if (hasArriveeAnticipee) statutSegment = 'arrivee_anticipee';
                   else if (hasRetard && hasHeuresSup) statutSegment = 'retard_et_heures_sup';
@@ -1365,13 +1357,31 @@ function CellDrop({
                     statusLabel = 'Hors-plage';
                     ringClass = 'ring-2 ring-purple-300 ring-offset-1';
                     break;
-                  // 🆕 Arrivée anticipée (extra potentiel)
+                  // 🆕 Arrivée anticipée (< 30 min, info)
                   case 'arrivee_anticipee':
+                    bgClass = 'bg-gradient-to-r from-blue-400 to-cyan-500';
+                    borderLeftClass = 'border-l-4 border-l-blue-400';
+                    statusIcon = <Clock className="w-3 h-3" strokeWidth={2.5} />;
+                    statusLabel = 'Arrivée anticipée';
+                    ringClass = 'ring-2 ring-blue-300 ring-offset-1';
+                    break;
+                  // 🆕 Arrivée anticipée extra (>= 30 min, à valider)
+                  case 'arrivee_anticipee_extra':
                     bgClass = 'bg-gradient-to-r from-amber-400 to-orange-500';
                     borderLeftClass = 'border-l-4 border-l-amber-400';
                     statusIcon = <Clock className="w-3 h-3" strokeWidth={2.5} />;
                     statusLabel = 'Extra à valider';
                     ringClass = 'ring-2 ring-amber-300 ring-offset-1';
+                    break;
+                  // 🆕 Arrivée anticipée extra + heures sup
+                  case 'arrivee_anticipee_extra_et_heures_sup':
+                    bgClass = 'bg-gradient-to-r from-amber-500 via-orange-500 to-purple-500';
+                    borderLeftClass = 'border-l-4 border-l-amber-400';
+                    ringClass = 'ring-2 ring-amber-300 ring-offset-1';
+                    badges = [
+                      { icon: <Clock className="w-2.5 h-2.5" />, label: 'Arrivée', color: 'bg-amber-500', title: 'Arrivée anticipée extra' },
+                      { icon: <Timer className="w-2.5 h-2.5" />, label: 'Départ', color: 'bg-purple-500', title: 'Heures sup' }
+                    ];
                     break;
                   // 🆕 Arrivée anticipée + heures sup
                   case 'arrivee_anticipee_et_heures_sup':
@@ -1389,8 +1399,8 @@ function CellDrop({
                     borderLeftClass = 'border-l-4 border-l-orange-400';
                     ringClass = 'ring-2 ring-orange-300 ring-offset-1';
                     badges = [
-                      { icon: <AlarmClock className="w-2.5 h-2.5" />, label: `+${retardMinutes}`, color: 'bg-red-500', title: 'Retard' },
-                      { icon: <Timer className="w-2.5 h-2.5" />, label: `+${heuresSupMinutes}`, color: 'bg-purple-500', title: 'Heures sup' }
+                      { icon: <AlarmClock className="w-2.5 h-2.5" />, label: `+${retardMinutes}min`, color: 'bg-red-500', title: 'Retard' },
+                      { icon: <Timer className="w-2.5 h-2.5" />, label: `+${heuresSupMinutes}min`, color: 'bg-purple-500', title: 'Heures sup' }
                     ];
                     break;
                   case 'retard_et_depart_anticipe':
@@ -1398,8 +1408,8 @@ function CellDrop({
                     borderLeftClass = 'border-l-4 border-l-orange-400';
                     ringClass = 'ring-2 ring-orange-300 ring-offset-1';
                     badges = [
-                      { icon: <AlarmClock className="w-2.5 h-2.5" />, label: `+${retardMinutes}`, color: 'bg-red-500', title: 'Retard' },
-                      { icon: <LogOut className="w-2.5 h-2.5" />, label: `-${departAnticipeMinutes}`, color: 'bg-orange-500', title: 'Départ anticipé' }
+                      { icon: <AlarmClock className="w-2.5 h-2.5" />, label: `+${retardMinutes}min`, color: 'bg-red-500', title: 'Retard' },
+                      { icon: <LogOut className="w-2.5 h-2.5" />, label: `-${departAnticipeMinutes}min`, color: 'bg-orange-500', title: 'Départ anticipé' }
                     ];
                     break;
                   case 'retard_critique':
@@ -1468,12 +1478,12 @@ function CellDrop({
               // Style compact - plus compact quand multi-segments
               const isDoubleShift = shift.segments.length > 1;
               const isTripleOrMore = shift.segments.length >= 3;
-              const segmentPadding = isTripleOrMore ? 'px-1 py-0.5' : (isDoubleShift ? 'px-1.5 py-0.5' : 'px-2 py-1.5');
+              const segmentPadding = isTripleOrMore ? 'px-1.5 py-1' : (isDoubleShift ? 'px-1.5 py-1' : 'px-2 py-1.5');
               const segmentHeight = isTripleOrMore ? '28px' : (isDoubleShift ? '32px' : '36px');
-              // En mode comparaison avec multi-segments - hauteurs compactes pour éviter scroll
-              const comparaisonSegmentHeight = isTripleOrMore ? '44px' : (isDoubleShift ? '50px' : '70px');
+              // En mode comparaison avec multi-segments - hauteurs confortables
+              const comparaisonSegmentHeight = isTripleOrMore ? '48px' : (isDoubleShift ? '58px' : '70px');
               // Hauteur pour segments extra - très compact
-              const extraSegmentHeight = isDoubleShift ? '38px' : '48px';
+              const extraSegmentHeight = isDoubleShift ? '42px' : '48px';
               
               // Label type de shift
               const isShiftExtra = s.isExtra;
@@ -1522,22 +1532,6 @@ function CellDrop({
                     }
                   } : undefined}
                 >
-                  {/* Badges multiples en haut pour anomalies combinées - plus compact si multi-segments */}
-                  {showComparaison && badges.length > 0 && (
-                    <div className={`flex gap-0.5 px-1 ${isTripleOrMore ? 'pt-0.5' : 'pt-1'}`}>
-                      {badges.map((badge, bidx) => (
-                        <div 
-                          key={bidx}
-                          className={`${badge.color} flex items-center gap-0.5 ${isTripleOrMore ? 'px-1 py-0' : 'px-1.5 py-0.5'} rounded text-[8px] font-bold text-white shadow-sm`}
-                          title={badge.title}
-                        >
-                          {!isTripleOrMore && badge.icon}
-                          <span>{badge.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
                   {/* Contenu sobre style Skello */}
                   <div className={segmentPadding}>
                     {/* Ligne principale: Horaires + durée/statut */}
@@ -1553,6 +1547,20 @@ function CellDrop({
                         <span className="text-[9px] font-medium bg-black/20 px-1.5 py-0.5 rounded">
                           {showComparaison && statusLabel ? statusLabel : `${durationH}h`}
                         </span>
+                      )}
+                      {/* Badges multiples : compacts à droite des horaires */}
+                      {showComparaison && badges.length > 0 && (
+                        <div className="flex gap-0.5">
+                          {badges.map((badge, bidx) => (
+                            <span 
+                              key={bidx}
+                              className={`${badge.color} px-1 py-0.5 rounded text-[8px] font-bold text-white`}
+                              title={badge.title}
+                            >
+                              {badge.label}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                     
@@ -2408,9 +2416,6 @@ function PlanningRHTable({
         const dateMatch = shiftDate === cellDate;
         
         // Log uniquement si l'employ� correspond (pour r�duire le bruit)
-        if (empIdMatch) {
-          console.log(`Test shift: emp ${s.employeId}=${emp.id}, date ${shiftDate}=${cellDate} -> ${dateMatch}`);
-        }
         
         // Les deux doivent correspondre
         return empIdMatch && dateMatch;
@@ -2428,9 +2433,6 @@ function PlanningRHTable({
         if (!empMatch) return false;
         
         // Debug cong� trouv�
-        if (empMatch) {
-          console.log(`Cong� desktop trouv� pour ${emp.prenom} ${emp.nom}:`, c);
-        }
         
         // Normalisation des dates de d�but et de fin de cong�
         const debutConge = normalizeDate(c.dateDebut);
@@ -2441,9 +2443,6 @@ function PlanningRHTable({
                cellDate >= debutConge && 
                cellDate <= finConge;
                
-        if (empMatch && isInPeriod) {
-          console.log(`? Cong� desktop match: ${emp.prenom} le ${cellDate}, statut: ${c.statut}`);
-        }
         
         return isInPeriod;
       } catch (e) {
@@ -2471,16 +2470,13 @@ function PlanningRHTable({
       if (statutNormalise === 'approuvé' || statutNormalise === 'validé' || statutNormalise === 'approuv\uFFFD' || statutNormalise === 'valid\uFFFD' || statutNormalise === 'approuve' || statutNormalise === 'valide') {
         // Congé approuvé = priorité absolue
         if (shift) {
-          console.log(`?? CONGÉ APPROUVÉ: Masque le shift pour ${emp.prenom} le ${cellDate}`);
         }
         return { shift: null, conge };
       } else if (statutNormalise === 'en_attente' || statutNormalise === 'en attente') {
         // Congé en attente = on affiche les deux (shift + avertissement congé)
-        console.log(`?? CONGÉ EN ATTENTE: Shift visible avec avertissement pour ${emp.prenom} le ${cellDate}`);
         return { shift: normalizeShift(shift), conge }; // Retourne les deux pour afficher l'avertissement
       } else if (statutNormalise === 'refuse' || statutNormalise === 'refus\uFFFD') {
         // Congé refusé = on affiche le shift + indicateur discret du refus
-        console.log(`? CONGÉ REFUSÉ: Shift visible avec indicateur pour ${emp.prenom} le ${cellDate}`);
         return { shift: normalizeShift(shift), conge }; // Retourne le cong� pour afficher l'indicateur
       }
     }
@@ -2660,7 +2656,6 @@ function PlanningRHTable({
     
     // Si c'est un déplacement vers la même cellule, on ignore
     if (fromEmployeId === newEmployeId && srcDateKey === dstDateKey) {
-      console.log("Segment déplacé à la même position, opération ignorée");
       return;
     }
 
@@ -2726,7 +2721,6 @@ function PlanningRHTable({
             if (err.response?.status === 409) {
               // Conflit version: rafraîchir le shift source
               const res = await axios.get(buildApiUrl(`/shifts/${sourceShiftBefore.id}`), authHeaders);
-              console.log("Conflit version shift source, rafraîchi:", res.data);
               throw new Error("Conflit version source shift, relancer l'action"); 
             }
             throw err;
@@ -2743,7 +2737,6 @@ function PlanningRHTable({
               ...getRes.data,
               segments: draftTarget.segments // On garde nos segments � jour
             };
-            console.log("Récupération version shift pour update:", latestTargetShift.version);
           } catch (getErr) {
             console.warn("Impossible de récupérer la version du shift, utilisation version locale");
           }
@@ -2761,8 +2754,6 @@ function PlanningRHTable({
             // Conflit version: essayer de rafraîchir le shift cible
             try {
               const res = await axios.get(buildApiUrl(`/shifts/${draftTarget.id}`), authHeaders);
-              console.log("Conflit version shift destination, rafraîchi:", res.data);
-              
               // Mettre à jour la référence locale avec les données serveur
               draftTarget = res.data;
               setShifts(prev => prev.map(s => s.id === draftTarget.id ? draftTarget : s));
@@ -2918,8 +2909,8 @@ function PlanningRHTable({
                 
                 // Hauteur dynamique basée sur le nombre de segments en mode comparaison
                 // Chaque segment avec données comparaison fait ~60px (badges + horaires + solde)
-                const baseHeightComparaison = 112; // Hauteur de base
-                const heightPerExtraSegment = 60; // Hauteur supplémentaire par segment au-delà de 2
+                const baseHeightComparaison = 140; // Hauteur de base (2 segments confortables)
+                const heightPerExtraSegment = 65; // Hauteur supplémentaire par segment au-delà de 2
                 const dynamicHeight = maxSegmentsCount > 2 
                   ? baseHeightComparaison + ((maxSegmentsCount - 2) * heightPerExtraSegment)
                   : baseHeightComparaison;
@@ -3035,8 +3026,8 @@ function PlanningRHTable({
                 }, 1);
                 
                 // Hauteur dynamique basée sur le nombre de segments en mode comparaison
-                const baseHeightComparaison = 112;
-                const heightPerExtraSegment = 60;
+                const baseHeightComparaison = 140;
+                const heightPerExtraSegment = 65;
                 const dynamicHeight = maxSegmentsCount > 2 
                   ? baseHeightComparaison + ((maxSegmentsCount - 2) * heightPerExtraSegment)
                   : baseHeightComparaison;
@@ -4754,9 +4745,9 @@ function ModalEditionShift({
   const [activeTimePicker, setActiveTimePicker] = useState(null); // format: "segmentIndex-start" ou "segmentIndex-end"
   
   // Toutes les heures de 00:00 � 23:30 par tranches de 30min
-  const timeOptions = Array.from({ length: 48 }, (_, idx) => {
-    const h = Math.floor(idx / 2);
-    const m = (idx % 2) * 30;
+  const timeOptions = Array.from({ length: 96 }, (_, idx) => {
+    const h = Math.floor(idx / 4);
+    const m = (idx % 4) * 15;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   });
   
@@ -5197,13 +5188,12 @@ function ModalEditionShift({
                               : seg.start ? 'border-[#cf292c] bg-[#cf292c]/5 cursor-pointer' : 'border-gray-200 bg-gray-50 hover:border-gray-300 cursor-pointer'
                           }`}
                         >
-                          <LogOut className={`w-3.5 h-3.5 flex-shrink-0 ${locked ? 'text-red-400' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`} />
+                          <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${locked ? 'text-red-400' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`} />
                           <span className={`text-sm font-semibold ${locked ? 'text-red-500' : seg.start ? 'text-[#cf292c]' : 'text-gray-400'}`}>
                             {seg.start || '--:--'}
                           </span>
                           {locked && <Lock className="w-3 h-3 text-red-400 ml-auto" />}
                         </div>
-                        {/* Dropdown avec scroll auto */}
                         {!locked && activeTimePicker === `${i}-start` && (
                           <div 
                             className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-xl border border-gray-200 z-50 w-[72px] max-h-[180px] overflow-y-auto scrollbar-thin"
@@ -6092,7 +6082,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   // Correction: S'assurer que le token est bien r�cup�r� et disponible
   const token = localStorage.getItem("token");
-  console.log("PlanningRH - Token disponible:", token ? "Oui" : "Non");
   
   // Fonction utilitaire pour formater les noms des employ�s de fa�on coh�rente
   const formatEmployeeName = useCallback((emp) => {
@@ -6177,11 +6166,9 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
         if (response.ok) {
           const userData = await response.json();
-          console.log('?? Donn�es utilisateur r�cup�r�es:', userData);
           setUserRole(userData.role);
           const isAdminUser = ['admin', 'manager'].includes(userData.role);
           setIsAdmin(isAdminUser);
-          console.log('?? Privil�ges:', { role: userData.role, isAdmin: isAdminUser });
         } else if (response.status === 401) {
           console.warn('Token invalide ou expir� (401). Nettoyage.');
           localStorage.removeItem('token');
@@ -6213,7 +6200,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
   const requiresAdminPrivileges = useCallback((shift, originalShift = null) => {
     if (!originalShift && !shift) return { required: false };
 
-    console.log('?? V�rification privil�ges admin:', { shift, originalShift });
 
     // Nouvelles cr�ations de shifts hors plage normale (avant 6h ou apr�s 23h)
     if (!originalShift && Array.isArray(shift.segments)) {
@@ -6222,9 +6208,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         const endHour = parseInt(segment.end?.split(':')[0] || '0');
         const isOffHours = startHour < 6 || endHour > 23 || (endHour === 0 && segment.end !== '00:00');
         
-        if (isOffHours) {
-          console.log('?? Segment hors plage détecté:', segment, { startHour, endHour });
-        }
         
         return isOffHours;
       });
@@ -6255,7 +6238,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
       const hoursDifference = Math.abs(newDuration - originalDuration);
       
       if (hoursDifference > 2) {
-        console.log('?? Modification importante d\'heures d�tect�e:', { originalDuration, newDuration, hoursDifference });
         return {
           required: true,
           reason: 'MODIFICATION_IMPORTANTE',
@@ -6266,7 +6248,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
     // Création/modification de créneaux extra
     if (Array.isArray(shift.segments) && shift.segments.some(seg => seg.isExtra)) {
-      console.log('?? Créneaux extra détectés');
       return {
         required: true,
         reason: 'HEURES_EXTRA',
@@ -6301,7 +6282,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     if (!currentToken) return false;
     
     try {
-      console.log("D�but du rechargement des shifts...");
       
       // Assurer qu'aucun filtre de date n'est appliqu� pour r�cup�rer tous les shifts
       const response = await axios.get(buildApiUrl('/shifts'), {
@@ -6310,7 +6290,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         params: {}
       });
       
-      console.log(`${response.data.length} shifts r�cup�r�s du serveur`);
       
       // Assurons-nous que les dates sont correctement format�es pour la comparaison
       const formattedShifts = response.data.map(shift => {
@@ -6349,7 +6328,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         };
       });
       
-      console.log("Shifts formatés:", formattedShifts.length, "shifts");
       setShifts(formattedShifts);
       
       // Recharger aussi les congés car ils peuvent être impactés (création/suppression d'absence)
@@ -6357,7 +6335,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         const congesResponse = await axios.get(buildApiUrl('/admin/conges'), {
           headers: { Authorization: `Bearer ${currentToken}` },
         });
-        console.log("Congés rechargés:", congesResponse.data.length, "congés");
         setConges(congesResponse.data);
       } catch (congesErr) {
         console.error("Erreur rechargement congés:", congesErr);
@@ -6427,7 +6404,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         const stored = localStorage.getItem('processedAnomalies');
         if (stored) {
           processedMap = JSON.parse(stored);
-          console.log('?? Cache localStorage lu:', Object.keys(processedMap).length, 'anomalies trait�es');
         }
       } catch (e) {
         console.warn('Erreur lecture processedAnomalies du localStorage:', e);
@@ -6444,9 +6420,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         }
       });
       const afterCleanup = Object.keys(processedMap).length;
-      if (beforeCleanup !== afterCleanup) {
-        console.log('?? Cache nettoy�:', beforeCleanup, '->', afterCleanup, 'entr�es');
-      }
       
       // Sauvegarder le cache nettoy�
       try {
@@ -6458,12 +6431,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
       // Fallback pour compatibilit�
       window.__processedAnomalies = processedMap;
 
-      console.log('?? D�but r�conciliation comparaisons...', allComparaisons.length, 'comparaisons');
-      console.log('?? Donn�es disponibles:', {
-        processedMapKeys: Object.keys(processedMap),
-        anomaliesDataKeys: Object.keys(anomaliesData || {}),
-        comparaisonsCount: allComparaisons.length
-      });
 
       const reconciled = allComparaisons.map(comp => {
         const dateKey = comp.date?.slice(0,10);
@@ -6473,11 +6440,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         const anomaliesById = {};
         anomaliesList.forEach(a => { anomaliesById[a.id] = a; });
         
-        console.log(`?? R�conciliation ${key}:`, {
-          ecartsCount: comp.ecarts?.length || 0,
-          anomaliesCount: anomaliesList.length,
-          anomaliesIds: anomaliesList.map(a => ({ id: a.id, type: a.type, statut: a.statut }))
-        });
         
         return {
           ...comp,
@@ -6490,14 +6452,12 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
             if (ec.anomalieId && processedMap[ec.anomalieId]) {
               modified.statut = processedMap[ec.anomalieId].statut;
               modified.statutMisAJour = true;
-              console.log(`? écart réconcilié via processedMap: anomalie ${ec.anomalieId} -> ${modified.statut}`);
             }
             // 2. Override via anomaliesData (cache anomalies) si statut final absent ou diff�rent
             else if (ec.anomalieId && anomaliesById[ec.anomalieId] && treatedStatuses.includes(anomaliesById[ec.anomalieId].statut)) {
               if (modified.statut !== anomaliesById[ec.anomalieId].statut) {
                 modified.statut = anomaliesById[ec.anomalieId].statut;
                 modified.statutMisAJour = true;
-                console.log(`? écart réconcilié via anomaliesData: anomalie ${ec.anomalieId} -> ${modified.statut}`);
               }
             }
             // 3. Heuristique si pas anomalieId: essayer de lier à une anomalie traitée de même type
@@ -6513,9 +6473,7 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                 modified.anomalieId = modified.anomalieId || match.id;
                 modified.statut = match.statut;
                 modified.statutMisAJour = true;
-                console.log(`?? écart lié par heuristique: ${ec.type} -> anomalie ${match.id} (${match.statut})`);
               } else if (!treatedStatuses.includes(originalStatus)) {
-                console.log(`?? écart non réconcilié: ${ec.type}, anomalieId: ${ec.anomalieId}, statut: ${originalStatus}`);
               }
             }
             
@@ -6581,7 +6539,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   // Fonction helper pour r�cup�rer les �carts d'un employ� pour une date donn�e
   const getEcartsForEmployeeDate = useCallback((employeId, date) => {
-    console.log(`?? getEcartsForEmployeeDate appel�: employeId=${employeId}, date=${date}`);
     // DEBUG: Afficher l'�tat de la comparaison
     if (showComparaison && comparaisons.length === 0) {
       console.warn(`?? Mode comparaison activ� mais aucune donn�e charg�e! (${comparaisons.length} comparaisons)`);
@@ -6626,13 +6583,9 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   // Fonction helper pour formater l'affichage d'un �cart - VERSION EXPLICITE avec nouveaux bar�mes et statuts
   const formatEcart = useCallback((ecart) => {
-    console.log(`?? formatEcart appel�:`, { type: ecart.type, gravite: ecart.gravite, dureeMinutes: ecart.dureeMinutes });
     
     // Utilisation de updateTrigger comme d�pendance pour forcer le rafra�chissement
     // Debug: afficher le statut de l'�cart
-    if (ecart.statut) {
-      console.log(`?? Formatage �cart avec statut:`, ecart.type, ecart.statut);
-    }
     
     // Gestion des statuts d'anomalies (si l'�cart a un statut)
     const getStatusConfig = (status, baseConfig) => {
@@ -6843,12 +6796,10 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     const baseConfig = configs[ecart.type] || configs.presence_non_prevue;
     
     if (!configs[ecart.type]) {
-      console.warn(`?? Type d'�cart non reconnu: "${ecart.type}" - utilisation de la config par d�faut`);
-    } else {
-      console.log(`? Config trouv�e pour type "${ecart.type}":`, { icon: baseConfig.icon, label: baseConfig.label });
+      console.warn(`?? Type d'écart non reconnu: "${ecart.type}" - utilisation de la config par défaut`);
     }
     
-    // Appliquer le statut si pr�sent (anomalies trait�es par l'admin)
+    // Appliquer le statut si présent (anomalies traitées par l'admin)
     const finalConfig = ecart.statut ? getStatusConfig(ecart.statut, baseConfig) : baseConfig;
     
     return {
@@ -6895,7 +6846,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         [key]: result.anomalies || []
       }));
       
-      console.log(`?? ${result.anomaliesCreees} anomalies synchronis�es pour employ� ${employeId} le ${date}`);
       
     } catch (error) {
       console.error('Erreur sync anomalies:', error);
@@ -6910,7 +6860,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   // Mettre � jour le statut d'une anomalie localement (pour synchroniser avec le panneau)
   const updateAnomalieStatus = useCallback((employeId, date, anomalieId, newStatus, adminNote = null) => {
-    console.log(`?? updateAnomalieStatus appel�:`, { employeId, date, anomalieId, newStatus, adminNote });
     
     const key = `${employeId}_${date}`;
     
@@ -6956,7 +6905,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     if (!window.__processedAnomalies) window.__processedAnomalies = {};
     window.__processedAnomalies[anomalieId] = processedMap[anomalieId];
     
-    console.log('? Statut anomalie sauvegard� localement:', { anomalieId, newStatus });
   } catch (e) {
     console.warn('Erreur sauvegarde statut anomalie:', e);
     // Fallback simple
@@ -6983,7 +6931,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         newComp[compIndex].ecarts = newComp[compIndex].ecarts.map(ecart => {
           // Si l'�cart a d�j� une anomalieId qui correspond
           if (ecart.anomalieId === anomalieId) {
-            console.log(`?? Mise � jour directe �cart avec anomalieId ${anomalieId}:`, ecart.type, '->', newStatus);
             return {
               ...ecart,
               statut: newStatus,
@@ -7006,7 +6953,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
             );
             
             if (anomalieCorrespondante) {
-              console.log(`?? Liaison �cart ${ecart.type} avec anomalie ${anomalieId}:`, newStatus);
               return {
                 ...ecart,
                 statut: newStatus,
@@ -7020,8 +6966,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
           return ecart;
         });
         
-        console.log(`?? Comparaison mise � jour pour employ� ${employeId} le ${dateStr}:`, 
-          newComp[compIndex].ecarts.filter(e => e.statut).length, '�carts avec statut');
       }
       
       return newComp;
@@ -7030,20 +6974,17 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     // Forcer un rafra�chissement de l'UI en d�clenchant un �tat
     setUpdateTrigger(prev => prev + 1);
     
-    console.log(`?? Anomalie ${anomalieId} mise � jour localement: ${newStatus}`);
   }, [setAnomaliesData, setComparaisons, anomaliesData]); // Ajout d'anomaliesData dans les d�pendances
 
   // G�rer le clic sur une anomalie
   // eslint-disable-next-line no-unused-vars
   const handleClickAnomalie = useCallback((employeId, date, anomalie) => {
-    console.log('Clic sur anomalie:', { employeId, date, anomalie });
     setAnomalieSelectionnee(anomalie);
   }, [setAnomalieSelectionnee]);
 
   // Actions rapides sur les anomalies
   // eslint-disable-next-line no-unused-vars
   const handleActionRapideAnomalie = useCallback((employeId, date, anomalie, action) => {
-    console.log('Action rapide anomalie:', { employeId, date, anomalie, action });
     
     if (action === 'extra') {
       // Convertir en heures suppl�mentaires
@@ -7097,7 +7038,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         });
 
         setAnomaliesData(newAnomaliesData);
-        console.log(`?? ${response.data.anomalies.length} anomalies charg�es`);
       }
 
     } catch (error) {
@@ -7120,7 +7060,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     if (!showComparaison) return;
     
     const syncInterval = setInterval(() => {
-      console.log('?? Synchronisation p�riodique des statuts anomalies...');
       // Recharger les comparaisons pour avoir les statuts � jour
       loadComparaisons();
     }, 30000); // Toutes les 30 secondes
@@ -7143,15 +7082,11 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
           }),
         ]);
         setEmployes(employesRes.data);
-        console.log("📦 Shifts reçus du backend:", shiftsRes.data.length, "shifts");
         // Debug: chercher le shift de Paolo (employeId 97) et Marco (93)
         const paoloShifts = shiftsRes.data.filter(s => s.employeId === 97);
         const marcoShifts = shiftsRes.data.filter(s => s.employeId === 93);
-        console.log("🔍 Shifts de Paolo (97):", paoloShifts);
-        console.log("🔍 Shifts de Marco (93):", marcoShifts);
         setShifts(shiftsRes.data);
         // Debug: voir tous les cong�s re�us
-        console.log("Cong�s re�us du backend:", congesRes.data);
         // Ne plus filtrer - garder tous les cong�s pour les afficher
         setConges(congesRes.data);
        } catch (err) {
@@ -7176,19 +7111,10 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
   
   // D�bogage - Afficher les dates actuellement visibles
   useEffect(() => {
-    console.log("Dates actuellement affich�es dans le planning:", 
-      dates.map(d => d instanceof Date ? d.toISOString().slice(0, 10) : d));
     
     // Debug des cong�s charg�s
-    if (conges.length > 0) {
-      console.log("Cong�s charg�s dans le state:", conges);
-      console.log("Nombre de cong�s:", conges.length);
-    }
     
     // Debug des employ�s
-    if (employes.length > 0) {
-      console.log("Premiers employ�s:", employes.slice(0, 2));
-    }
     
     // Afficher les shifts correspondant aux dates affich�es
     if (shifts.length > 0 && dates.length > 0) {
@@ -7199,7 +7125,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                          new Date(s.date).toISOString().slice(0, 10));
         return datesStr.includes(shiftDate);
       });
-      console.log("Shifts correspondant aux dates affich�es:", shiftsFiltered);
     }
   }, [dates, shifts, conges, employes]);
 
@@ -7240,7 +7165,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     
     // Si un shift absence existe déjà, on permet l'édition/suppression (bypass congé check)
     if (existingShift && existingShift.type === 'absence') {
-      console.log('✅ Shift absence trouvé, ouverture modal:', existingShift.id);
       setSelected({ ...existingShift });
       setModalOpen(true);
       return;
@@ -7343,11 +7267,8 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         // V�rifier si on passe d'absence � pr�sence ou inversement
         const isTypeChange = existingShift && existingShift.type !== shift.type;
         
-        if (isTypeChange) {
-          console.log(`Changement de type d�tect�: ${existingShift.type} -> ${shift.type}`);
-        }
         
-        // Envoyer directement sans v�rification de version
+        // Envoyer avec la version pour le contrôle de concurrence
         const res = await axios.put(
           buildApiUrl(`/shifts/${shift.id}`),
           { ...shift },
@@ -7395,8 +7316,44 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     } catch (err) {
       console.error("Erreur sauvegarde:", err.response?.data || err);
       
-      // Affichage standard de l'erreur
+      // 🔄 Gestion conflits de version / shifts existants
+      const errorCode = err.response?.data?.code;
       const errorMsg = err.response?.data?.error || err.message;
+      
+      if (errorCode === 'VERSION_CONFLICT') {
+        // Rafraîchir et prévenir l'utilisateur
+        await refreshShifts(true);
+        setNotification({
+          type: 'warning',
+          message: '⚠️ Ce shift a été modifié par un autre utilisateur. Les données ont été rechargées, veuillez réessayer.',
+          duration: 7000
+        });
+        return;
+      }
+      
+      if (errorCode === 'SHIFT_EXISTS') {
+        // Shift déjà existant — proposer la fusion
+        const confirm = window.confirm(
+          `Un shift existe déjà pour cet employé à cette date.\n\nVoulez-vous fusionner les segments ?`
+        );
+        if (confirm) {
+          try {
+            const res = await axios.post(
+              buildApiUrl('/shifts'),
+              { ...shift, forceMerge: true },
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setShifts(prev => prev.map(s => s.id === res.data.id ? res.data : s));
+            setModalOpen(false);
+            setSelected(null);
+            setNotification({ type: 'success', message: '✅ Segments fusionnés avec succès', duration: 3000 });
+            await refreshShifts(true);
+          } catch (mergeErr) {
+            setNotification({ type: 'error', message: `Erreur fusion: ${mergeErr.response?.data?.error || mergeErr.message}`, duration: 7000 });
+          }
+        }
+        return;
+      }
       
       if (modalOpen && selected) {
         // Si le modal d'�dition est ouvert, on peut utiliser son syst�me d'erreurs
@@ -7476,7 +7433,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
   
   // Fonction pour g�rer le clic sur une anomalie (ouvre modale d�taill�e) - VERSION MISE � JOUR
   const handleAnomalieClick = useCallback(async (employeId, date, ecart) => {
-    console.log('Clic sur anomalie:', { employeId, date, ecart });
     
     // V�rifier d'abord les privil�ges pour l'acc�s aux d�tails d'anomalie
     const authorized = await validateAnomalieWithAdminCheck(employeId, date, ecart, 'view_details');
@@ -7495,7 +7451,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
       if (ecart.id && typeof ecart.id === 'number') {
         // V�rifier si l'anomalie a d�j� �t� trait�e
         if (ecart.statut && ['validee', 'refusee', 'corrigee'].includes(ecart.statut)) {
-          console.log('Anomalie d�j� trait�e:', ecart.statut);
           setNotification({
             type: 'info',
             message: `Cette anomalie a déjà été ${ecart.statut}`,
@@ -7513,7 +7468,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
       }
       
       // Sinon, c'est un �cart de comparaison - il faut d'abord le synchroniser en anomalie
-      console.log('?? Synchronisation de l\'�cart en anomalie...', { employeId, date, ecart });
       
       // Format de l'�cart pour la synchronisation
       const ecartFormatted = {
@@ -7524,7 +7478,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
       };
       
       const result = await syncAnomaliesFromComparison(employeId, date, [ecartFormatted]);
-      console.log('R�sultat synchronisation:', result);
       
       if (result && result.success) {
         // V�rifier si des anomalies ont �t� cr��es ou mises � jour
@@ -7535,7 +7488,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
             employe: employes.find(e => e.id === employeId)
           };
           
-          console.log('? Anomalie synchronis�e:', anomalieComplete);
           setAnomalieSelectionnee(anomalieComplete);
         } else if (result.anomaliesCreees === 0) {
           // Aucune anomalie cr��e - peut-�tre qu'elle existe d�j� ou que l'�cart n'est pas significatif
@@ -7575,7 +7527,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
   // eslint-disable-next-line no-unused-vars
   const handleConvertToExtra = useCallback(async (employeId, date, ecart) => {
     try {
-      console.log("?? Conversion en extra - donn�es:", { employeId, date, ecart });
       
       // Utiliser directement les informations de l'�cart au lieu de refaire une requ�te
       // L'�cart contient d�j� les informations n�cessaires
@@ -7613,7 +7564,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
         }]
       };
 
-      console.log("?? Nouveau shift extra � cr�er:", newShift);
       await handleSave(newShift);
       
       // Recharger les shifts ET les comparaisons pour mettre � jour l'affichage
@@ -7694,11 +7644,9 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   const handleQuickAction = useCallback(async (employeId, date, ecart, action) => {
     const dateStr = typeof date === 'string' ? date : formatDate(date);
-    console.log('[QuickAction] Action simple:', { employeId, dateStr, ecart, action });
 
     // Action sp�ciale 'update' pour mettre � jour l'affichage local
     if (action === 'update') {
-      console.log('[QuickAction] Mise � jour locale de l\'�cart:', ecart);
       
       // Mettre � jour les comparaisons locales si l'�cart provient d'une comparaison
       setComparaisons(prevComparaison => {
@@ -7744,7 +7692,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
   useEffect(() => {
     if (pendingQuickActionRef.current) {
       const { employeId, dateStr, ecart, action } = pendingQuickActionRef.current;
-      console.log('[QuickAction][Deferred] Ex�cution apr�s chargement anomalies');
       pendingQuickActionRef.current = null;
       setTimeout(() => handleQuickAction(employeId, dateStr, ecart, action), 0);
     }
@@ -8543,17 +8490,13 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                       employes={employes}
                       onClose={() => setCreationRapideModalOpen(false)} 
                       onSuccess={async (datePremiereCreation) => {
-                        console.log("Cr�ation rapide termin�e - Rechargement des plannings...");
                         // Attendre un court instant pour s'assurer que la base de donn�es a �t� mise � jour
                         setTimeout(async () => {
                           const success = await refreshShifts();
-                          console.log("Rechargement termin�:", success ? "OK" : "�CHEC");
                           if (success) {
-                            console.log("Nouveaux shifts:", shifts.length);
                             
                             // Navigation vers la date de la premi�re cr�ation si disponible
                             if (datePremiereCreation) {
-                              console.log("Navigation vers la date:", datePremiereCreation);
                               // Conversion de la date au format YYYY-MM-DD vers un objet Date
                               try {
                                 let dateObj;
@@ -8567,7 +8510,6 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                                 }
                                 
                                 if (!isNaN(dateObj.getTime())) {
-                                  console.log("Navigation vers date valide:", dateObj);
                                   // Utiliser setTimeout pour s'assurer que l'�tat est mis � jour apr�s que tous les shifts sont charg�s
                                   setTimeout(() => {
                                     setDateCourante(dateObj);
@@ -8662,20 +8604,17 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                 anomalieMAJ.statut,
                 anomalieMAJ.adminNote
               );
-              console.log('?? Synchronisation planning apr�s traitement anomalie:', anomalieMAJ.id);
             }
             
             // Refresh pour �tre s�r
             refreshShifts(true);
             loadAnomaliesPeriode(); // Toujours recharger les anomalies avec le nouveau syst�me
             if (showComparaison) {
-              console.log('?? Rechargement comparaisons apr�s traitement anomalie');
               loadComparaisons(); // Recharger les comparaisons pour avoir les statuts � jour
             }
             
             // Second refresh apr�s d�lai pour s'assurer que tout est synchronis�
             setTimeout(() => {
-              console.log('?? Second refresh apr�s traitement anomalie');
               if (showComparaison) loadComparaisons();
               setUpdateTrigger(prev => prev + 1);
             }, 1000);

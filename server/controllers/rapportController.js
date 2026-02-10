@@ -1,29 +1,15 @@
 // server/controllers/rapportController.js
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { toLocalDateString } = require('../utils/dateUtils');
-
-// Fonction helper pour parser les segments JSON
-function parseSegments(segments) {
-  if (!segments) return [];
-  if (Array.isArray(segments)) return segments;
-  if (typeof segments === 'string') {
-    try {
-      const parsed = JSON.parse(segments);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) { return []; }
-  }
-  return [];
-}
+const { isEntree, isSortie } = require('../utils/pointageTypeUtils');
+const { parseSegments } = require('../utils/segmentUtils');
 
 // Récupérer le rapport d'heures pour un employé
 const getRapportEmploye = async (req, res) => {
   try {
     const { employeId } = req.params;
     const { periode = 'mois', mois } = req.query;
-    
-    console.log(`🔍 DEBUT getRapportEmploye - employeId: ${employeId}, periode: ${periode}, mois: ${mois}`);
     
     // Définir les dates de début et fin selon la période
     let dateDebut, dateFin;
@@ -117,29 +103,17 @@ const getRapportEmploye = async (req, res) => {
       }
     });
 
-    console.log(`📊 Données récupérées:`);
-    console.log(`   - Shifts: ${shifts.length}`);
-    console.log(`   - Pointages: ${pointages.length}`);
-    console.log(`   - Congés: ${conges.length}`);
-    
     // Afficher les premiers shifts pour debug
     if (shifts.length > 0) {
-      console.log(`🔍 Premier shift:`, {
-        id: shifts[0].id,
-        date: shifts[0].date,
-        segments: shifts[0].segments?.length || 0
-      });
       
       // Test du calcul pour le premier shift
       if (shifts[0].segments && Array.isArray(shifts[0].segments)) {
         shifts[0].segments.forEach((segment, idx) => {
           const heureDebut = segment.heureDebut || segment.start;
           const heureFin = segment.heureFin || segment.end;
-          console.log(`   Segment ${idx}: ${heureDebut} -> ${heureFin}`);
         });
       }
     } else {
-      console.log('⚠️  AUCUN SHIFT TROUVÉ pour cet employé et cette période');
     }
 
     // Calculer les statistiques
@@ -151,14 +125,8 @@ const getRapportEmploye = async (req, res) => {
     let heuresParJour = [];
 
     // Calculer les heures prévues à partir des shifts
-    console.log('🔄 DÉBUT CALCUL HEURES PRÉVUES');
     shifts.forEach((shift, index) => {      
       const segments = parseSegments(shift.segments);
-      console.log(`Shift ${index + 1}/${shifts.length}:`, {
-        id: shift.id,
-        date: toLocalDateString(shift.date),
-        segmentsCount: segments.length
-      });
       
       if (segments.length > 0) {
         segments.forEach((segment, segIndex) => {
@@ -166,34 +134,32 @@ const getRapportEmploye = async (req, res) => {
           const heureDebut = segment.heureDebut || segment.start;
           const heureFin = segment.heureFin || segment.end;
           
-          console.log(`  Segment ${segIndex + 1}: ${heureDebut} -> ${heureFin}`);
-          
           if (heureDebut && heureFin) {
             try {
               const [heuresDebut, minutesDebut] = heureDebut.split(':').map(Number);
               const [heuresFin, minutesFin] = heureFin.split(':').map(Number);
               
               const debut = heuresDebut + minutesDebut / 60;
-              const fin = heuresFin + minutesFin / 60;
+              let fin = heuresFin + minutesFin / 60;
               
-              const duree = Math.max(0, fin - debut);
+              // Gestion des shifts de nuit (ex: 22:00 → 06:00)
+              if (fin <= debut) {
+                fin += 24;
+              }
+              
+              const duree = fin - debut;
               heuresPreveues += duree;
               
-              console.log(`    -> Ajout ${duree}h (total: ${heuresPreveues}h)`);
             } catch (error) {
               console.error(`    -> Erreur parsing:`, error);
             }
           } else {
-            console.log(`    -> Pas d'heures valides dans segment:`, segment);
           }
         });
       } else {
-        console.log(`  -> Aucun segment valide`);
       }
     });
     
-    console.log(`🏁 TOTAL HEURES PRÉVUES FINAL: ${heuresPreveues}h`);
-
     // Calculer les heures travaillées et retards à partir des pointages
     const pointagesParDate = {};
     pointages.forEach(pointage => {
@@ -207,7 +173,7 @@ const getRapportEmploye = async (req, res) => {
       }
     });
 
-    // Analyser chaque jour
+    // Analyser chaque jour — CALCUL PAR PAIRES entrée/sortie (soustrait les pauses)
     Object.entries(pointagesParDate).forEach(([date, pointagesJour]) => {
       const shiftJour = shifts.find(s => toLocalDateString(s.date) === date);
       
@@ -218,14 +184,25 @@ const getRapportEmploye = async (req, res) => {
         // Trier par horodatage
         pointagesJour.sort((a, b) => new Date(a.horodatage) - new Date(b.horodatage));
         
-        // Calculer les heures travaillées (différence entre premier et dernier pointage)
-        const premier = pointagesJour[0];
-        const dernier = pointagesJour[pointagesJour.length - 1];
+        // Calculer les heures par paires ENTRÉE→SORTIE (exclut les pauses automatiquement)
+        let i = 0;
+        while (i < pointagesJour.length - 1) {
+          const p1 = pointagesJour[i];
+          const p2 = pointagesJour[i + 1];
+          
+          if (isEntree(p1.type) && isSortie(p2.type)) {
+            const debut = new Date(p1.horodatage);
+            const fin = new Date(p2.horodatage);
+            const dureeH = (fin - debut) / (1000 * 60 * 60);
+            if (dureeH > 0 && dureeH < 16) { // Sanity: max 16h par bloc
+              heuresJour += dureeH;
+            }
+            i += 2; // Passer à la paire suivante
+          } else {
+            i += 1; // Avancer d'un cran (pointage orphelin)
+          }
+        }
         
-        const heureDebut = new Date(premier.horodatage);
-        const heureFin = new Date(dernier.horodatage);
-        
-        heuresJour = (heureFin - heureDebut) / (1000 * 60 * 60); // Convertir en heures
         heuresTravaillees += heuresJour;
         
         // Calculer le retard si il y a un shift prévu
@@ -233,18 +210,21 @@ const getRapportEmploye = async (req, res) => {
           const premierSegment = shiftJour.segments[0];
           const heureDebutSegment = premierSegment.heureDebut || premierSegment.start;
           if (premierSegment && heureDebutSegment) {
-            // Créer une date avec l'heure prévue
-            const [heures, minutes] = heureDebutSegment.split(':').map(Number);
-            const heurePreveueDebut = new Date(heureDebut);
-            heurePreveueDebut.setHours(heures, minutes, 0, 0);
-            
-            if (heureDebut > heurePreveueDebut) {
-              retardJour = (heureDebut - heurePreveueDebut) / (1000 * 60); // en minutes
-              nombreRetards++;
-              retards.push({
-                date,
-                duree: Math.round(retardJour)
-              });
+            const premierPointageEntree = pointagesJour.find(p => isEntree(p.type));
+            if (premierPointageEntree) {
+              const heureDebut = new Date(premierPointageEntree.horodatage);
+              const [heures, minutes] = heureDebutSegment.split(':').map(Number);
+              const heurePreveueDebut = new Date(heureDebut);
+              heurePreveueDebut.setHours(heures, minutes, 0, 0);
+              
+              if (heureDebut > heurePreveueDebut) {
+                retardJour = (heureDebut - heurePreveueDebut) / (1000 * 60);
+                nombreRetards++;
+                retards.push({
+                  date,
+                  duree: Math.round(retardJour)
+                });
+              }
             }
           }
         }
@@ -260,9 +240,10 @@ const getRapportEmploye = async (req, res) => {
             const [heuresFin, minutesFin] = heureFin.split(':').map(Number);
             
             const debut = heuresDebut + minutesDebut / 60;
-            const fin = heuresFin + minutesFin / 60;
+            let fin = heuresFin + minutesFin / 60;
+            if (fin <= debut) fin += 24; // Nuit: 22:00→06:00 = 8h
             
-            return total + Math.max(0, fin - debut);
+            return total + (fin - debut);
           }
           return total;
         }, 0) : 0;

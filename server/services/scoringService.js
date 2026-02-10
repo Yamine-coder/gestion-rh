@@ -1,11 +1,11 @@
 // =====================================================
 // SERVICE DE SCORING AUTOMATIQUE
 // Attribue automatiquement les points basés sur les événements
+// Migré de raw SQL (pg Pool) vers Prisma ORM
 // =====================================================
 require('dotenv').config();
-const { Pool } = require('pg');
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const prisma = require('../prisma/client');
+const { isEntree } = require('../utils/pointageTypeUtils');
 
 /**
  * Attribue des points à un employé
@@ -19,42 +19,43 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
  */
 async function attribuerPoints(employeId, ruleCode, motif = null, dateEvenement = null, referenceType = null, referenceId = null, createdBy = null) {
   try {
-    // Récupérer la règle
-    const ruleResult = await pool.query(
-      'SELECT id, points, label FROM scoring_rules WHERE code = $1 AND actif = true',
-      [ruleCode]
-    );
+    // Récupérer la règle — Prisma
+    const rule = await prisma.scoringRule.findFirst({
+      where: { code: ruleCode, actif: true },
+      select: { id: true, points: true, label: true }
+    });
     
-    if (ruleResult.rows.length === 0) {
+    if (!rule) {
       console.warn(`[SCORING] Règle inconnue: ${ruleCode}`);
       return null;
     }
     
-    const rule = ruleResult.rows[0];
-    const date = dateEvenement || new Date().toISOString().split('T')[0];
+    const date = dateEvenement ? new Date(dateEvenement) : new Date();
     
     // Vérifier si déjà attribué (éviter doublons pour la même référence)
     if (referenceType && referenceId) {
-      const existing = await pool.query(
-        'SELECT id FROM employe_points WHERE employe_id = $1 AND rule_code = $2 AND reference_type = $3 AND reference_id = $4',
-        [employeId, ruleCode, referenceType, referenceId]
-      );
-      if (existing.rows.length > 0) {
-        console.log(`[SCORING] Points déjà attribués pour ${ruleCode} ref:${referenceType}/${referenceId}`);
-        return null;
-      }
+      const existing = await prisma.employePoint.findFirst({
+        where: { employeId, ruleCode, referenceType, referenceId }
+      });
+      if (existing) return null;
     }
     
-    // Insérer les points
-    const result = await pool.query(`
-      INSERT INTO employe_points (employe_id, rule_id, rule_code, points, motif, date_evenement, reference_type, reference_id, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
-    `, [employeId, rule.id, ruleCode, rule.points, motif, date, referenceType, referenceId, createdBy]);
+    // Insérer les points — Prisma
+    const created = await prisma.employePoint.create({
+      data: {
+        employeId,
+        ruleId: rule.id,
+        ruleCode,
+        points: rule.points,
+        motif,
+        dateEvenement: date,
+        referenceType,
+        referenceId,
+        createdBy
+      }
+    });
     
-    console.log(`[SCORING] ${rule.points > 0 ? '+' : ''}${rule.points} pts → Employé ${employeId} (${rule.label})`);
-    
-    return result.rows[0];
+    return created;
   } catch (error) {
     console.error('[SCORING] Erreur attribution:', error.message);
     return null;
@@ -66,18 +67,21 @@ async function attribuerPoints(employeId, ruleCode, motif = null, dateEvenement 
  */
 async function attribuerPointsCustom(employeId, points, motif, dateEvenement = null, createdBy = null) {
   try {
-    const date = dateEvenement || new Date().toISOString().split('T')[0];
+    const date = dateEvenement ? new Date(dateEvenement) : new Date();
     const ruleCode = points >= 0 ? 'BONUS_CUSTOM' : 'MALUS_CUSTOM';
     
-    const result = await pool.query(`
-      INSERT INTO employe_points (employe_id, rule_code, points, motif, date_evenement, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
-    `, [employeId, ruleCode, points, motif, date, createdBy]);
+    const created = await prisma.employePoint.create({
+      data: {
+        employeId,
+        ruleCode,
+        points,
+        motif,
+        dateEvenement: date,
+        createdBy
+      }
+    });
     
-    console.log(`[SCORING] ${points > 0 ? '+' : ''}${points} pts (custom) → Employé ${employeId}`);
-    
-    return result.rows[0];
+    return created;
   } catch (error) {
     console.error('[SCORING] Erreur attribution custom:', error.message);
     return null;
@@ -100,7 +104,7 @@ async function onPointage(pointage, shift = null) {
   const date = pointage.date || new Date().toISOString().split('T')[0];
   
   // Si c'est un pointage d'arrivée et qu'on a le shift
-  if (pointage.type === 'arrivee' && shift && shift.start) {
+  if (isEntree(pointage.type) && shift && shift.start) {
     const heurePointage = pointage.heure; // Format HH:mm ou HH:mm:ss
     const heureShift = shift.start;
     
@@ -133,7 +137,6 @@ async function onAnomalieCreee(anomalie) {
   // On n'attribue pas de malus immédiatement
   // Les malus sont attribués si l'anomalie n'est pas résolue sous 48h
   // Voir le job checkAnomaliesNonResolues()
-  console.log(`[SCORING] Anomalie ${anomalie.id} créée - surveillance activée`);
 }
 
 /**
@@ -141,7 +144,6 @@ async function onAnomalieCreee(anomalie) {
  */
 async function onAnomalieResolue(anomalie) {
   // Pas de malus si résolue à temps
-  console.log(`[SCORING] Anomalie ${anomalie.id} résolue à temps`);
 }
 
 /**
@@ -231,34 +233,36 @@ async function onCongeDepose(conge) {
 /**
  * Vérifie les anomalies non résolues depuis plus de 48h
  * À exécuter quotidiennement
+ * NOTE: NOT EXISTS subquery — doit rester en $queryRaw
  */
 async function checkAnomaliesNonResolues() {
   try {
-    const result = await pool.query(`
-      SELECT a.id, a.employe_id, a.type, a.created_at
+    const rows = await prisma.$queryRaw`
+      SELECT a.id, a."employeId" as employe_id, a.type, a."createdAt" as created_at
       FROM "Anomalie" a
+      JOIN "User" u ON u.id = a."employeId" AND u.statut = 'actif'
       WHERE a.statut = 'en_attente'
-      AND a.created_at <= NOW() - INTERVAL '48 hours'
+      AND a."createdAt" <= NOW() - INTERVAL '48 hours'
       AND NOT EXISTS (
         SELECT 1 FROM employe_points ep 
         WHERE ep.reference_type = 'anomalie' 
         AND ep.reference_id = a.id 
         AND ep.rule_code = 'ANOMALIE_NON_RESOLUE'
       )
-    `);
+    `;
     
-    for (const anomalie of result.rows) {
+    for (const anomalie of rows) {
+      const dateStr = anomalie.created_at ? new Date(anomalie.created_at).toISOString().split('T')[0] : null;
       await attribuerPoints(
         anomalie.employe_id,
         'ANOMALIE_NON_RESOLUE',
         `Anomalie ${anomalie.type} non résolue depuis 48h`,
-        anomalie.created_at?.split('T')[0],
+        dateStr,
         'anomalie',
         anomalie.id
       );
     }
     
-    console.log(`[SCORING] ${result.rows.length} anomalies non résolues traitées`);
   } catch (error) {
     console.error('[SCORING] Erreur check anomalies:', error.message);
   }
@@ -267,11 +271,11 @@ async function checkAnomaliesNonResolues() {
 /**
  * Attribue les bonus de semaine complète
  * À exécuter le lundi matin
+ * NOTE: Multi-CTE query — doit rester en $queryRaw
  */
 async function attribuerBonusSemaineComplete() {
   try {
-    // Récupérer la semaine précédente
-    const result = await pool.query(`
+    const rows = await prisma.$queryRaw`
       WITH semaine_precedente AS (
         SELECT 
           date_trunc('week', CURRENT_DATE - INTERVAL '7 days') as debut,
@@ -279,31 +283,32 @@ async function attribuerBonusSemaineComplete() {
       ),
       employes_shifts AS (
         SELECT 
-          s.employe_id,
+          s."employeId" as employe_id,
           COUNT(DISTINCT s.date) as jours_planifies
         FROM "Shift" s, semaine_precedente sp
         WHERE s.date BETWEEN sp.debut AND sp.fin
-        GROUP BY s.employe_id
+        GROUP BY s."employeId"
       ),
       employes_presents AS (
         SELECT 
-          p.employe_id,
-          COUNT(DISTINCT p.date) as jours_pointes
+          p."userId" as employe_id,
+          COUNT(DISTINCT p.horodatage::date) as jours_pointes
         FROM "Pointage" p, semaine_precedente sp
-        WHERE p.date BETWEEN sp.debut AND sp.fin
-        AND p.type = 'arrivee'
-        GROUP BY p.employe_id
+        WHERE p.horodatage::date BETWEEN sp.debut AND sp.fin
+        AND p.type IN ('arrivee', 'arrivée', 'ENTRÉE', 'entrée')
+        GROUP BY p."userId"
       )
       SELECT es.employe_id
       FROM employes_shifts es
       JOIN employes_presents ep ON es.employe_id = ep.employe_id
+      JOIN "User" u ON u.id = es.employe_id AND u.statut = 'actif'
       WHERE es.jours_planifies = ep.jours_pointes
       AND es.jours_planifies >= 3
-    `);
+    `;
     
     const dateBonus = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
-    for (const row of result.rows) {
+    for (const row of rows) {
       await attribuerPoints(
         row.employe_id,
         'SEMAINE_COMPLETE',
@@ -314,7 +319,6 @@ async function attribuerBonusSemaineComplete() {
       );
     }
     
-    console.log(`[SCORING] ${result.rows.length} bonus semaine complète attribués`);
   } catch (error) {
     console.error('[SCORING] Erreur bonus semaine:', error.message);
   }
@@ -323,10 +327,11 @@ async function attribuerBonusSemaineComplete() {
 /**
  * Attribue les bonus de semaine sans anomalie
  * À exécuter le lundi matin
+ * NOTE: CTE + NOT EXISTS + EXISTS — doit rester en $queryRaw
  */
 async function attribuerBonusSansAnomalie() {
   try {
-    const result = await pool.query(`
+    const rows = await prisma.$queryRaw`
       WITH semaine_precedente AS (
         SELECT 
           date_trunc('week', CURRENT_DATE - INTERVAL '7 days') as debut,
@@ -334,22 +339,22 @@ async function attribuerBonusSansAnomalie() {
       )
       SELECT DISTINCT u.id as employe_id
       FROM "User" u
-      WHERE u.role = 'employe' AND u.actif = true
+      WHERE u.role = 'employee' AND u.statut = 'actif'
       AND NOT EXISTS (
         SELECT 1 FROM "Anomalie" a, semaine_precedente sp
-        WHERE a.employe_id = u.id
-        AND a.created_at::date BETWEEN sp.debut AND sp.fin
+        WHERE a."employeId" = u.id
+        AND a."createdAt"::date BETWEEN sp.debut AND sp.fin
       )
       AND EXISTS (
         SELECT 1 FROM "Shift" s, semaine_precedente sp
-        WHERE s.employe_id = u.id
+        WHERE s."employeId" = u.id
         AND s.date BETWEEN sp.debut AND sp.fin
       )
-    `);
+    `;
     
     const dateBonus = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
-    for (const row of result.rows) {
+    for (const row of rows) {
       await attribuerPoints(
         row.employe_id,
         'SEMAINE_SANS_ANOMALIE',
@@ -360,7 +365,6 @@ async function attribuerBonusSansAnomalie() {
       );
     }
     
-    console.log(`[SCORING] ${result.rows.length} bonus sans anomalie attribués`);
   } catch (error) {
     console.error('[SCORING] Erreur bonus sans anomalie:', error.message);
   }
@@ -385,13 +389,13 @@ function calculerRetardMinutes(heurePrevue, heureReelle) {
 
 /**
  * Récupère le score d'un employé
+ * NOTE: employe_scores est une VIEW — doit rester en $queryRaw
  */
 async function getScore(employeId) {
-  const result = await pool.query(
-    'SELECT * FROM employe_scores WHERE employe_id = $1',
-    [employeId]
-  );
-  return result.rows[0] || { score_total: 0, total_bonus: 0, total_malus: 0 };
+  const rows = await prisma.$queryRaw`
+    SELECT * FROM employe_scores WHERE employe_id = ${employeId}
+  `;
+  return rows[0] || { score_total: 0, total_bonus: 0, total_malus: 0 };
 }
 
 // =====================================================

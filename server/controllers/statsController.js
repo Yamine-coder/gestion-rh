@@ -9,8 +9,6 @@ const getStatsRH = async (req, res) => {
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
     const premierDuMois = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    console.log('📊 [STATS API] Calcul stats pour:', todayStart.toISOString(), '→', todayEnd.toISOString());
-
     // Parallel base queries
     const [users, allUsers, pointagesToday, congesAll, statutsGrouped] = await Promise.all([
       // Uniquement les employés actifs (en service)
@@ -45,13 +43,9 @@ const getStatsRH = async (req, res) => {
     const totalEmployes = allUsers.length; // Total incluant inactifs
     const employesInactifs = allUsers.filter(u => u.statut !== 'actif' || (u.dateSortie && u.dateSortie <= now)).length;
     
-    console.log('👥 [STATS API] Employés EN SERVICE:', employes, '| Total:', totalEmployes, '| Inactifs:', employesInactifs);
-    console.log('⏱️ [STATS API] Pointages trouvés:', pointagesToday.length);
-
     // Present = distinct userIds with at least one pointage today (could filter ENTREE if type field used)
     const presentSet = new Set(pointagesToday.map(p => p.userId));
     const pointes = presentSet.size;
-    console.log('✅ [STATS API] Employés distincts ayant pointé:', pointes);
 
     // Active approved leaves today
     const congesApprouves = congesAll.filter(c => c.statut === 'approuvé');
@@ -164,8 +158,6 @@ const getStatsRH = async (req, res) => {
       statutsDemandes
     };
 
-    console.log('📤 [STATS API] Réponse envoyée:', { employes, pointes, absents, prochainsConges: prochainsConges.length });
-
     res.json(responseData);
   } catch (e) {
     console.error('Erreur getStatsRH:', e);
@@ -194,12 +186,9 @@ const getPlanningStats = async (req, res) => {
     const depuis = new Date(maintenant);
     depuis.setDate(depuis.getDate() - 30);
 
-    const [totalPlannings30J, totalShifts30J] = await Promise.all([
-      prisma.planning.count({ where: { date: { gte: depuis } } }),
-      prisma.shift.count({ where: { date: { gte: depuis } } })
-    ]);
+    const totalShifts30J = await prisma.shift.count({ where: { date: { gte: depuis } } });
 
-    res.json({ sur30J: { plannings: totalPlannings30J, shifts: totalShifts30J } });
+    res.json({ sur30J: { plannings: totalShifts30J, shifts: totalShifts30J } });
   } catch (e) {
     console.error('Erreur getPlanningStats:', e);
     res.status(500).json({ error: 'Erreur stats planning' });
@@ -258,16 +247,33 @@ const exportData = async (req, res) => {
 
     switch (type) {
       case 'employes':
-        data = await prisma.user.findMany({ where: { role: 'employee' } });
+        data = await prisma.user.findMany({ 
+          where: { role: 'employee' },
+          select: {
+            id: true, nom: true, prenom: true, email: true, telephone: true,
+            categorie: true, categories: true, role: true, statut: true,
+            dateEmbauche: true, dateSortie: true, motifDepart: true,
+            adresse: true, eligibleNavigo: true,
+            createdAt: true, lastLoginAt: true
+          }
+        });
         break;
       case 'pointages':
-        data = await prisma.pointage.findMany({ include: { user: true } });
+        data = await prisma.pointage.findMany({ 
+          include: { user: { select: { id: true, nom: true, prenom: true, email: true, categorie: true } } } 
+        });
         break;
       case 'conges':
-        data = await prisma.conge.findMany({ include: { user: true } });
+        data = await prisma.conge.findMany({ 
+          include: { user: { select: { id: true, nom: true, prenom: true, email: true, categorie: true } } } 
+        });
         break;
       case 'plannings':
-        data = await prisma.planning.findMany({ include: { user: true } });
+        data = await prisma.shift.findMany({ 
+          include: { employe: { select: { id: true, nom: true, prenom: true, email: true, categorie: true } } },
+          orderBy: { date: 'desc' },
+          take: 5000
+        });
         break;
       default:
         return res.status(400).json({ error: "Type d'export non supporté" });

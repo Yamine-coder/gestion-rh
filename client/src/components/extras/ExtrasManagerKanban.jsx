@@ -33,8 +33,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../ui/Toast';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../../config/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPOSANT PRINCIPAL - VUE KANBAN GESTION DES EXTRAS
@@ -825,24 +824,6 @@ function ConfirmNonPointeModal({ data, onClose, onConfirm, onConfirmWithAdjust, 
   
   // Log détails en console quand on clique voir détails
   const handleShowDetails = () => {
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📋 DÉTAILS EXTRA NON POINTÉ');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('👤 Employé:', paiement?.employe?.prenom, paiement?.employe?.nom);
-    console.log('🆔 ID Employé:', paiement?.employeId);
-    console.log('📅 Date:', paiement?.date);
-    console.log('⏰ Horaires prévus:', horaires);
-    console.log('⌛ Heures:', paiement?.heures, 'h');
-    console.log('💰 Montant:', paiement?.montant, '€');
-    console.log('📦 Source:', paiement?.source);
-    console.log('🔗 Shift ID:', paiement?.shiftId);
-    console.log('📊 Segment Index:', paiement?.segmentIndex);
-    console.log('✅ Pointage validé:', paiement?.pointageValide ? 'Oui' : 'Non');
-    console.log('🕐 Arrivée réelle:', paiement?.arriveeReelle || 'Non pointé');
-    console.log('🕐 Départ réel:', paiement?.departReelle || 'Non pointé');
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('📄 Objet complet:', paiement);
-    console.log('═══════════════════════════════════════════════════════');
     setShowDetails(true);
   };
   

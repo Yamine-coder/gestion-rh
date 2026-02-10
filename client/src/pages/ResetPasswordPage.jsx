@@ -3,9 +3,7 @@ import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Lock, Eye, EyeOff, CheckCircle } from "lucide-react";
 import logo from "../assets/onboarding/logo.png";
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 function ResetPasswordPage() {
   const navigate = useNavigate();

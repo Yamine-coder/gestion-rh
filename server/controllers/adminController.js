@@ -1,34 +1,18 @@
 // server/controllers/adminController.js
 const prisma = require('../prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { genererMotDePasseListible } = require('../utils/passwordUtils');
 const { toLocalDateString } = require('../utils/dateUtils');
-const { stringifyCategories, parseCategories, CATEGORIES_VALIDES, enrichUserWithCategories } = require('../utils/categoriesHelper');
-const { isEntree, isSortie, filtrerEntrees, filtrerSorties } = require('../utils/pointageTypeUtils');
-
-// Fonction helper pour parser les segments JSON
-function parseSegments(segments) {
-  if (!segments) return [];
-  if (Array.isArray(segments)) return segments;
-  if (typeof segments === 'string') {
-    try {
-      const parsed = JSON.parse(segments);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) { return []; }
-  }
-  return [];
-}
+const { stringifyCategories, parseCategories, CATEGORIES_VALIDES, enrichUserWithCategories, normaliserCategorie, normaliserCategories } = require('../utils/categoriesHelper');
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPES_ENTREE } = require('../utils/pointageTypeUtils');
+const { invalidateStatusCache } = require('../middlewares/authMiddleware');
+const { parseSegments } = require('../utils/segmentUtils');
 
 const creerEmploye = async (req, res) => {
   // Support des catégories multiples : 'categories' (array) OU 'categorie' (string legacy)
   const { email, nom, prenom, telephone, categorie, categories, dateEmbauche, role } = req.body;
 
-  console.log('🔍 CRÉATION UTILISATEUR DEBUG:');
-  console.log('- email:', email);
-  console.log('- role reçu:', role);
-  console.log('- role final:', role || "employee");
-  console.log('- categories reçues:', categories);
-  console.log('- categorie legacy:', categorie);
+
 
   // Déterminer les catégories : priorité à 'categories' (array), sinon fallback sur 'categorie' (string)
   let categoriesArray = [];
@@ -68,8 +52,8 @@ const creerEmploye = async (req, res) => {
     });
   }
 
-  // Validation des catégories (toutes doivent être valides)
-  const categoriesInvalides = categoriesArray.filter(cat => !CATEGORIES_VALIDES.includes(cat));
+  // Normalisation automatique des catégories (case-insensitive → référentiel)
+  const { valides: categoriesNormalisees, invalides: categoriesInvalides } = normaliserCategories(categoriesArray);
   if (categoriesInvalides.length > 0) {
     return res.status(400).json({ 
       error: `Catégories invalides: ${categoriesInvalides.join(', ')}`,
@@ -77,6 +61,8 @@ const creerEmploye = async (req, res) => {
       categoriesValides: CATEGORIES_VALIDES
     });
   }
+  // Utiliser les catégories normalisées pour la suite
+  categoriesArray = categoriesNormalisees;
 
   // Validation format email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -111,6 +97,8 @@ const creerEmploye = async (req, res) => {
     const motDePasseTemporaire = genererMotDePasseListible();
     const hashedPassword = await bcrypt.hash(motDePasseTemporaire, 10);
 
+    const dateEmbaucheEffective = dateEmbauche ? new Date(dateEmbauche) : new Date();
+
     const nouvelEmploye = await prisma.user.create({
       data: {
         email: normalizedEmail, // ✅ Utilise l'email normalisé
@@ -121,16 +109,28 @@ const creerEmploye = async (req, res) => {
         categorie: categoriesArray[0], // Garde la première catégorie pour compatibilité legacy
         categories: stringifyCategories(categoriesArray), // JSON array pour multi-catégories
         // ✅ Date d'embauche : Si non fournie, utiliser la date du jour
-        dateEmbauche: dateEmbauche ? new Date(dateEmbauche) : new Date(),
+        dateEmbauche: dateEmbaucheEffective,
         role: role || "employee", // ✅ Utilise le rôle envoyé ou "employee" par défaut
         firstLoginDone: false,
         statut: "actif"
       },
     });
 
-    console.log(`✅ Nouvel employé créé: ${nom} ${prenom}`);
-    console.log(`📁 Catégories: ${categoriesArray.join(', ')}`);
-    console.log(`🔑 Mot de passe temporaire: ${motDePasseTemporaire}`);
+    // 📊 Archiver le mouvement d'entrée (survit aux hard-deletes pour le turnover)
+    try {
+      await prisma.mouvementEffectif.create({
+        data: {
+          userId: nouvelEmploye.id,
+          type: 'entree',
+          date: dateEmbaucheEffective,
+          nom,
+          prenom,
+          categories: stringifyCategories(categoriesArray),
+        }
+      });
+    } catch (e) {
+      console.warn('Mouvement effectif (entrée) non enregistré:', e.message);
+    }
 
     res.status(201).json({
       message: "Employé créé avec succès",
@@ -147,8 +147,8 @@ const creerEmploye = async (req, res) => {
         role: nouvelEmploye.role,
         statut: nouvelEmploye.statut
       },
-      motDePasseTemporaire: motDePasseTemporaire,
-      instructions: "L'employé devra changer ce mot de passe lors de sa première connexion"
+      instructions: "L'employé devra changer ce mot de passe lors de sa première connexion.",
+      motDePasseTemporaire: motDePasseTemporaire
     });
   } catch (err) {
     console.error("Erreur création employé :", err);
@@ -202,13 +202,50 @@ const supprimerEmploye = async (req, res) => {
 
     if (delaiEcoule < deuxAns) {
       const joursRestants = Math.ceil((deuxAns - delaiEcoule) / (24 * 60 * 60 * 1000));
-      console.log(`⚠️ Suppression avant délai RGPD recommandé (${joursRestants} jours restants)`);
       // On autorise mais on log un warning
     }
 
-    console.log(`Suppression employé ID ${employeId}. Relations:`, employe._count);
-
     await prisma.$transaction(async (tx) => {
+      // 📊 S'assurer que les mouvements d'effectif sont archivés avant le hard-delete
+      // Vérifier si le mouvement de sortie existe déjà
+      const mouvementSortieExiste = await tx.mouvementEffectif.findFirst({
+        where: { userId: employeId, type: 'sortie' }
+      });
+      if (!mouvementSortieExiste && employe.dateSortie) {
+        await tx.mouvementEffectif.create({
+          data: {
+            userId: employeId,
+            type: 'sortie',
+            date: employe.dateSortie,
+            motif: employe.motifDepart,
+            nom: employe.nom,
+            prenom: employe.prenom,
+            categories: employe.categories,
+          }
+        });
+      }
+      // Vérifier si le mouvement d'entrée existe déjà
+      const mouvementEntreeExiste = await tx.mouvementEffectif.findFirst({
+        where: { userId: employeId, type: 'entree' }
+      });
+      if (!mouvementEntreeExiste && employe.dateEmbauche) {
+        await tx.mouvementEffectif.create({
+          data: {
+            userId: employeId,
+            type: 'entree',
+            date: employe.dateEmbauche,
+            nom: employe.nom,
+            prenom: employe.prenom,
+            categories: employe.categories,
+          }
+        });
+      }
+      // Détacher le userId des mouvements (l'employé va être supprimé)
+      await tx.mouvementEffectif.updateMany({
+        where: { userId: employeId },
+        data: { userId: null }
+      });
+
       // 1. Supprimer les notifications
       await tx.notifications.deleteMany({ where: { employe_id: employeId } });
       
@@ -228,7 +265,7 @@ const supprimerEmploye = async (req, res) => {
       // 5. Supprimer les paiements extra (en tant qu'employé)
       await tx.paiementExtra.deleteMany({ where: { employeId } });
       // Mettre à null les références creePar/payePar si c'est cet employé
-      await tx.paiementExtra.updateMany({ where: { creePar: employeId }, data: { creePar: 1 } }); // Fallback admin ID 1
+      await tx.paiementExtra.updateMany({ where: { creePar: employeId }, data: { creePar: req.userId } }); // Réassigner à l'admin qui supprime
       await tx.paiementExtra.updateMany({ where: { payePar: employeId }, data: { payePar: null } });
       
       // 6. Supprimer les extra payment logs
@@ -288,8 +325,11 @@ const supprimerEmploye = async (req, res) => {
       // 14. Supprimer les audits d'anomalies créés par cet employé
       await tx.anomalieAudit.deleteMany({ where: { userId: employeId } });
       
+      // 14b. Supprimer les AuditLog de cet employé
+      await tx.auditLog.deleteMany({ where: { userId: employeId } });
+      
       // 15. Mettre à jour les ShiftCorrection où cet employé est auteur/approbateur
-      await tx.shiftCorrection.updateMany({ where: { auteurId: employeId }, data: { auteurId: 1 } });
+      await tx.shiftCorrection.updateMany({ where: { auteurId: employeId }, data: { auteurId: req.userId } });
       await tx.shiftCorrection.updateMany({ where: { approuvePar: employeId }, data: { approuvePar: null } });
       
       // 16. Supprimer les tables SQL legacy (non gérées par Prisma)
@@ -300,7 +340,7 @@ const supprimerEmploye = async (req, res) => {
       await tx.$executeRaw`DELETE FROM peer_feedbacks WHERE from_employee_id = ${employeId}`;
       await tx.$executeRaw`UPDATE peer_feedbacks SET validated_by = NULL WHERE validated_by = ${employeId}`;
       await tx.$executeRaw`DELETE FROM score_history WHERE employee_id = ${employeId}`;
-      await tx.$executeRaw`UPDATE score_history SET created_by = 1 WHERE created_by = ${employeId}`;
+      await tx.$executeRaw`UPDATE score_history SET created_by = ${req.userId} WHERE created_by = ${employeId}`;
       
       // 17. Finalement supprimer l'utilisateur
       await tx.user.delete({ where: { id: employeId } });
@@ -342,11 +382,6 @@ const modifierEmploye = async (req, res) => {
   const { id } = req.params;
   const { email, nom, prenom, role, categorie, categories, statut, telephone } = req.body;
 
-  console.log(`🔧 [MODIFIER] Employé ${id} - Body reçu:`, req.body);
-  console.log(`🎯 [MODIFIER] Statut extrait:`, statut, `(type: ${typeof statut})`);
-  console.log(`📁 [MODIFIER] Categories reçues:`, categories);
-  console.log(`📁 [MODIFIER] Categorie legacy:`, categorie);
-
   try {
     // Construire l'objet de mise à jour avec seulement les champs fournis
     const updateData = {};
@@ -356,49 +391,43 @@ const modifierEmploye = async (req, res) => {
     if (prenom !== undefined) updateData.prenom = prenom;
     if (role !== undefined) updateData.role = role;
     
-    // Gestion des catégories multiples
+    // Gestion des catégories multiples avec normalisation automatique
     if (categories !== undefined && Array.isArray(categories)) {
-      // Si categories array fourni
       if (categories.length === 0) {
         return res.status(400).json({ 
           error: "Au moins une catégorie est obligatoire",
           code: "CATEGORIE_REQUIRED" 
         });
       }
-      // Validation des catégories
-      const categoriesInvalides = categories.filter(cat => !CATEGORIES_VALIDES.includes(cat));
-      if (categoriesInvalides.length > 0) {
+      const { valides, invalides } = normaliserCategories(categories);
+      if (invalides.length > 0) {
         return res.status(400).json({ 
-          error: `Catégories invalides: ${categoriesInvalides.join(', ')}`,
+          error: `Catégories invalides: ${invalides.join(', ')}`,
           code: "CATEGORIE_INVALID",
           categoriesValides: CATEGORIES_VALIDES
         });
       }
-      updateData.categories = stringifyCategories(categories);
-      updateData.categorie = categories[0]; // Sync la catégorie principale
+      updateData.categories = stringifyCategories(valides);
+      updateData.categorie = valides[0]; // Sync la catégorie principale
     } else if (categorie !== undefined) {
-      // Fallback sur categorie simple (legacy)
-      if (!CATEGORIES_VALIDES.includes(categorie)) {
+      // Fallback sur categorie simple (legacy) — normaliser aussi
+      const norm = normaliserCategorie(categorie);
+      if (!norm) {
         return res.status(400).json({ 
           error: `Catégorie invalide: ${categorie}`,
           code: "CATEGORIE_INVALID",
           categoriesValides: CATEGORIES_VALIDES
         });
       }
-      updateData.categorie = categorie;
-      updateData.categories = stringifyCategories([categorie]); // Sync l'array
+      updateData.categorie = norm;
+      updateData.categories = stringifyCategories([norm]);
     }
     
     if (statut !== undefined) {
-      console.log(`✅ [MODIFIER] Ajout de statut dans updateData:`, statut);
       updateData.statut = statut;
-    } else {
-      console.log(`⚠️ [MODIFIER] Statut est undefined, pas ajouté`);
     }
     if (telephone !== undefined) updateData.telephone = telephone;
     
-    console.log(`📦 [MODIFIER] updateData final:`, updateData);
-
     // Vérifier qu'il y a au moins un champ à mettre à jour
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: "Aucune donnée à modifier" });
@@ -409,7 +438,10 @@ const modifierEmploye = async (req, res) => {
       data: updateData,
     });
 
-    console.log(`✅ Employé ${id} modifié par admin:`, Object.keys(updateData).join(', '));
+    // Invalider le cache auth si le statut a changé
+    if (statut !== undefined) {
+      invalidateStatusCache(parseInt(id));
+    }
 
     // Enrichir la réponse avec categoriesArray
     const enrichedUser = enrichUserWithCategories(updated);
@@ -434,8 +466,6 @@ const modifierEmploye = async (req, res) => {
 const marquerDepart = async (req, res) => {
   const { id } = req.params;
   const { dateSortie, motifDepart, commentaireDepart } = req.body;
-
-  console.log(`🚪 [DEPART] Employé ${id} - Motif: ${motifDepart}`);
 
   try {
     // Vérifier que l'employé existe et est un employé
@@ -462,17 +492,92 @@ const marquerDepart = async (req, res) => {
 
     // Mettre à jour l'employé avec les informations de départ
     // 🔒 Désactiver automatiquement le compte lors du départ
-    const updated = await prisma.user.update({
-      where: { id: parseInt(id) },
-      data: {
-        statut: 'inactif', // ✅ Désactivation automatique du compte
-        dateSortie: new Date(dateSortie),
-        motifDepart,
-        commentaireDepart: commentaireDepart || null
-      },
+    // + Nettoyage complet des données futures (shifts, congés, remplacements)
+    const employeIdInt = parseInt(id);
+    const now = new Date();
+    const dateSortieDate = new Date(dateSortie);
+    // Nettoyage à partir de la date de sortie (ou maintenant si sortie passée)
+    const cleanupDate = dateSortieDate > now ? dateSortieDate : now;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // 1. Mettre à jour le statut
+      const updatedUser = await tx.user.update({
+        where: { id: employeIdInt },
+        data: {
+          statut: 'inactif',
+          dateSortie: dateSortieDate,
+          motifDepart,
+          commentaireDepart: commentaireDepart || null
+        },
+      });
+
+      // 📊 Archiver le mouvement de sortie (survit aux hard-deletes pour le turnover)
+      await tx.mouvementEffectif.create({
+        data: {
+          userId: employeIdInt,
+          type: 'sortie',
+          date: dateSortieDate,
+          motif: motifDepart,
+          nom: employe.nom,
+          prenom: employe.prenom,
+          categories: employe.categories,
+        }
+      });
+
+      // 2. Supprimer les shifts futurs (après la date de sortie)
+      const deletedShifts = await tx.shift.deleteMany({
+        where: {
+          employeId: employeIdInt,
+          date: { gte: cleanupDate }
+        }
+      });
+
+      // 3. Annuler les congés en attente
+      const cancelledConges = await tx.conge.updateMany({
+        where: {
+          userId: employeIdInt,
+          statut: 'en attente'
+        },
+        data: {
+          statut: 'annulé',
+          motifRefus: 'Annulé automatiquement — départ de l\'employé'
+        }
+      });
+
+      // 4. Annuler les demandes de remplacement actives
+      try {
+        const cancelledRemplacements = await tx.demandeRemplacement.updateMany({
+          where: {
+            employeAbsentId: employeIdInt,
+            statut: { in: ['ouverte', 'en_attente'] }
+          },
+          data: { statut: 'annulee' }
+        });
+      } catch (e) {
+        // Table peut ne pas exister
+      }
+
+      // 5. Clôturer les anomalies en attente
+      try {
+        const closedAnomalies = await tx.anomalie.updateMany({
+          where: {
+            employeId: employeIdInt,
+            statut: 'en_attente'
+          },
+          data: {
+            statut: 'refusee',
+            commentaire: 'Clôturée automatiquement — départ de l\'employé'
+          }
+        });
+      } catch (e) {
+        // Table peut ne pas exister
+      }
+
+      return updatedUser;
     });
 
-    console.log(`✅ Départ enregistré pour ${employe.prenom} ${employe.nom} - Compte désactivé`);
+    // Invalider le cache auth pour bloquer immédiatement les requêtes
+    invalidateStatusCache(employeIdInt);
 
     res.status(200).json(updated);
   } catch (err) {
@@ -484,8 +589,6 @@ const marquerDepart = async (req, res) => {
 // 🔄 Annuler le départ d'un employé (réembauche ou erreur)
 const annulerDepart = async (req, res) => {
   const { id } = req.params;
-
-  console.log(`🔄 [ANNULER DEPART] Employé ${id}`);
 
   try {
     // Vérifier que l'employé existe
@@ -501,18 +604,28 @@ const annulerDepart = async (req, res) => {
       return res.status(400).json({ error: "Cet employé n'a pas de départ enregistré" });
     }
 
-    // Réactiver l'employé et annuler le départ
-    const updated = await prisma.user.update({
-      where: { id: parseInt(id) },
-      data: {
-        statut: 'actif', // ✅ Réactivation du compte
-        dateSortie: null,
-        motifDepart: null,
-        commentaireDepart: null
-      },
-    });
+    // Réactiver l'employé et annuler le départ (en transaction)
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id: parseInt(id) },
+        data: {
+          statut: 'actif', // ✅ Réactivation du compte
+          dateSortie: null,
+          motifDepart: null,
+          commentaireDepart: null
+        },
+      });
 
-    console.log(`✅ Départ annulé pour ${employe.prenom} ${employe.nom} - Compte réactivé`);
+      // 📊 Supprimer le mouvement de sortie correspondant (annulation = pas de départ)
+      await tx.mouvementEffectif.deleteMany({
+        where: {
+          userId: parseInt(id),
+          type: 'sortie',
+        }
+      });
+
+      return updatedUser;
+    });
 
     res.status(200).json(updated);
   } catch (err) {
@@ -558,14 +671,14 @@ const getDashboardStats = async (req, res) => {
     }
 
     // Données de base
-    const employes = await prisma.user.count({ where: { role: 'employee' } });
+    const employes = await prisma.user.count({ where: { role: 'employee', statut: 'actif' } });
 
     // Pointages (arrivées) de la journée (fenêtre timezone-aware) pour calcul du taux
     // Filtrer uniquement les employés (pas les admins/managers)
     const pointesAujourdHui = await prisma.pointage.findMany({
       where: {
         horodatage: { gte: startPointage, lte: finPointage },
-        type: 'ENTRÉE',
+        type: { in: TYPES_ENTREE },
         user: {
           role: 'employee'
         }
@@ -615,9 +728,7 @@ const getDashboardStats = async (req, res) => {
       },
     });
 
-    console.log(`📅 Période congés: ${startDate.toLocaleDateString()} au ${today.toLocaleDateString()} (${periode})`);
-
-    const congesParType = {};;
+    const congesParType = {};
     let totalJoursConges = 0;
     congesPeriode.forEach((c) => {
       const nbJours = Math.ceil(
@@ -630,9 +741,6 @@ const getDashboardStats = async (req, res) => {
       totalJoursConges += nbJours;
     });
     
-    console.log(`📊 Répartition congés: ${congesPeriode.length} demandes, ${totalJoursConges} jours total`);
-    console.log('   Types:', Object.entries(congesParType).map(([t,j]) => `${t}: ${j}j`).join(', '));
-
     // Format: { name, value } pour le graphique PieChart du frontend
     const repartitionConges = Object.entries(congesParType).map(([type, jours]) => ({
       name: type,
@@ -656,19 +764,22 @@ const getDashboardStats = async (req, res) => {
              s.statut === 'en attente' ? '#FBBF24' : '#cf292c'
     }));
 
+    const endOfWeek = new Date(startOfToday);
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+
     const congesSemaine = await prisma.conge.count({
       where: {
-        dateDebut: { gte: today },
-        dateFin: { lte: new Date(new Date().setDate(startOfToday.getDate() + 7)) },
+        dateDebut: { lte: endOfWeek },
+        dateFin: { gte: today },
+        statut: { in: ['approuvé', 'approuve'] },
       },
     });
 
     const prochainsConges = await prisma.conge.findMany({
-      where: { dateDebut: { gte: today } },
+      where: { dateDebut: { gte: today }, statut: { in: ['approuvé', 'approuve'] } },
       include: { user: true },
-      take: 5
-      // Commenté temporairement pour debugger l'erreur colonne
-      // orderBy: { dateDebut: 'asc' },
+      take: 5,
+      orderBy: { dateDebut: 'asc' },
     });
 
     // 👁️ Calculs pour la section "À surveiller" - Données hebdomadaires pertinentes
@@ -679,13 +790,11 @@ const getDashboardStats = async (req, res) => {
     debutSemaine.setDate(debutSemaine.getDate() - joursDepuisLundi);
     debutSemaine.setHours(0, 0, 0, 0);
     
-    console.log(`📅 Période surveillance: ${debutSemaine.toLocaleDateString()} au ${today.toLocaleDateString()}`);
-    
     // 1. Employés absents cette semaine (aucun pointage d'arrivée)
     const employesAvecPointages = await prisma.pointage.findMany({
       where: {
         horodatage: { gte: debutSemaine, lte: today },
-        type: 'ENTRÉE',
+        type: { in: TYPES_ENTREE },
         user: {
           role: 'employee'
         }
@@ -702,7 +811,7 @@ const getDashboardStats = async (req, res) => {
     const employesAvecRetards = await prisma.pointage.findMany({
       where: {
         horodatage: { gte: debutSemaine, lte: today },
-        type: 'ENTRÉE',
+        type: { in: TYPES_ENTREE },
         user: {
           role: 'employee'
         }
@@ -777,7 +886,6 @@ const getDashboardStats = async (req, res) => {
     }
 
     const dureeMoyenneJour = joursTravailes > 0 ? (totalHeuresPeriode / joursTravailes).toFixed(1) : 0;
-    console.log(`🔍 DEBUG HEURES: ${totalHeuresPeriode.toFixed(2)}h sur ${joursTravailes} jours = ${dureeMoyenneJour}h/jour`);
     
     // 2. Taux d'absentéisme CORRIGÉ : basé sur shifts planifiés vs heures réelles
     // Récupérer tous les shifts planifiés de la période (utilise employeId et segments)
@@ -813,7 +921,7 @@ const getDashboardStats = async (req, res) => {
             
             heuresShift += (endMinutes - startMinutes) / 60;
           } catch (e) {
-            console.log(`⚠️ Erreur parsing segment:`, segment, e);
+            // parsing error ignored
           }
         }
       });
@@ -825,13 +933,11 @@ const getDashboardStats = async (req, res) => {
     const heuresAbsence = Math.max(0, heuresTheorique - totalHeuresPeriode);
     const tauxAbsenteisme = heuresTheorique > 0 ? ((heuresAbsence / heuresTheorique) * 100).toFixed(1) : 0;
     
-    console.log(`🔍 DEBUG ABSENTÉISME: ${heuresTheorique.toFixed(2)}h théoriques - ${totalHeuresPeriode.toFixed(2)}h réelles = ${heuresAbsence.toFixed(2)}h absence (${tauxAbsenteisme}%)`);
-    
     // 3. Taux de retards sur la période - CORRIGÉ pour comparer avec shifts planifiés
     const totalPointagesEntree = await prisma.pointage.count({
       where: {
         horodatage: { gte: startDate, lte: today },
-        type: 'ENTRÉE',
+        type: { in: TYPES_ENTREE },
         user: { role: 'employee' }
       }
     });
@@ -840,7 +946,7 @@ const getDashboardStats = async (req, res) => {
     const pointagesRetard = await prisma.pointage.findMany({
       where: {
         horodatage: { gte: startDate, lte: today },
-        type: 'ENTRÉE',
+        type: { in: TYPES_ENTREE },
         user: { role: 'employee' }
       },
       include: {
@@ -860,9 +966,11 @@ const getDashboardStats = async (req, res) => {
         toLocalDateString(s.date) === dateStr
       );
       
-      if (shiftJour && shiftJour.segments && shiftJour.segments.length > 0) {
+      if (shiftJour && shiftJour.segments) {
+        const parsedSegments = parseSegments(shiftJour.segments);
+        if (parsedSegments.length > 0) {
         // Prendre le premier segment comme heure de début prévue
-        const premierSegment = shiftJour.segments[0];
+        const premierSegment = parsedSegments[0];
         if (premierSegment.start) {
           const [heurePrevu, minutePrevu] = premierSegment.start.split(':').map(Number);
           const heurePointage = datePointage.getHours();
@@ -876,21 +984,18 @@ const getDashboardStats = async (req, res) => {
             nombreRetards++;
           }
         }
+        }
       }
     }
     
     const tauxRetards = totalPointagesEntree > 0 ? ((nombreRetards / totalPointagesEntree) * 100).toFixed(1) : 0;
     const tauxPonctualite = (100 - parseFloat(tauxRetards)).toFixed(1);
-    console.log(`🔍 DEBUG RETARDS: ${nombreRetards} retards sur ${totalPointagesEntree} entrées = ${tauxRetards}%`);
-    
     // 3bis. Taux d'assiduité : heures réellement travaillées / heures planifiées
     // Un employé en retard qui rattrape aura une bonne assiduité mais mauvaise ponctualité
     // >100% = les employés font des heures sup, <100% = heures manquantes
     const tauxAssiduite = heuresTheorique > 0 
       ? ((totalHeuresPeriode / heuresTheorique) * 100).toFixed(1)
       : '100.0';
-    console.log(`🔍 DEBUG ASSIDUITÉ: ${totalHeuresPeriode.toFixed(1)}h réelles / ${heuresTheorique.toFixed(1)}h planifiées = ${tauxAssiduite}%`);
-    
     // 4. Top 3 employés (présence + ponctualité) - CORRIGÉ pour utiliser shifts planifiés
     const employesAvecStats = await prisma.user.findMany({
       where: { role: 'employee', statut: 'actif' },
@@ -916,52 +1021,27 @@ const getDashboardStats = async (req, res) => {
       }
     });
     
+    // Récupérer les vrais scores depuis employe_points (même source que la page Scoring)
+    const scoresFromPoints = await prisma.employePoint.groupBy({
+      by: ['employeId'],
+      _sum: { points: true }
+    });
+    const scoresMap = new Map(scoresFromPoints.map(s => [s.employeId, s._sum.points || 0]));
+
     const employesScores = employesAvecStats.map(emp => {
-      // ✅ CORRIGÉ: Utiliser le helper centralisé pour compter les entrées
+      // Taux de présence basé sur les shifts planifiés
       const pointagesEntrees = filtrerEntrees(emp.pointages);
       const totalPointages = pointagesEntrees.length;
       const totalShifts = emp.shifts.length;
+      const tauxPresence = totalShifts > 0 ? Math.min(100, Math.round((totalPointages / totalShifts) * 100)) : 100;
       
-      // Calculer ponctualité basée sur les shifts planifiés
-      let pointagesATemps = 0;
-      pointagesEntrees.forEach(pointage => {
-        const datePointage = new Date(pointage.horodatage);
-        const dateStr = toLocalDateString(datePointage);
-        
-        // Trouver le shift correspondant
-        const shiftJour = emp.shifts.find(s => toLocalDateString(s.date) === dateStr);
-        
-        if (shiftJour && shiftJour.segments && shiftJour.segments.length > 0) {
-          const premierSegment = shiftJour.segments[0];
-          if (premierSegment.start) {
-            const [heurePrevu, minutePrevu] = premierSegment.start.split(':').map(Number);
-            const heurePointage = datePointage.getHours();
-            const minutePointage = datePointage.getMinutes();
-            
-            const minutesPrevues = heurePrevu * 60 + minutePrevu;
-            const minutesReelles = heurePointage * 60 + minutePointage;
-            
-            // À temps si arrive au plus 5 minutes après l'heure prévue
-            if (minutesReelles <= minutesPrevues + 5) {
-              pointagesATemps++;
-            }
-          }
-        } else {
-          // Pas de shift planifié = considéré à l'heure
-          pointagesATemps++;
-        }
-      });
-      
-      // Taux de présence basé sur les shifts planifiés
-      const tauxPresence = totalShifts > 0 ? Math.min(100, (totalPointages / totalShifts) * 100) : 0;
-      const tauxPonctualite = totalPointages > 0 ? (pointagesATemps / totalPointages) * 100 : 100;
-      const score = ((tauxPresence + tauxPonctualite) / 2).toFixed(0);
+      // Score = somme des points attribués (bonus - malus), identique à la page scoring
+      const scoreTotal = scoresMap.get(emp.id) || 0;
       
       return {
         nom: `${emp.prenom} ${emp.nom}`,
-        score: parseInt(score),
-        presence: Math.round(tauxPresence),
-        ponctualite: Math.round(tauxPonctualite)
+        score: scoreTotal,
+        presence: tauxPresence
       };
     });
     
@@ -1032,7 +1112,7 @@ const getDashboardStats = async (req, res) => {
       const pointagesSemaine = await prisma.pointage.findMany({
         where: {
           horodatage: { gte: semaineDebut, lt: semaineFin },
-          type: 'ENTRÉE'
+          type: { in: TYPES_ENTREE }
         },
         include: {
           user: { select: { id: true } }
@@ -1066,7 +1146,7 @@ const getDashboardStats = async (req, res) => {
       });
     }
     
-    // 7. Évolution effectif (5 derniers mois)
+    // 7. Évolution effectif (5 derniers mois) — Source : MouvementEffectif + User (fallback)
     const evolutionEffectif = [];
     for (let i = 4; i >= 0; i--) {
       const moisDate = new Date();
@@ -1075,27 +1155,58 @@ const getDashboardStats = async (req, res) => {
       const debutMois = new Date(moisDate.getFullYear(), moisDate.getMonth(), 1);
       const finMois = new Date(moisDate.getFullYear(), moisDate.getMonth() + 1, 0);
       
-      // Compter les employés embauchés ce mois
-      const entrees = await prisma.user.count({
-        where: {
-          role: 'employee',
-          dateEmbauche: { gte: debutMois, lte: finMois }
-        }
-      });
+      // Entrées du mois : d'abord MouvementEffectif, puis fallback User
+      let entrees = 0;
+      let sorties = 0;
+      try {
+        const entreesArchive = await prisma.mouvementEffectif.count({
+          where: { type: 'entree', date: { gte: debutMois, lte: finMois } }
+        });
+        const sortiesArchive = await prisma.mouvementEffectif.count({
+          where: { type: 'sortie', date: { gte: debutMois, lte: finMois } }
+        });
+        // Compléter avec les Users qui n'ont pas encore de mouvement archivé
+        const entreesUser = await prisma.user.count({
+          where: {
+            role: 'employee',
+            dateEmbauche: { gte: debutMois, lte: finMois },
+            id: { notIn: (await prisma.mouvementEffectif.findMany({
+              where: { type: 'entree', date: { gte: debutMois, lte: finMois }, userId: { not: null } },
+              select: { userId: true }
+            })).map(m => m.userId) }
+          }
+        });
+        const sortiesUser = await prisma.user.count({
+          where: {
+            role: 'employee',
+            dateSortie: { gte: debutMois, lte: finMois },
+            id: { notIn: (await prisma.mouvementEffectif.findMany({
+              where: { type: 'sortie', date: { gte: debutMois, lte: finMois }, userId: { not: null } },
+              select: { userId: true }
+            })).map(m => m.userId) }
+          }
+        });
+        entrees = entreesArchive + entreesUser;
+        sorties = sortiesArchive + sortiesUser;
+      } catch (e) {
+        // Fallback si table MouvementEffectif n'existe pas encore (migration pas encore jouée)
+        entrees = await prisma.user.count({
+          where: { role: 'employee', dateEmbauche: { gte: debutMois, lte: finMois } }
+        });
+        sorties = await prisma.user.count({
+          where: { role: 'employee', dateSortie: { gte: debutMois, lte: finMois } }
+        });
+      }
       
-      // 🆕 Compter les vrais départs avec dateSortie
-      const sorties = await prisma.user.count({
-        where: {
-          role: 'employee',
-          dateSortie: { gte: debutMois, lte: finMois }
-        }
-      });
-      
-      // Effectif total à la fin du mois
+      // Effectif à la fin du mois = embauchés avant finMois, pas encore partis à cette date
       const effectifMois = await prisma.user.count({
         where: {
           role: 'employee',
-          dateEmbauche: { lte: finMois }
+          dateEmbauche: { lte: finMois },
+          OR: [
+            { dateSortie: null },
+            { dateSortie: { gt: finMois } }
+          ]
         }
       });
       
@@ -1116,8 +1227,6 @@ const getDashboardStats = async (req, res) => {
     const departsTotal = evolutionEffectif.reduce((acc, curr) => acc + curr.sorties, 0);
     const tauxRotation = effectifMoyen > 0 ? ((departsTotal / effectifMoyen) * 100).toFixed(1) : 0;
     
-    console.log(`🔍 DEBUG TURNOVER: ${departsTotal} départs / ${effectifMoyen.toFixed(1)} effectif moyen = ${tauxRotation}%`);
-
     // 9. Ancienneté moyenne des employés actifs
     const employesActifs = await prisma.user.findMany({
       where: { role: 'employee', statut: 'actif' },
@@ -1136,11 +1245,8 @@ const getDashboardStats = async (req, res) => {
       ancienneteMoyenne = (totalAnnees / employesActifs.length).toFixed(1);
     }
 
-    console.log(`🔍 DEBUG ANCIENNETÉ: ${ancienneteMoyenne} ans (moyenne sur ${employesActifs.length} employés)`);
-
     // 10. Taux d'utilisation : (Heures réelles / Heures planifiées) × 100
     const tauxUtilisation = heuresTheorique > 0 ? ((totalHeuresPeriode / heuresTheorique) * 100).toFixed(1) : 0;
-    console.log(`🔍 DEBUG UTILISATION: ${totalHeuresPeriode.toFixed(2)}h réelles / ${heuresTheorique.toFixed(2)}h planifiées = ${tauxUtilisation}%`);
 
     // 11. Répartition par catégorie (données réelles)
     const employesParCategorie = await prisma.user.findMany({
@@ -1164,8 +1270,6 @@ const getDashboardStats = async (req, res) => {
       }))
       .sort((a, b) => b.count - a.count);
     
-    console.log(`🔍 DEBUG RÉPARTITION:`, repartitionParService);
-
     // 12. Absences par motif (basé sur les congés)
     const congesApprouves = await prisma.conge.findMany({
       where: {
@@ -1240,10 +1344,6 @@ const getDashboardStats = async (req, res) => {
       }))
       .sort((a, b) => b.effectif - a.effectif);
 
-    console.log(`🔍 DEBUG ABSENCES PAR MOTIF:`, absencesParMotifArray);
-    console.log(`🔍 DEBUG ABSENCES PAR DURÉE:`, absencesParDureeArray);
-    console.log(`🔍 DEBUG ABSENTÉISME PAR ÉQUIPE:`, absenteismeParEquipeArray);
-
     // Si pas de données, retourner des données de démonstration
     if (employes === 0 && repartitionConges.length === 0 && statutsDemandes.length === 0) {
       return res.json(genererDonneesDemo());
@@ -1299,8 +1399,7 @@ const getDashboardStats = async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur dans getDashboardStats:', error);
-    // En cas d'erreur, retourner des données de démonstration
-    res.status(200).json(genererDonneesDemo());
+    res.status(500).json({ error: 'Erreur chargement tableau de bord', details: error.message });
   }
 };
 
@@ -1313,9 +1412,6 @@ const calculerTotalHeures = async (debut, fin) => {
   const dateFin = new Date(dateFinReel);
   const dateFinEtendue = new Date(dateFin);
   dateFinEtendue.setHours(dateFinEtendue.getHours() + 6); // tolérance jusqu'à 6h après
-
-  // Logs réduits
-  console.log(`[Heures] Fenêtre ${dateDebut.toISOString()} -> ${dateFinEtendue.toISOString()}`);
 
   const pointages = await prisma.pointage.findMany({
     where: {
@@ -1368,12 +1464,10 @@ const calculerTotalHeures = async (debut, fin) => {
   }
 
   if (totalMs <= 0) {
-    console.log('🔍 DEBUG HEURES: totalMs = 0 => retour 0h00');
     return '0h00';
   }
   const heures = Math.floor(totalMs / 1000 / 60 / 60);
   const minutes = Math.floor((totalMs / 1000 / 60) % 60);
-  console.log(`🔍 DEBUG HEURES: total calculé = ${heures}h${minutes.toString().padStart(2,'0')}`);
   return `${heures}h${minutes.toString().padStart(2, '0')}`;
 };
 

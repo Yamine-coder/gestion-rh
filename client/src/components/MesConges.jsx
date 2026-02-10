@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import axios from "axios";
+import api from "../api/axiosInstance";
 import { Calendar, CalendarCheck, Plus, Clock, Check, X, FileText, RefreshCw, Edit2, Trash2, AlertCircle, ChevronDown, ChevronUp, Filter, Search, Heart, GraduationCap, Stethoscope, DollarSign, Users, RotateCcw, Paperclip, ExternalLink, Upload, History } from "lucide-react";
 import BottomNav from "../components/BottomNav";
 import DemandeCongeForm from "../components/DemandeCongeForm";
@@ -90,7 +90,6 @@ function MesConges() {
   
   const selectedFilterType = typesCongeConfig.find(t => t.value === filterType) || typesCongeConfig[0];
   
-  const token = localStorage.getItem("token");
 
   // Gérer la fermeture avec la touche Escape
   useEffect(() => {
@@ -135,9 +134,7 @@ function MesConges() {
     }
     
     try {
-      const res = await axios.get(`${API_URL}/conges/mes-conges`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get('/conges/mes-conges');
       const congesData = res.data;
       setConges(congesData);
       
@@ -163,22 +160,18 @@ function MesConges() {
       
       if (editingConge) {
         // Mode édition
-        await axios.put(`${API_URL}/conges/${editingConge.id}/update`, {
+        await api.put(`/conges/${editingConge.id}/update`, {
           type: data.type,
           debut: data.debut,
           fin: data.fin,
           motif: data.motif
-        }, {
-          headers: { Authorization: `Bearer ${token}` },
         });
         congeId = editingConge.id;
         
         // Supprimer le justificatif si demandé
         if (data.justificatifRemoved && editingConge.justificatif) {
           try {
-            await axios.delete(`${API_URL}/conges/${congeId}/justificatif`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
+            await api.delete(`/conges/${congeId}/justificatif`);
           } catch (delErr) {
             console.error("Erreur suppression justificatif:", delErr);
           }
@@ -188,13 +181,11 @@ function MesConges() {
         setEditingConge(null);
       } else {
         // Mode création
-        const res = await axios.post(`${API_URL}/conges`, {
+        const res = await api.post('/conges', {
           type: data.type,
           debut: data.debut,
           fin: data.fin,
           motif: data.motif
-        }, {
-          headers: { Authorization: `Bearer ${token}` },
         });
         const created = res.data;
         congeId = created?.id;
@@ -208,9 +199,8 @@ function MesConges() {
         formData.append('justificatif', data.justificatif);
         
         try {
-          await axios.post(`${API_URL}/conges/${congeId}/justificatif`, formData, {
+          await api.post(`/conges/${congeId}/justificatif`, formData, {
             headers: { 
-              Authorization: `Bearer ${token}`,
               'Content-Type': 'multipart/form-data'
             },
           });
@@ -249,9 +239,7 @@ function MesConges() {
 
   const handleDeleteConge = async (congeId) => {
     try {
-      await axios.delete(`${API_URL}/conges/${congeId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.delete(`/conges/${congeId}`);
       setToast({ type: 'success', msg: '🗑️ Demande annulée avec succès' });
       setTimeout(() => setToast(null), 5000);
       await fetchConges();
@@ -325,9 +313,8 @@ function MesConges() {
       const formData = new FormData();
       formData.append('justificatif', uploadFile);
       
-      await axios.post(`${API_URL}/conges/${uploadingJustificatif.id}/justificatif`, formData, {
+      await api.post(`/conges/${uploadingJustificatif.id}/justificatif`, formData, {
         headers: { 
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data'
         },
       });

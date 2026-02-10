@@ -1,6 +1,5 @@
 // server/services/paiementExtrasService.js
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 
 const TAUX_HORAIRE_DEFAUT = 10; // €/h par défaut
 
@@ -14,7 +13,6 @@ async function creerPaiementDepuisAnomalie(anomalie, adminId) {
   });
   
   if (existant) {
-    console.log(`⚠️ Paiement déjà existant pour anomalie ${anomalie.id}`);
     return existant;
   }
   
@@ -29,7 +27,6 @@ async function creerPaiementDepuisAnomalie(anomalie, adminId) {
   const montant = anomalie.montantExtra ? parseFloat(anomalie.montantExtra) : (heures * tauxHoraire);
   
   if (heures <= 0 && montant <= 0) {
-    console.log(`⚠️ Anomalie ${anomalie.id}: pas d'heures ni de montant à payer`);
     return null;
   }
   
@@ -48,7 +45,6 @@ async function creerPaiementDepuisAnomalie(anomalie, adminId) {
     }
   });
   
-  console.log(`✅ Paiement créé depuis anomalie ${anomalie.id}: ${heures}h - ${montant}€ pour ${employe?.prenom} ${employe?.nom}`);
   return paiement;
 }
 
@@ -65,7 +61,6 @@ async function creerPaiementDepuisShiftExtra(shift, segmentIndex, adminId) {
   });
   
   if (existant) {
-    console.log(`⚠️ Paiement déjà existant pour shift ${shift.id} segment ${segmentIndex}`);
     return existant;
   }
   
@@ -121,7 +116,6 @@ async function creerPaiementDepuisShiftExtra(shift, segmentIndex, adminId) {
     }
   });
   
-  console.log(`✅ Paiement créé depuis shift ${shift.id}: ${heuresAPayer.toFixed(2)}h (prévu: ${heuresPrevues.toFixed(2)}h) - ${montant}€ pour ${employe?.prenom} ${employe?.nom}`);
   return paiement;
 }
 
@@ -263,8 +257,6 @@ async function mettreAJourHeuresReelles(paiementId) {
     }
   });
   
-  console.log(`🔄 Paiement ${paiementId} mis à jour: ${heuresReellesResult.heuresReelles}h réelles (prévu: ${heuresPrevues}h, écart: ${ecart > 0 ? '+' : ''}${ecart.toFixed(2)}h)`);
-  
   return updated;
 }
 
@@ -300,7 +292,6 @@ async function recalculerHeuresReellesPourDate(date) {
  * Synchroniser tous les paiements extras depuis les anomalies et shifts
  */
 async function synchroniserTousLesPaiements(adminId) {
-  console.log('🔄 Synchronisation des paiements extras...');
   
   const resultats = {
     anomalies: { traites: 0, crees: 0, erreurs: 0 },
@@ -319,8 +310,6 @@ async function synchroniserTousLesPaiements(adminId) {
       statut: { in: ['valide', 'validee', 'resolu', 'traite'] }
     }
   });
-  
-  console.log(`📋 ${anomaliesHS.length} anomalies d'extras à traiter`);
   
   for (const anomalie of anomaliesHS) {
     resultats.anomalies.traites++;
@@ -342,8 +331,6 @@ async function synchroniserTousLesPaiements(adminId) {
     }
   });
   
-  console.log(`📋 ${shiftsAvecSegments.length} shifts à vérifier pour segments extra`);
-  
   for (const shift of shiftsAvecSegments) {
     if (!shift.segments || !Array.isArray(shift.segments)) continue;
     
@@ -364,7 +351,6 @@ async function synchroniserTousLesPaiements(adminId) {
     }
   }
   
-  console.log('✅ Synchronisation terminée:', resultats);
   return resultats;
 }
 

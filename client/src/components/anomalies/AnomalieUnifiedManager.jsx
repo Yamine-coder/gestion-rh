@@ -1,6 +1,7 @@
 // client/src/components/anomalies/AnomalieUnifiedManager.jsx
 import React, { useState, useCallback, useMemo } from 'react';
 import { Check, X, Clock, AlertTriangle, Zap, Eye } from 'lucide-react';
+import { API_BASE } from '../../config/api';
 
 /**
  * SYSTÈME UNIFIÉ DE GESTION D'ANOMALIES
@@ -19,7 +20,7 @@ export function useAnomalieActions() {
     setProcessing(prev => new Set(prev).add(anomalieId));
 
     try {
-      const response = await fetch(`/api/anomalies/${anomalieId}/traiter`, {
+      const response = await fetch(`${API_BASE}/api/anomalies/${anomalieId}/traiter`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -169,7 +170,6 @@ export function AnomalieQuickActions({
 
       const result = await processAction(anomalie.id, actionData.action, actionData);
       
-      console.log(`✅ Action ${actionType} réussie pour anomalie ${anomalie.id}`);
       onSuccess?.(result.anomalie);
 
     } catch (error) {

@@ -51,7 +51,7 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
       doc.fontSize(18).fillColor(WHITE).font('Helvetica-Bold').text('RAPPORT DE PRESENCE', left, 22);
       
       const periodeLabel = periode === 'mois' ? 'Mensuel' : periode === 'semaine' ? 'Hebdomadaire' : 'Trimestriel';
-      const formatDate = (d) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+      const formatDate = (d) => d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: 'short', year: 'numeric' });
       doc.fontSize(10).fillColor(WHITE).font('Helvetica').text(
         `${periodeLabel}  -  ${formatDate(dateDebut)} au ${formatDate(dateFin)}`, left, 46
       );
@@ -170,7 +170,7 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
           const dateObj = new Date(jour.jour);
           const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
           const jourSemaine = jours[dateObj.getDay()];
-          const dateFormatee = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+          const dateFormatee = dateObj.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
           
           const rowY = y + 7;
           doc.fontSize(9).fillColor(DARK).font('Helvetica').text(`${jourSemaine} ${dateFormatee}`, colX[0] + 10, rowY);
@@ -214,7 +214,7 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
       // Ligne de séparation et texte du footer
       doc.moveTo(left, y).lineTo(left + pageWidth, y).strokeColor(BORDER).lineWidth(0.5).stroke();
       doc.fontSize(8).fillColor(LIGHT).font('Helvetica').text(
-        `Document genere le ${new Date().toLocaleDateString('fr-FR')}`,
+        `Document genere le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })}`,
         left, y + 8, { width: pageWidth, align: 'center' }
       );
 
@@ -243,7 +243,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     }
   }
 
-  workbook.creator = 'Systeme RH Restaurant';
+  workbook.creator = 'Le Fournil A Pizzas - Chez Antoine';
   workbook.created = new Date();
 
   // Palette sobre et professionnelle (inspirée du rapport PDF)
@@ -263,7 +263,8 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     const heuresPrevues = emp.heuresPrevues || 0;
     const heuresTravaillees = emp.heuresTravaillees || 0;
     const heuresSupplementaires = emp.heuresSupplementaires || 0;
-    const heuresNormales = Math.max(0, heuresTravaillees - heuresSupplementaires);
+    const heuresExtra = emp.heuresExtra || 0;
+    const heuresNormales = Math.max(0, heuresTravaillees - heuresExtra);
     const heuresManquantes = Math.max(0, heuresPrevues - heuresTravaillees);
 
     const datesCP = [];
@@ -276,7 +277,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
 
     emp.heuresParJour?.forEach((jour) => {
       if (jour.type === 'absence' || (jour.heuresTravaillees === 0 && jour.heuresPrevues > 0)) {
-        const dateFormatee = new Date(jour.jour).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const dateFormatee = new Date(jour.jour).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
         const congeType = (jour.details?.congeType || jour.congeType || '').toLowerCase();
 
         if (congeType.includes('maladie')) {
@@ -306,7 +307,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
 
     const alertes = [];
     if (heuresManquantes > 0) alertes.push(`H. manquantes ${heuresManquantes.toFixed(1)}h`);
-    if (heuresSupplementaires > 10) alertes.push(`H. supp ${heuresSupplementaires.toFixed(1)}h`);
+    if (heuresExtra > 10) alertes.push(`H. extra ${heuresExtra.toFixed(1)}h`);
     if (emp.absencesInjustifiees > 0) alertes.push(`${emp.absencesInjustifiees} abs. injust.`);
     if (datesMaladie.length > 0) alertes.push(`${datesMaladie.length}j maladie`);
     const alertesText = alertes.length ? alertes.join(' | ') : 'RAS';
@@ -359,13 +360,16 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     acc.joursPresents += emp.joursPresents;
     acc.heuresPrevues += emp.heuresPrevues;
     acc.heuresTravaillees += emp.heuresTravaillees;
-    acc.heuresSupp += emp.heuresSupplementaires;
+    acc.heuresSupp += emp.heuresExtra || 0;
     acc.heuresManquantes += emp.heuresManquantes;
     acc.absJustifiees += emp.absJustifiees;
     acc.absInjustifiees += emp.absencesInjustifiees || 0;
     acc.cp += emp.joursCP;
     acc.rtt += emp.joursRTT;
     acc.maladie += emp.joursMaladie;
+    acc.sansSolde += emp.joursSansSolde || 0;
+    acc.exceptionnel += emp.joursExceptionnel || 0;
+    acc.formation += emp.joursFormation || 0;
     acc.retards += emp.retards || 0;
     acc.tauxPresence += emp.tauxPresencePercent;
     acc.tauxPonctualite += emp.tauxPonctualite;
@@ -383,189 +387,292 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     cp: 0,
     rtt: 0,
     maladie: 0,
+    sansSolde: 0,
+    exceptionnel: 0,
+    formation: 0,
     retards: 0,
     tauxPresence: 0,
     tauxPonctualite: 0,
     moyenneHeuresParJour: 0
   });
 
-  // === RAPPORT COMPTABLE SIMPLIFIÉ ===
+  // === RAPPORT COMPTABLE PROFESSIONNEL ===
   const hrSheet = workbook.addWorksheet('Rapport Heures', {
-    properties: { tabColor: { argb: palette.primary } },
-    views: [{ state: 'frozen', xSplit: 0, ySplit: 5 }]
+    properties: { tabColor: { argb: 'FFCF292C' } },
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }]
   });
 
-  // TITRE - sobre, fond blanc avec ligne rouge
-  hrSheet.mergeCells('A1:I1');
-  const titleCell = hrSheet.getCell('A1');
-  titleCell.value = 'RAPPORT MENSUEL';
-  titleCell.font = { size: 18, bold: true, color: { argb: palette.dark } };
-  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
-  titleCell.border = { bottom: { style: 'medium', color: { argb: palette.accent } } };
-  hrSheet.getRow(1).height = 40;
+  // ENTREPRISE - nom en rouge
+  hrSheet.mergeCells('A1:L1');
+  const entrepriseCell = hrSheet.getCell('A1');
+  entrepriseCell.value = 'LE FOURNIL A PIZZAS - CHEZ ANTOINE';
+  entrepriseCell.font = { size: 14, bold: true, color: { argb: 'FFCF292C' } };
+  entrepriseCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  hrSheet.getRow(1).height = 30;
 
-  // PÉRIODE - discret
-  hrSheet.mergeCells('A2:I2');
-  const periodeCell = hrSheet.getCell('A2');
-  periodeCell.value = `${dateDebut.toLocaleDateString('fr-FR')} - ${dateFin.toLocaleDateString('fr-FR')}`;
-  periodeCell.font = { size: 10, color: { argb: palette.gray } };
-  periodeCell.alignment = { vertical: 'middle', horizontal: 'left' };
-  hrSheet.getRow(2).height = 20;
+  // TITRE - professionnel avec fond sombre
+  hrSheet.mergeCells('A2:L2');
+  const titleCell = hrSheet.getCell('A2');
+  titleCell.value = 'RAPPORT MENSUEL - HEURES & ABSENCES';
+  titleCell.font = { size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.dark } };
+  hrSheet.getRow(2).height = 28;
 
-  // Ligne vide avant en-têtes
+  // PÉRIODE - avec fond gris clair
+  hrSheet.mergeCells('A3:L3');
+  const periodeCell = hrSheet.getCell('A3');
+  periodeCell.value = `Période : ${dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: 'long', year: 'numeric' })} au ${dateFin.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: 'long', year: 'numeric' })}  —  ${computedEmployes.length} salarié(s)`;
+  periodeCell.font = { size: 10, italic: true, color: { argb: palette.dark } };
+  periodeCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  periodeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+  hrSheet.getRow(3).height = 22;
+
+  // Ligne vide de séparation
   hrSheet.addRow([]);
 
-  // EN-TÊTES - sobres, fond gris clair
+  // EN-TÊTES - style professionnel avec bordures
   const headerRow = hrSheet.addRow([
     'Employé',
-    'Heures',
+    'Heures travaillées',
     'Congés payés',
     'RTT',
-    'Maladie',
-    'Abs. injust.',
+    'Arrêt maladie',
+    'Congé sans solde',
+    'Congé exceptionnel',
+    'Formation',
+    'Abs. injustifiées',
     'Navigo',
-    'Justif.',
-    'Notes'
+    'Justificatif',
+    'Observations',
+    'Détail CP',
+    'Détail RTT',
+    'Détail Maladie',
+    'Détail Sans solde',
+    'Détail Exceptionnel',
+    'Détail Formation',
+    'Détail Injustifiées'
   ]);
-  headerRow.font = { bold: true, size: 9, color: { argb: palette.dark } };
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-  headerRow.height = 28;
+  headerRow.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B7280' } };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  headerRow.height = 32;
   headerRow.eachCell((cell) => {
-    cell.border = { bottom: { style: 'thin', color: { argb: palette.lightGray } } };
+    cell.border = {
+      top: { style: 'thin', color: { argb: palette.lightGray } },
+      bottom: { style: 'medium', color: { argb: palette.dark } },
+      left: { style: 'thin', color: { argb: palette.lightGray } },
+      right: { style: 'thin', color: { argb: palette.lightGray } }
+    };
   });
-  headerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+  headerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-  const columnWidths = [22, 10, 18, 18, 18, 12, 8, 10, 18];
+  const columnWidths = [25, 12, 22, 22, 22, 22, 22, 22, 22, 8, 12, 15, 30, 30, 30, 30, 30, 30, 30];
   hrSheet.columns = columnWidths.map((width, i) => ({ key: `col${i}`, width }));
 
-  computedEmployes.forEach((emp, index) => {
-    // Formater les absences de façon lisible
-    const formatAbsence = (jours, dates) => {
-      if (jours === 0) return '-';
-      if (jours === 1) return `1 jour (${dates[0]})`;
-      return `${jours} jours\n${dates.join(', ')}`;
-    };
+  // Masquer les colonnes de détails (dates) - colonnes M à S (index 12 à 18)
+  for (let i = 13; i <= 19; i++) {
+    hrSheet.getColumn(i).hidden = true;
+  }
 
-    // Préparer le justificatif Navigo (référence vers fichier dans ZIP)
+  // Préparer les liens Navigo pour l'Excel
+  const navigoLinks = [];
+  
+  computedEmployes.forEach((emp, index) => {
+    // Préparer le justificatif Navigo (lien téléchargeable)
     const navigoValue = emp.eligibleNavigo ? 'Oui' : '';
     
-    // Utiliser le numéro PJ attribué par excelZipUtils, ou calculer si en mode standalone
-    let justificatifText = '';
-    let justificatifFileName = '';
-    if (emp.justificatifNavigo && emp.eligibleNavigo) {
-      // Extraire l'extension du fichier original
-      const ext = emp.justificatifNavigo.split('.').pop() || 'pdf';
-      justificatifFileName = `Navigo_${emp.nom}_${emp.prenom}.${ext}`;
+    // Vérifier si l'employé a un justificatif Navigo
+    const justifMensuel = emp.justificatifsNavigo?.[0];
+    const fichierNavigo = justifMensuel?.fichier || emp.justificatifNavigo;
+    
+    if (fichierNavigo && emp.eligibleNavigo) {
+      const filePath = path.join(__dirname, '..', fichierNavigo);
       
-      if (emp.pjNumber) {
-        // Mode ZIP: utiliser le numéro pré-attribué
-        justificatifText = `📎 PJ${emp.pjNumber}`;
+      if (fs.existsSync(filePath)) {
+        const extension = path.extname(filePath).toLowerCase();
+        const fileName = path.basename(filePath);
+        
+        // Créer un lien vers le fichier (relatif ou absolu selon le contexte)
+        navigoLinks.push({
+          rowIndex: index,
+          filePath: fichierNavigo, // Chemin relatif depuis la racine du serveur
+          fileName: fileName,
+          extension: extension
+        });
       } else {
-        // Mode standalone: calculer le numéro
-        const justifIndex = computedEmployes
-          .slice(0, index + 1)
-          .filter(e => e.justificatifNavigo && e.eligibleNavigo)
-          .length;
-        justificatifText = `📎 PJ${justifIndex}`;
+        console.warn(`   ❌ Fichier introuvable: ${filePath}`);
       }
     }
 
+    // Format avec dates : "X j (dates)"
+    const formatAbsence = (jours, dates) => {
+      if (!jours || jours === 0) return '-';
+      if (jours === 1 && dates && dates.length > 0) return `1 j (${dates[0]})`;
+      if (jours <= 3 && dates && dates.length > 0) return `${jours} j (${dates.join(', ')})`;
+      return `${jours} jours`;
+    };
+    
     const row = hrSheet.addRow([
       `${emp.nom.toUpperCase()} ${emp.prenom}`,
-      emp.heuresTravaillees.toFixed(1) + ' h',
-      formatAbsence(emp.joursCP, emp.datesCP),
-      formatAbsence(emp.joursRTT, emp.datesRTT),
-      formatAbsence(emp.joursMaladie, emp.datesMaladie),
+      emp.heuresNormales.toFixed(1) + ' h', // Exclut les heures extra (non Navigo),
+      formatAbsence(emp.joursCP || 0, emp.datesCP),
+      formatAbsence(emp.joursRTT || 0, emp.datesRTT),
+      formatAbsence(emp.joursMaladie || 0, emp.datesMaladie),
+      formatAbsence(emp.joursSansSolde || 0, emp.datesSansSolde),
+      formatAbsence(emp.joursExceptionnel || 0, emp.datesExceptionnel),
+      formatAbsence(emp.joursFormation || 0, emp.datesFormation),
       formatAbsence(emp.absencesInjustifiees || 0, emp.datesInjustifiees),
-      navigoValue, // NAVIGO - Oui/Non basé sur BDD
-      justificatifText, // JUSTIFICATIF NAVIGO - PJ1, PJ2, etc.
-      ''  // OBSERVATIONS - cases vides pour notes manuelles
+      navigoValue,
+      '', // Justificatif
+      '', // Observations
+      // Colonnes cachées avec détails complets
+      (emp.datesCP || []).join(', ') || '-',
+      (emp.datesRTT || []).join(', ') || '-',
+      (emp.datesMaladie || []).join(', ') || '-',
+      (emp.datesSansSolde || []).join(', ') || '-',
+      (emp.datesExceptionnel || []).join(', ') || '-',
+      (emp.datesFormation || []).join(', ') || '-',
+      (emp.datesInjustifiees || []).join(', ') || '-'
     ]);
 
-    row.height = 24;
-    row.font = { size: 9, color: { argb: palette.dark } };
+    // Hauteur de ligne adaptée pour afficher les dates
+    row.height = 30;
+    row.font = { size: 10, color: { argb: palette.dark } };
 
-    // Alternance sobre
+    // Alternance sobre avec bordures
     const isEven = index % 2 === 0;
-    row.eachCell((cell) => {
-      if (isEven) {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.soft } };
+    row.eachCell((cell, colNumber) => {
+      if (isEven && colNumber <= 12) { // Seulement colonnes visibles
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } };
       }
-      cell.border = { bottom: { style: 'hair', color: { argb: palette.lightGray } } };
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      // Bordures fines
+      cell.border = {
+        top: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'hair', color: { argb: 'FFE5E7EB' } }
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     });
 
-    // Nom à gauche
-    row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
-    row.getCell(1).font = { size: 9, bold: true, color: { argb: palette.dark } };
+    // Nom à gauche et en gras
+    row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    row.getCell(1).font = { size: 10, bold: true, color: { argb: palette.dark } };
     
-    // Heures - sobre mais visible
+    // Heures - en gras
     row.getCell(2).font = { size: 10, bold: true, color: { argb: palette.dark } };
 
-    // Absences injustifiées - rouge discret
+    // Absences injustifiées (col 9) - rouge si > 0
     if ((emp.absencesInjustifiees || 0) > 0) {
-      row.getCell(6).font = { size: 9, bold: true, color: { argb: palette.accent } };
+      row.getCell(9).font = { size: 10, bold: true, color: { argb: 'FFDC2626' } };
     }
 
-    // Navigo - sobre
-    const navigoCell = row.getCell(7);
-    navigoCell.font = { size: 9, color: { argb: emp.eligibleNavigo ? palette.dark : palette.gray } };
-    
-    // Justificatif - avec lien vers le fichier dans le dossier ZIP
-    const justifCell = row.getCell(8);
-    if (emp.justificatifNavigo && justificatifFileName) {
-      // Ajouter un hyperlien vers le fichier dans le dossier Justificatifs_Navigo
-      justifCell.value = {
-        text: justificatifText,
-        hyperlink: `Justificatifs_Navigo/${justificatifFileName}`,
-        tooltip: `Ouvrir ${justificatifFileName}`
-      };
-      justifCell.font = { size: 9, color: { argb: '0066CC' }, underline: true };
+    // Navigo (col 10) - couleur selon éligibilité
+    const navigoCell = row.getCell(10);
+    if (emp.eligibleNavigo) {
+      navigoCell.font = { size: 10, bold: true, color: { argb: '059669' } };
     } else {
-      justifCell.font = { size: 9, color: { argb: palette.gray } };
+      navigoCell.font = { size: 9, color: { argb: palette.gray } };
+    }
+    
+    // Justificatif (col 11) - cellule préparée pour recevoir le lien
+    const justifCell = row.getCell(11);
+    justifCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    
+    // Colonnes cachées - alignement à gauche pour lecture facile
+    for (let i = 13; i <= 19; i++) {
+      row.getCell(i).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     }
   });
 
+  // Ajouter les liens Navigo dans les cellules correspondantes
+  
+  const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+  
+  navigoLinks.forEach(({ rowIndex, filePath, fileName, extension }) => {
+    try {
+      // Calculer la position de la ligne (row 5 = header, donc données commencent à row 6)
+      const excelRow = 6 + rowIndex;
+      
+      // Récupérer la cellule
+      const cell = hrSheet.getCell(`K${excelRow}`); // Colonne K = Justificatif
+      
+      // Créer un lien cliquable vers le fichier
+      const fileUrl = `${BASE_URL}/${filePath.replace(/\\/g, '/')}`;
+      
+      // Déterminer l'icône selon le type de fichier
+      let iconText = '📄';
+      if (['.pdf'].includes(extension)) iconText = '📄 PDF';
+      else if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(extension)) iconText = '🖼️ Image';
+      else if (['.doc', '.docx'].includes(extension)) iconText = '📝 Word';
+      else if (['.xls', '.xlsx'].includes(extension)) iconText = '📊 Excel';
+      else iconText = '📎 Fichier';
+      
+      cell.value = {
+        text: iconText,
+        hyperlink: fileUrl,
+        tooltip: `Télécharger ${fileName}`
+      };
+      
+      cell.font = {
+        size: 9,
+        color: { argb: '0066CC' },
+        underline: true,
+        bold: false
+      };
+      
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    } catch (err) {
+      console.error(`   ❌ Erreur pour ${fileName}:`, err.message);
+    }
+  });
+  
   // Ligne vide avant totaux
   hrSheet.addRow([]);
 
-  // LIGNE DE TOTAUX - sobre
+  // LIGNE DE TOTAUX - style comptable avec double bordure
   const totalRow = hrSheet.addRow([
-    `Total (${computedEmployes.length})`,
-    totals.heuresTravaillees.toFixed(0) + 'h',
-    totals.cp || '-',
-    totals.rtt || '-',
-    totals.maladie || '-',
-    totals.absInjustifiees || '-',
+    `TOTAL (${computedEmployes.length} salariés)`,
+    totals.heuresTravaillees.toFixed(1) + ' h',
+    totals.cp ? totals.cp + ' j' : '-',
+    totals.rtt ? totals.rtt + ' j' : '-',
+    totals.maladie ? totals.maladie + ' j' : '-',
+    totals.sansSolde ? totals.sansSolde + ' j' : '-',
+    totals.exceptionnel ? totals.exceptionnel + ' j' : '-',
+    totals.formation ? totals.formation + ' j' : '-',
+    totals.absInjustifiees ? totals.absInjustifiees + ' j' : '-',
     '',
     '',
     ''
   ]);
 
-  totalRow.font = { bold: true, size: 9, color: { argb: palette.dark } };
+  totalRow.font = { bold: true, size: 10, color: { argb: palette.dark } };
   totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
-  totalRow.height = 26;
+  totalRow.height = 28;
   totalRow.eachCell((cell) => {
-    cell.border = { top: { style: 'thin', color: { argb: palette.lightGray } } };
+    cell.border = {
+      top: { style: 'double', color: { argb: palette.dark } },
+      bottom: { style: 'double', color: { argb: palette.dark } }
+    };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
   });
   totalRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
 
-  // Note discrète
+  // Note de bas de page avec nom entreprise
   hrSheet.addRow([]);
   const noteRow = hrSheet.addRow([
-    `Généré le ${new Date().toLocaleDateString('fr-FR')} • Cliquez sur les liens PJ pour ouvrir les justificatifs Navigo (extraire le ZIP d'abord)`,
-    '', '', '', '', '', '', '', ''
+    `Le Fournil A Pizzas - Chez Antoine, Vincennes  •  Généré le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}  •  Colonnes masquées : dates détaillées par type d'absence`,
+    '', '', '', '', '', '', '', '', '', '', ''
   ]);
-  hrSheet.mergeCells(`A${noteRow.number}:I${noteRow.number}`);
+  hrSheet.mergeCells(`A${noteRow.number}:L${noteRow.number}`);
   noteRow.getCell(1).font = { size: 8, italic: true, color: { argb: palette.gray } };
-  noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+  noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
   noteRow.height = 20;
 
   hrSheet.autoFilter = {
-    from: { row: 4, column: 1 },
-    to: { row: 4, column: 9 }
+    from: { row: 5, column: 1 },
+    to: { row: 5, column: 12 }
   };
 
   const buffer = await workbook.xlsx.writeBuffer();

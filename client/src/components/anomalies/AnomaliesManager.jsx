@@ -7,8 +7,7 @@ import {
   Sparkles, TrendingUp, MoreHorizontal, Eye, FileText, UserCheck, Banknote
 } from 'lucide-react';
 import ModalTraiterAnomalie from './ModalTraiterAnomalie';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../../config/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPOSANTS UI - Style Dashboard épuré (inspiré widgets dashboard)
@@ -108,7 +107,6 @@ const anomaliesUtils = {
       'validee': { bg: 'bg-emerald-100', color: 'text-emerald-800', label: 'Validée', dot: 'bg-emerald-500' },
       'refusee': { bg: 'bg-red-100', color: 'text-red-800', label: 'Refusée', dot: 'bg-red-500' },
       'corrigee': { bg: 'bg-blue-100', color: 'text-blue-800', label: 'Corrigée', dot: 'bg-blue-500' },
-      'a_verifier': { bg: 'bg-purple-100', color: 'text-purple-800', label: 'À vérifier', dot: 'bg-purple-500' }
     };
     return styles[statut] || { bg: 'bg-slate-100', color: 'text-slate-700', label: statut, dot: 'bg-slate-500' };
   },

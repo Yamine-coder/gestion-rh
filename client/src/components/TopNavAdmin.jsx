@@ -26,9 +26,7 @@ import {
 import logo from "../assets/onboarding/logo.png";
 import { useNotifications } from "../hooks/useNotifications";
 import { useNavigoNotification } from "../hooks/useNavigoNotification";
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 /**
  * TopNavAdmin - Navigation horizontale améliorée style Skello
@@ -209,7 +207,6 @@ export default function TopNavAdmin({
   // Gestion du clic sur une notification
   const handleNotificationClick = (notif) => {
     const { congeId } = parseNotifMessage(notif.message);
-    console.log('🔔 Clic notification:', { notifId: notif.id, type: notif.type, congeId, message: notif.message });
     
     // Marquer comme lue
     if (!notif.lue) {
@@ -221,11 +218,9 @@ export default function TopNavAdmin({
     
     // Naviguer vers la page des conges avec l'ID a highlighter
     if (congeId && ['nouvelle_demande_conge', 'modification_demande_conge', 'justificatif_ajoute'].includes(notif.type)) {
-      console.log('🔔 Navigation avec highlight vers congé:', congeId);
       onMenuChange({ menu: 'demandes', highlightCongeId: congeId });
     } else {
       // Navigation simple vers les conges
-      console.log('🔔 Navigation simple (pas de congeId)');
       onMenuChange('demandes');
     }
   };

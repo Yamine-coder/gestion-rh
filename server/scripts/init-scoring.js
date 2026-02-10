@@ -84,7 +84,64 @@ async function run() {
     `);
     console.log('✅ Vue employe_scores créée');
     
-    // 7. Insérer les règles par défaut
+    // 7. Créer la table peer_feedbacks (système de feedback entre collègues)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS peer_feedbacks (
+        id SERIAL PRIMARY KEY,
+        from_employee_id INTEGER NOT NULL REFERENCES "User"(id),
+        to_employee_id INTEGER NOT NULL REFERENCES "User"(id),
+        message TEXT NOT NULL,
+        category VARCHAR(50) DEFAULT 'entraide',
+        points_proposed INTEGER DEFAULT 3,
+        status VARCHAR(20) DEFAULT 'pending',
+        validated_by INTEGER REFERENCES "User"(id),
+        validated_at TIMESTAMP,
+        rejection_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log('✅ Table peer_feedbacks créée');
+
+    // 8. Créer la table employee_scores (scores agrégés par employé)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS employee_scores (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL UNIQUE REFERENCES "User"(id),
+        peer_feedback_points INTEGER DEFAULT 0,
+        total_points INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log('✅ Table employee_scores créée');
+
+    // 9. Créer la table score_history (historique des points)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS score_history (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES "User"(id),
+        points INTEGER NOT NULL,
+        reason TEXT,
+        category VARCHAR(50),
+        source VARCHAR(50),
+        created_by INTEGER REFERENCES "User"(id),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log('✅ Table score_history créée');
+
+    // 10. Index supplémentaires pour peer_feedbacks et score_history
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_peer_feedbacks_from ON peer_feedbacks(from_employee_id);
+      CREATE INDEX IF NOT EXISTS idx_peer_feedbacks_to ON peer_feedbacks(to_employee_id);
+      CREATE INDEX IF NOT EXISTS idx_peer_feedbacks_status ON peer_feedbacks(status);
+      CREATE INDEX IF NOT EXISTS idx_score_history_employee ON score_history(employee_id);
+      CREATE INDEX IF NOT EXISTS idx_score_history_source ON score_history(source);
+      CREATE INDEX IF NOT EXISTS idx_employee_scores_employee ON employee_scores(employee_id);
+    `);
+    console.log('✅ Index peer_feedbacks/score_history créés');
+
+    // 11. Insérer les règles par défaut
     const existingRules = await pool.query('SELECT COUNT(*) FROM scoring_rules');
     if (parseInt(existingRules.rows[0].count) === 0) {
       await pool.query(`
@@ -138,7 +195,7 @@ async function run() {
       console.log('ℹ️  Règles déjà existantes:', existingRules.rows[0].count);
     }
     
-    // 8. Afficher le résumé
+    // 12. Afficher le résumé
     const rules = await pool.query('SELECT categorie, COUNT(*) as nb FROM scoring_rules GROUP BY categorie ORDER BY categorie');
     console.log('\n📊 Résumé des règles par catégorie:');
     rules.rows.forEach(r => console.log(`   - ${r.categorie}: ${r.nb} règles`));

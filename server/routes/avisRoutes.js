@@ -1,6 +1,6 @@
-/**
- * 💬 Routes Avis Google
- * Récupère les avis via Google Places API avec analyse avancée
+﻿/**
+ * ðŸ’¬ Routes Avis Google
+ * RÃ©cupÃ¨re les avis via Google Places API avec analyse avancÃ©e
  * Version: 2.0 avec tendances et insights
  */
 
@@ -10,12 +10,16 @@ const axios = require('axios');
 const avisAnalysis = require('../services/avisAnalysisService');
 const { generateAIResponse, isAIConfigured } = require('../services/avisResponseGeneratorService');
 const avisAlerts = require('../services/avisAlertService');
+const { authMiddleware, adminMiddleware } = require('../middlewares/authMiddleware');
+
+// ProtÃ©ger toutes les routes avis
+router.use(authMiddleware);
 
 // Cache simple - 30 minutes
 let cache = { data: null, timestamp: null, TTL: 30 * 60 * 1000 };
 
 /**
- * GET /api/avis - Avis avec analyse avancée
+ * GET /api/avis - Avis avec analyse avancÃ©e
  */
 router.get('/', async (req, res) => {
   try {
@@ -59,10 +63,10 @@ router.get('/', async (req, res) => {
       isNegative: r.rating <= 3
     }));
 
-    // Ajouter à l'historique
+    // Ajouter Ã  l'historique
     const history = avisAnalysis.addReviews(reviews);
     
-    // Analyse avancée
+    // Analyse avancÃ©e
     const analysis = avisAnalysis.analyzeReviews(history.reviews);
     const peakProblems = avisAnalysis.detectPeakProblems(history.reviews);
 
@@ -87,12 +91,12 @@ router.get('/', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Erreur avis:', err.message);
-    res.status(500).json({ error: err.message, ...getDemoData() });
+    res.status(500).json({ error: 'Erreur chargement avis', ...getDemoData() });
   }
 });
 
 /**
- * GET /api/avis/alerts - Avis négatifs récents
+ * GET /api/avis/alerts - Avis nÃ©gatifs rÃ©cents
  */
 router.get('/alerts', async (req, res) => {
   try {
@@ -117,12 +121,12 @@ router.get('/trends', async (req, res) => {
     const analysis = avisAnalysis.analyzeReviews(history.reviews);
     res.json({ trends: analysis.trends, insights: analysis.insights, stats: analysis.stats });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * GET /api/avis/analysis/:period - Analyse par période (7d, 30d, 90d, month)
+ * GET /api/avis/analysis/:period - Analyse par pÃ©riode (7d, 30d, 90d, month)
  */
 router.get('/analysis/:period', async (req, res) => {
   try {
@@ -131,7 +135,7 @@ router.get('/analysis/:period', async (req, res) => {
     
     if (!validPeriods.includes(period)) {
       return res.status(400).json({ 
-        error: 'Période invalide', 
+        error: 'PÃ©riode invalide', 
         validPeriods 
       });
     }
@@ -145,71 +149,72 @@ router.get('/analysis/:period', async (req, res) => {
       availablePeriods: avisAnalysis.PERIODS
     });
   } catch (err) {
-    console.error('Erreur analyse période:', err);
-    res.status(500).json({ error: err.message });
+    console.error('Erreur analyse pÃ©riode:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * POST /api/avis/generate-response - Génère une réponse via IA
+ * POST /api/avis/generate-response - GÃ©nÃ¨re une rÃ©ponse via IA
  * Body: { review: { author, rating, text } }
  */
 router.post('/generate-response', async (req, res) => {
   try {
-    const { review } = req.body;
+    const { review, forceRegenerate } = req.body;
     
     if (!review || !review.text) {
       return res.status(400).json({ error: 'Review avec texte requis' });
     }
     
-    // Vérifier si l'API IA est configurée
+    // VÃ©rifier si l'API IA est configurÃ©e
     if (!isAIConfigured()) {
       return res.json({ 
         success: false, 
-        error: 'API OpenAI non configurée. Ajoutez OPENAI_API_KEY dans le fichier .env',
+        error: 'API OpenAI non configurÃ©e. Ajoutez OPENAI_API_KEY dans le fichier .env',
         aiConfigured: false
       });
     }
     
-    // Générer la réponse via IA
-    const response = await generateAIResponse(review);
+    // GÃ©nÃ©rer la rÃ©ponse via IA
+    const result = await generateAIResponse(review, { forceRegenerate: !!forceRegenerate });
     
-    if (!response) {
+    if (!result || !result.response) {
       return res.json({ 
         success: false, 
-        error: 'Erreur lors de la génération de la réponse',
+        error: 'Erreur lors de la gÃ©nÃ©ration de la rÃ©ponse',
         aiConfigured: true
       });
     }
     
     res.json({ 
       success: true, 
-      response,
+      response: result.response,
       aiConfigured: true,
-      model: 'gpt-4o-mini'
+      model: result.model,
+      fromCache: result.fromCache || false
     });
     
   } catch (err) {
     console.error('Erreur generate-response:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 📧 POST /api/avis/test-alert - Tester l'envoi d'email d'alerte
+ * ðŸ“§ POST /api/avis/test-alert - Tester l'envoi d'email d'alerte
  */
 router.post('/test-alert', async (req, res) => {
   try {
     await avisAlerts.testAlertEmail();
-    res.json({ success: true, message: 'Email de test envoyé !' });
+    res.json({ success: true, message: 'Email de test envoyÃ© !' });
   } catch (err) {
     console.error('Erreur test-alert:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 📧 GET /api/avis/alert-status - Statut des alertes email
+ * ðŸ“§ GET /api/avis/alert-status - Statut des alertes email
  */
 router.get('/alert-status', (req, res) => {
   const config = avisAlerts.getAlertConfig();
@@ -225,30 +230,30 @@ router.get('/alert-status', (req, res) => {
 });
 
 /**
- * 📧 GET /api/avis/alert-config - Récupère la config des alertes
+ * ðŸ“§ GET /api/avis/alert-config - RÃ©cupÃ¨re la config des alertes
  */
-router.get('/alert-config', (req, res) => {
+router.get('/alert-config', adminMiddleware, (req, res) => {
   const config = avisAlerts.getAlertConfig();
   res.json(config);
 });
 
 /**
- * 📧 PUT /api/avis/alert-config - Met à jour la config des alertes
+ * ðŸ“§ PUT /api/avis/alert-config - Met Ã  jour la config des alertes
  */
-router.put('/alert-config', (req, res) => {
+router.put('/alert-config', adminMiddleware, (req, res) => {
   try {
     const updates = req.body;
     const config = avisAlerts.updateAlertConfig(updates);
     res.json({ success: true, config });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 📧 POST /api/avis/alert-recipients - Ajoute un destinataire
+ * ðŸ“§ POST /api/avis/alert-recipients - Ajoute un destinataire
  */
-router.post('/alert-recipients', (req, res) => {
+router.post('/alert-recipients', adminMiddleware, (req, res) => {
   try {
     const { email, name } = req.body;
     if (!email) {
@@ -257,41 +262,41 @@ router.post('/alert-recipients', (req, res) => {
     const config = avisAlerts.addRecipient(email, name || '');
     res.json({ success: true, config });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 📧 DELETE /api/avis/alert-recipients/:email - Supprime un destinataire
+ * ðŸ“§ DELETE /api/avis/alert-recipients/:email - Supprime un destinataire
  */
-router.delete('/alert-recipients/:email', (req, res) => {
+router.delete('/alert-recipients/:email', adminMiddleware, (req, res) => {
   try {
     const email = decodeURIComponent(req.params.email);
     const config = avisAlerts.removeRecipient(email);
     res.json({ success: true, config });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 📧 PATCH /api/avis/alert-recipients/:email - Active/désactive un destinataire
+ * ðŸ“§ PATCH /api/avis/alert-recipients/:email - Active/dÃ©sactive un destinataire
  */
-router.patch('/alert-recipients/:email', (req, res) => {
+router.patch('/alert-recipients/:email', adminMiddleware, (req, res) => {
   try {
     const email = decodeURIComponent(req.params.email);
     const { active } = req.body;
     const config = avisAlerts.toggleRecipient(email, active);
     res.json({ success: true, config });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 📧 POST /api/avis/check-alerts - Vérifie et envoie les alertes maintenant
+ * ðŸ“§ POST /api/avis/check-alerts - VÃ©rifie et envoie les alertes maintenant
  */
-router.post('/check-alerts', async (req, res) => {
+router.post('/check-alerts', adminMiddleware, async (req, res) => {
   try {
     if (!cache.data?.reviews) {
       return res.json({ success: false, message: 'Aucun avis en cache, rechargez d\'abord' });
@@ -305,16 +310,16 @@ router.post('/check-alerts', async (req, res) => {
     res.json({ 
       success: true, 
       alertsSent: count,
-      message: count > 0 ? `${count} alerte(s) envoyée(s)` : 'Pas de nouvel avis négatif à signaler'
+      message: count > 0 ? `${count} alerte(s) envoyÃ©e(s)` : 'Pas de nouvel avis nÃ©gatif Ã  signaler'
     });
   } catch (err) {
     console.error('Erreur check-alerts:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 🎯 GET /api/avis/objectif - Calcul de l'objectif note
+ * ðŸŽ¯ GET /api/avis/objectif - Calcul de l'objectif note
  */
 router.get('/objectif', async (req, res) => {
   try {
@@ -328,13 +333,13 @@ router.get('/objectif', async (req, res) => {
         totalAvis: 847,
         avis5EtoilesNecessaires: 15,
         progression: 93,
-        message: 'Mode démo - Configurez Google Places API'
+        message: 'Mode dÃ©mo - Configurez Google Places API'
       });
     }
     
     const { rating, totalReviews } = cache.data.restaurant;
     
-    // Calcul: combien d'avis 5⭐ pour atteindre l'objectif
+    // Calcul: combien d'avis 5â­ pour atteindre l'objectif
     // Formule: (rating * totalReviews + 5 * x) / (totalReviews + x) = objectif
     // => x = (objectif * totalReviews - rating * totalReviews) / (5 - objectif)
     let avisNecessaires = 0;
@@ -352,16 +357,16 @@ router.get('/objectif', async (req, res) => {
       avis5EtoilesNecessaires: Math.max(0, avisNecessaires),
       progression,
       message: avisNecessaires > 0 
-        ? `${avisNecessaires} avis 5⭐ pour atteindre ${objectif}⭐`
-        : `Objectif atteint ! 🎉`
+        ? `${avisNecessaires} avis 5â­ pour atteindre ${objectif}â­`
+        : `Objectif atteint ! ðŸŽ‰`
     });
   } catch (err) {
     console.error('Erreur objectif:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Cache pour les données concurrents (éviter trop d'appels Google API)
+// Cache pour les donnÃ©es concurrents (Ã©viter trop d'appels Google API)
 let concurrentsCache = {
   data: null,
   lastUpdate: null,
@@ -369,20 +374,20 @@ let concurrentsCache = {
 };
 
 /**
- * 🏆 GET /api/avis/concurrents - Stats comparatives avec concurrents RÉELS
- * Récupère automatiquement les pizzerias et restaurants proches via Google Places
- * Cache de 6h pour économiser les appels API
+ * ðŸ† GET /api/avis/concurrents - Stats comparatives avec concurrents RÃ‰ELS
+ * RÃ©cupÃ¨re automatiquement les pizzerias et restaurants proches via Google Places
+ * Cache de 6h pour Ã©conomiser les appels API
  */
 router.get('/concurrents', async (req, res) => {
   try {
     const forceRefresh = req.query.refresh === 'true';
     const API_KEY = process.env.GOOGLE_PLACES_API_KEY;
     
-    // Vérifier le cache (sauf si refresh forcé)
+    // VÃ©rifier le cache (sauf si refresh forcÃ©)
     if (!forceRefresh && concurrentsCache.data && concurrentsCache.lastUpdate) {
       const age = Date.now() - concurrentsCache.lastUpdate;
       if (age < concurrentsCache.TTL) {
-        // Retourner les données en cache avec l'âge
+        // Retourner les donnÃ©es en cache avec l'Ã¢ge
         return res.json({
           ...concurrentsCache.data,
           fromCache: true,
@@ -395,13 +400,13 @@ router.get('/concurrents', async (req, res) => {
     const MON_PLACE_ID = process.env.GOOGLE_PLACE_ID;
     
     if (!API_KEY) {
-      return res.status(400).json({ error: 'GOOGLE_PLACES_API_KEY non configurée' });
+      return res.status(400).json({ error: 'GOOGLE_PLACES_API_KEY non configurÃ©e' });
     }
     
-    // 1. Récupérer les infos de notre restaurant
+    // 1. RÃ©cupÃ©rer les infos de notre restaurant
     let monRestaurant = cache.data?.restaurant;
     if (!monRestaurant || !monRestaurant.location) {
-      // Récupérer les détails incluant la localisation
+      // RÃ©cupÃ©rer les dÃ©tails incluant la localisation
       const myResponse = await axios.get('https://maps.googleapis.com/maps/api/place/details/json', {
         params: {
           place_id: MON_PLACE_ID,
@@ -429,7 +434,7 @@ router.get('/concurrents', async (req, res) => {
     
     const { lat, lng } = monRestaurant.location;
     
-    // 2. Rechercher les restaurants À PROXIMITÉ (priorité) - rayon élargi
+    // 2. Rechercher les restaurants Ã€ PROXIMITÃ‰ (prioritÃ©) - rayon Ã©largi
     const proximiteResponse = await axios.get('https://maps.googleapis.com/maps/api/place/nearbysearch/json', {
       params: {
         location: `${lat},${lng}`,
@@ -440,7 +445,7 @@ router.get('/concurrents', async (req, res) => {
       }
     });
     
-    // 3. Rechercher les pizzerias (même type - secondaire) - rayon élargi
+    // 3. Rechercher les pizzerias (mÃªme type - secondaire) - rayon Ã©largi
     const pizzeriasResponse = await axios.get('https://maps.googleapis.com/maps/api/place/nearbysearch/json', {
       params: {
         location: `${lat},${lng}`,
@@ -452,10 +457,10 @@ router.get('/concurrents', async (req, res) => {
       }
     });
     
-    // Combiner et dédupliquer
+    // Combiner et dÃ©dupliquer
     const allPlaces = new Map();
     
-    // Ajouter les restaurants à PROXIMITÉ (priorité) - seuil réduit
+    // Ajouter les restaurants Ã  PROXIMITÃ‰ (prioritÃ©) - seuil rÃ©duit
     (proximiteResponse.data.results || []).forEach(place => {
       if (place.place_id !== MON_PLACE_ID && place.rating && place.user_ratings_total >= 10) {
         const isPizzeria = (place.name || '').toLowerCase().includes('pizza') || 
@@ -472,7 +477,7 @@ router.get('/concurrents', async (req, res) => {
       }
     });
     
-    // Ajouter les pizzerias (si pas déjà présents) - seuil réduit
+    // Ajouter les pizzerias (si pas dÃ©jÃ  prÃ©sents) - seuil rÃ©duit
     (pizzeriasResponse.data.results || []).forEach(place => {
       if (place.place_id !== MON_PLACE_ID && place.rating && place.user_ratings_total >= 10 && !allPlaces.has(place.place_id)) {
         allPlaces.set(place.place_id, {
@@ -491,7 +496,7 @@ router.get('/concurrents', async (req, res) => {
       .sort((a, b) => b.rating - a.rating)
       .slice(0, 15);
     
-    // Séparer par catégorie
+    // SÃ©parer par catÃ©gorie
     const proximite = concurrentsData.filter(c => c.type === 'proximite');
     const pizzerias = concurrentsData.filter(c => c.type === 'pizzeria');
     
@@ -532,13 +537,13 @@ router.get('/concurrents', async (req, res) => {
       },
       // Tous les concurrents
       concurrents: concurrentsData,
-      // Séparés par type
+      // SÃ©parÃ©s par type
       proximite,
       pizzerias,
       // Stats globales
       classement,
       total: tousRestaurants.length,
-      // Stats proximité (comparaison principale)
+      // Stats proximitÃ© (comparaison principale)
       moyenneProximite: proximite.length > 0 
         ? Math.round((proximite.reduce((sum, c) => sum + c.rating, 0) / proximite.length) * 100) / 100
         : 0,
@@ -555,8 +560,8 @@ router.get('/concurrents', async (req, res) => {
       ecartTous: Math.round(ecartMoyenneTous * 100) / 100,
       // Message
       message: classement === 1 
-        ? '🏆 #1 du quartier !' 
-        : `📊 #${classement}/${tousRestaurants.length} du quartier`
+        ? 'ðŸ† #1 du quartier !' 
+        : `ðŸ“Š #${classement}/${tousRestaurants.length} du quartier`
     };
     
     // Sauvegarder en cache
@@ -571,12 +576,12 @@ router.get('/concurrents', async (req, res) => {
     });
   } catch (err) {
     console.error('Erreur concurrents:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * 🔔 GET /api/avis/nouveaux - Vérifier les nouveaux avis depuis dernière consultation
+ * ðŸ”” GET /api/avis/nouveaux - VÃ©rifier les nouveaux avis depuis derniÃ¨re consultation
  */
 router.get('/nouveaux', (req, res) => {
   try {
@@ -597,12 +602,12 @@ router.get('/nouveaux', (req, res) => {
       alerte: nouveauxNegatifs.length > 0
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 /**
- * Données de démo
+ * DonnÃ©es de dÃ©mo
  */
 function getDemoData() {
   const now = Date.now();
@@ -610,9 +615,9 @@ function getDemoData() {
     isDemo: true,
     restaurant: { name: 'Restaurant (Demo)', rating: 4.2, totalReviews: 847, googleUrl: '#' },
     reviews: [
-      { author: 'Jean D.', rating: 2, text: 'Service très lent, 45 minutes d\'attente. Le tartare était bon mais l\'attente gâche tout.', time: now - 2*3600000, relativeTime: 'il y a 2h', isNegative: true },
+      { author: 'Jean D.', rating: 2, text: 'Service trÃ¨s lent, 45 minutes d\'attente. Le tartare Ã©tait bon mais l\'attente gÃ¢che tout.', time: now - 2*3600000, relativeTime: 'il y a 2h', isNegative: true },
       { author: 'Marie M.', rating: 5, text: 'Excellent ! Terrasse magnifique, accueil chaleureux, tartare parfait.', time: now - 5*3600000, relativeTime: 'il y a 5h', isNegative: false },
-      { author: 'Pierre D.', rating: 4, text: 'Bon rapport qualité-prix, accueil sympa.', time: now - 24*3600000, relativeTime: 'il y a 1j', isNegative: false },
+      { author: 'Pierre D.', rating: 4, text: 'Bon rapport qualitÃ©-prix, accueil sympa.', time: now - 24*3600000, relativeTime: 'il y a 1j', isNegative: false },
       { author: 'Sophie B.', rating: 3, text: 'Correct mais bruyant et portions petites. Service lent.', time: now - 48*3600000, relativeTime: 'il y a 2j', isNegative: true },
       { author: 'Lucas P.', rating: 5, text: 'Super ambiance, magret parfait, terrasse top !', time: now - 72*3600000, relativeTime: 'il y a 3j', isNegative: false }
     ],
@@ -627,7 +632,7 @@ function getDemoData() {
           { word: 'bruit', count: 15 }, { word: 'prix', count: 12 }
         ],
         plats: [
-          { word: 'tartare', count: 28 }, { word: 'magret', count: 15 }, { word: 'entrecôte', count: 12 }
+          { word: 'tartare', count: 28 }, { word: 'magret', count: 15 }, { word: 'entrecÃ´te', count: 12 }
         ]
       },
       trends: [
@@ -636,9 +641,9 @@ function getDemoData() {
         { word: 'terrasse', type: 'positive', currentCount: 12, change: 25, direction: 'up', alert: false }
       ],
       insights: [
-        { type: 'warning', title: '"attente" mentionné 31 fois', detail: 'En hausse de +45% vs mois dernier', action: 'Vérifier le staffing aux heures de pointe' },
-        { type: 'success', title: '"terrasse" apprécié (34 mentions)', detail: 'Continuez sur cette lancée !', action: null },
-        { type: 'info', title: 'Le tartare fait parler', detail: 'Mentionné 28 fois récemment', action: null }
+        { type: 'warning', title: '"attente" mentionnÃ© 31 fois', detail: 'En hausse de +45% vs mois dernier', action: 'VÃ©rifier le staffing aux heures de pointe' },
+        { type: 'success', title: '"terrasse" apprÃ©ciÃ© (34 mentions)', detail: 'Continuez sur cette lancÃ©e !', action: null },
+        { type: 'info', title: 'Le tartare fait parler', detail: 'MentionnÃ© 28 fois rÃ©cemment', action: null }
       ],
       peakProblems: [
         { time: 'samedi 13h', count: 8 }, { time: 'vendredi 20h', count: 6 }, { time: 'dimanche 12h', count: 4 }

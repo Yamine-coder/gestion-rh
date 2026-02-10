@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
-import axios from 'axios';
+import api from '../api/axiosInstance';
 import { CameraIcon, TrashIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import API_URL from '../config/api';
 import { getImageUrl } from '../utils/imageUtils';
 
 const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
@@ -9,7 +8,6 @@ const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
   const [message, setMessage] = useState(null);
   const [preview, setPreview] = useState(null);
   const fileInputRef = useRef(null);
-  const token = localStorage.getItem('token');
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -54,16 +52,11 @@ const UploadPhotoProfil = ({ employe, onUpdate, onClose, onDeleteRequest }) => {
     formData.append('photo', file);
 
     try {
-      const res = await axios.post(
-        `${API_URL}/api/profil/upload-photo`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
+      const res = await api.post('/api/profil/upload-photo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
         }
-      );
+      });
 
       setPreview(null);
       

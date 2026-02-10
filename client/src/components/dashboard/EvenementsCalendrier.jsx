@@ -4,8 +4,7 @@ import {
   Utensils, Star, AlertCircle, Clock, MapPin, Users, Tv, Gift, Heart,
   Flame, Sparkles
 } from 'lucide-react';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../../config/api';
 
 /**
  * 📅 Événements à Venir - Calendrier 7 jours
@@ -21,7 +20,10 @@ const EvenementsCalendrier = ({ mini = false }) => {
   // Fetch matchs depuis l'API
   const fetchMatches = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/events/matches`);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/events/matches`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setMatches(data.matches || []);
@@ -34,7 +36,10 @@ const EvenementsCalendrier = ({ mini = false }) => {
   // Fetch événements Vincennes
   const fetchVincennesEvents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/events/evenements-vincennes`);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/events/evenements-vincennes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setVincennesEvents(data.events || []);

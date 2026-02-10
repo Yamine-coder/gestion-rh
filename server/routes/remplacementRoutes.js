@@ -9,7 +9,7 @@ const prisma = require('../prisma/client');
 const { authMiddleware: authenticateToken } = require('../middlewares/authMiddleware');
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const scoringService = require('../services/scoringService');
-const { notifierDemandeRemplacement } = require('../services/notificationService');
+const { notifierDemandeRemplacement, creerNotification, NOTIFICATION_TYPES } = require('../services/notificationService');
 const { sendRemplacementDemande, sendRemplacementCandidature } = require('../services/notificationEmailService');
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -257,7 +257,6 @@ router.post('/demande', authenticateToken, async (req, res) => {
           employeAbsent,
           shift
         );
-        console.log(`✅ Notifications envoyées à ${collegues.length} collègue(s) de l'équipe ${employeAbsent.categorie || 'tous'}`);
       }
       
       // Envoyer email aux destinataires configurés
@@ -282,6 +281,7 @@ router.post('/:id/candidater', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const demandeId = parseInt(req.params.id);
+    if (isNaN(demandeId)) return res.status(400).json({ error: 'ID invalide' });
     const { commentaire } = req.body;
     
     // Vérifier que la demande existe et est ouverte
@@ -345,22 +345,17 @@ router.post('/:id/candidater', authenticateToken, async (req, res) => {
       const options = { weekday: 'long', day: 'numeric', month: 'long' };
       const dateFormatee = dateShift.toLocaleDateString('fr-FR', options);
       
-      await prisma.notification.create({
-        data: {
-          userId: employeAbsentId,
-          type: 'remplacement_candidature',
-          message: JSON.stringify({
-            title: 'Nouvelle candidature',
-            body: `${candidat.prenom} ${candidat.nom} s'est proposé pour vous remplacer le ${dateFormatee}`,
-            demandeId: demandeId,
-            candidatureId: candidature.id,
-            candidatNom: `${candidat.prenom} ${candidat.nom}`
-          }),
-          statut: 'non_lu'
+      await creerNotification({
+        employeId: employeAbsentId,
+        type: 'remplacement_candidature',
+        titre: 'Nouvelle candidature',
+        message: {
+          text: `${candidat.prenom} ${candidat.nom} s'est proposé pour vous remplacer le ${dateFormatee}`,
+          demandeId: demandeId,
+          candidatureId: candidature.id,
+          candidatNom: `${candidat.prenom} ${candidat.nom}`
         }
       });
-      
-      console.log(`✅ Notification envoyée à l'employé absent (ID: ${employeAbsentId}) pour candidature de ${candidat.prenom}`);
       
       // Envoyer email aux admins/managers configurés
       const employeAbsent = candidature.demandeRemplacement.employeAbsent;
@@ -387,6 +382,7 @@ router.delete('/candidature/:id', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const candidatureId = parseInt(req.params.id);
+    if (isNaN(candidatureId)) return res.status(400).json({ error: 'ID invalide' });
     
     const candidature = await prisma.candidatureRemplacement.findFirst({
       where: { id: candidatureId, employeId: userId }
@@ -415,6 +411,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const demandeId = parseInt(req.params.id);
+    if (isNaN(demandeId)) return res.status(400).json({ error: 'ID invalide' });
     
     const demande = await prisma.demandeRemplacement.findFirst({
       where: { 
@@ -531,6 +528,7 @@ router.post('/admin/:id/valider', authenticateToken, isAdmin, async (req, res) =
   try {
     const adminId = req.user.userId;
     const demandeId = parseInt(req.params.id);
+    if (isNaN(demandeId)) return res.status(400).json({ error: 'ID invalide' });
     const { candidatureId, commentaire } = req.body;
     
     // Récupérer la candidature
@@ -616,36 +614,29 @@ router.post('/admin/:id/valider', authenticateToken, isAdmin, async (req, res) =
       const dateFormatee = dateShift.toLocaleDateString('fr-FR', options);
       
       // Notification à l'employé absent
-      await prisma.notification.create({
-        data: {
-          userId: candidature.demandeRemplacement.employeAbsentId,
-          type: 'remplacement_valide',
-          message: JSON.stringify({
-            title: 'Remplacement validé',
-            body: `${candidature.employe.prenom} ${candidature.employe.nom} vous remplacera le ${dateFormatee}`,
-            demandeId: demandeId,
-            remplacantNom: `${candidature.employe.prenom} ${candidature.employe.nom}`
-          }),
-          statut: 'non_lu'
+      await creerNotification({
+        employeId: candidature.demandeRemplacement.employeAbsentId,
+        type: 'remplacement_valide',
+        titre: 'Remplacement validé',
+        message: {
+          text: `${candidature.employe.prenom} ${candidature.employe.nom} vous remplacera le ${dateFormatee}`,
+          demandeId: demandeId,
+          remplacantNom: `${candidature.employe.prenom} ${candidature.employe.nom}`
         }
       });
       
       // Notification au remplaçant
-      await prisma.notification.create({
-        data: {
-          userId: candidature.employeId,
-          type: 'remplacement_accepte',
-          message: JSON.stringify({
-            title: 'Candidature acceptée',
-            body: `Votre candidature pour le remplacement du ${dateFormatee} a été acceptée`,
-            demandeId: demandeId,
-            shiftId: result.nouveauShift.id
-          }),
-          statut: 'non_lu'
+      await creerNotification({
+        employeId: candidature.employeId,
+        type: NOTIFICATION_TYPES.REMPLACEMENT_ACCEPTE,
+        titre: 'Candidature acceptée',
+        message: {
+          text: `Votre candidature pour le remplacement du ${dateFormatee} a été acceptée`,
+          demandeId: demandeId,
+          shiftId: result.nouveauShift.id
         }
       });
       
-      console.log(`✅ Notifications de validation envoyées aux deux parties`);
     } catch (notifError) {
       console.error('Erreur envoi notifications validation:', notifError);
     }
@@ -677,6 +668,7 @@ router.post('/admin/:id/refuser', authenticateToken, isAdmin, async (req, res) =
   try {
     const adminId = req.user.userId;
     const demandeId = parseInt(req.params.id);
+    if (isNaN(demandeId)) return res.status(400).json({ error: 'ID invalide' });
     const { commentaire } = req.body;
     
     const demande = await prisma.demandeRemplacement.update({

@@ -3,20 +3,8 @@ const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
 const scoringService = require('../services/scoringService');
 const { sendAnomalieUrgente } = require('../services/notificationEmailService');
-const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles } = require('../utils/pointageTypeUtils');
-
-// Fonction helper pour parser les segments JSON
-function parseSegments(segments) {
-  if (!segments) return [];
-  if (Array.isArray(segments)) return segments;
-  if (typeof segments === 'string') {
-    try {
-      const parsed = JSON.parse(segments);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) { return []; }
-  }
-  return [];
-}
+const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles, TYPES_ENTREE, TYPES_SORTIE, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
+const { parseSegments } = require('../utils/segmentUtils');
 
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
@@ -45,11 +33,8 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
     });
 
     if (paiementsExtras.length === 0) {
-      console.log(`💤 Pas de PaiementExtra à mettre à jour pour employé ${userId} le ${dateStr}`);
       return { updated: 0 };
     }
-
-    console.log(`🔄 ${paiementsExtras.length} PaiementExtra à vérifier pour employé ${userId}`);
 
     // 2. Récupérer tous les pointages du jour pour cet employé
     const pointages = await prisma.pointage.findMany({
@@ -64,7 +49,6 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
     });
 
     if (pointages.length < 2) {
-      console.log(`⏳ Pas assez de pointages (${pointages.length}) pour calculer les heures réelles`);
       return { updated: 0 };
     }
 
@@ -78,13 +62,11 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
       });
 
       if (!shift || !shift.segments || paiement.segmentIndex === null) {
-        console.log(`⚠️ Shift ou segment introuvable pour PaiementExtra ${paiement.id}`);
         continue;
       }
 
       const segment = shift.segments[paiement.segmentIndex];
       if (!segment) {
-        console.log(`⚠️ Segment ${paiement.segmentIndex} introuvable dans shift ${shift.id}`);
         continue;
       }
 
@@ -147,9 +129,6 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
           }
         });
 
-        console.log(`✅ PaiementExtra ${paiement.id} mis à jour: ${paiement.employe?.prenom} ${paiement.employe?.nom}`);
-        console.log(`   Prévu: ${heuresPrevues}h → Réel: ${heuresReelles}h (écart: ${ecartHeures > 0 ? '+' : ''}${ecartHeures}h)`);
-        console.log(`   Pointages: ${arriveeH}:${arriveeM} → ${departH}:${departM}`);
         updated++;
       }
     }
@@ -179,7 +158,6 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
   });
 
   if (!shift) {
-    console.log('📋 Pas de shift planifié pour la détection d\'anomalie');
     return;
   }
 
@@ -196,12 +174,12 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
   const TOLERANCE_MINUTES = 5; // Tolérance de 5 minutes
 
   // ===== DÉTECTION RETARD (sur ENTRÉE) =====
-  if (type === 'ENTRÉE') {
+  if (isEntree(type)) {
     // Vérifier si c'est la première arrivée du jour
     const pointagesAvant = await prisma.pointage.findFirst({
       where: {
         userId: parseInt(userId),
-        type: 'ENTRÉE',
+        type: { in: TYPES_ENTREE },
         horodatage: {
           gte: new Date(`${dateStr}T00:00:00.000Z`),
           lt: horodatage
@@ -224,7 +202,6 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
         if (ecartMinutes > TOLERANCE_MINUTES) {
           const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
           // Log informatif seulement - pas de création d'anomalie
-          console.log(`⏰ RETARD DÉTECTÉ (info): ${ecartMinutes} min pour employé ${userId} (arrivée ${heureReelle}, prévu ${planStart})`);
         }
       }
     }
@@ -233,7 +210,7 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
   // ===== DÉTECTION DÉPART ANTICIPÉ (sur SORTIE) =====
   // Les départs anticipés sont comptabilisés dans les stats et affichés visuellement sur le planning
   // Pas de création d'anomalie pour éviter le bruit - pratique standard SIRH
-  if (type === 'SORTIE') {
+  if (isSortie(type)) {
     const lastSegment = workSegments[workSegments.length - 1];
     const planEnd = lastSegment.end || lastSegment.fin;
     
@@ -245,7 +222,6 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
       if (ecartMinutes > TOLERANCE_MINUTES) {
         const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
         // Log informatif seulement - pas de création d'anomalie
-        console.log(`🚪 DÉPART ANTICIPÉ DÉTECTÉ (info): ${ecartMinutes} min pour employé ${userId} (départ ${heureReelle}, prévu ${planEnd})`);
       }
     }
   }
@@ -259,12 +235,12 @@ const enregistrerPointage = async (req, res) => {
   const userId = targetUserId || req.user.userId;
 
   // 🛡️ Validations de sécurité renforcées
-  if (type !== 'arrivee' && type !== 'depart' && type !== 'ENTRÉE' && type !== 'SORTIE') {
-    return res.status(400).json({ error: 'Type de pointage invalide. Seuls "arrivee", "depart", "ENTRÉE" et "SORTIE" sont autorisés.' });
+  if (!isEntree(type) && !isSortie(type)) {
+    return res.status(400).json({ error: 'Type de pointage invalide. Types reconnus: arrivee/depart, entree/sortie, ENTRÉE/SORTIE.' });
   }
 
-  // Normaliser le type vers le format base de données
-  const typeNormalise = (type === 'arrivee') ? 'ENTRÉE' : (type === 'depart') ? 'SORTIE' : type;
+  // Normaliser le type vers le format canonique (arrivee/depart)
+  const typeNormalise = isEntree(type) ? TYPE_CANONIQUE_ENTREE : TYPE_CANONIQUE_SORTIE;
 
   // Validation userId
   if (!userId || userId <= 0) {
@@ -345,7 +321,7 @@ const enregistrerPointage = async (req, res) => {
     }
 
     // ========== SCORING AUTOMATIQUE (sur arrivée) ==========
-    if (typeNormalise === 'ENTRÉE' || typeNormalise === 'arrivee') {
+    if (isEntree(typeNormalise)) {
       try {
         // Récupérer le shift du jour pour comparer l'heure d'arrivée
         const datePointage = horodatage ? new Date(horodatage) : new Date();
@@ -377,13 +353,10 @@ const enregistrerPointage = async (req, res) => {
     }
 
     // ========== MISE À JOUR DES PAIEMENTS EXTRAS (sur départ) ==========
-    if (typeNormalise === 'SORTIE' || typeNormalise === 'depart') {
+    if (isSortie(typeNormalise)) {
       try {
         const datePointage = horodatage ? new Date(horodatage) : new Date();
         const result = await mettreAJourPaiementsExtrasApresPointage(userId, datePointage);
-        if (result.updated > 0) {
-          console.log(`💰 ${result.updated} PaiementExtra mis à jour suite au pointage départ`);
-        }
       } catch (extraError) {
         console.error('⚠️ Erreur mise à jour PaiementExtra (non bloquante):', extraError);
       }
@@ -438,8 +411,6 @@ const getMesPointagesAujourdhui = async (req, res) => {
     // Utiliser la configuration centralisée pour les bornes de journée
     const { debutJournee, finJournee } = getWorkDayBounds();
 
-    console.log(`📅 JOURNÉE DE TRAVAIL: ${debutJournee.toLocaleString()} → ${finJournee.toLocaleString()}`);
-
     const pointages = await prisma.pointage.findMany({
       where: { 
         userId,
@@ -451,7 +422,6 @@ const getMesPointagesAujourdhui = async (req, res) => {
       orderBy: { horodatage: 'asc' }, // Chronologique pour l'affichage du jour
     });
 
-    console.log(`✅ ${pointages.length} pointages trouvés pour la journée de travail`);
     res.status(200).json(pointages);
   } catch (error) {
     console.error('Erreur getMesPointagesAujourdhui:', error);
@@ -488,33 +458,11 @@ const getPointagesParJour = async (req, res) => {
       },
     });
 
-    console.log('DEBUG: Premier pointage trouvé:', pointages.length > 0 ? {
-      user: pointages[0].user,
-      type: pointages[0].type
-    } : 'Aucun pointage');
-
     const groupedByUser = {};
-
-    console.log('🔍 ÉTAPE 1 - Données brutes des pointages:', pointages.length, 'pointages trouvés');
-    if (pointages.length > 0) {
-      console.log('Premier pointage:', {
-        user: pointages[0].user,
-        type: pointages[0].type,
-        horodatage: pointages[0].horodatage
-      });
-    }
 
     pointages.forEach((p) => {
       const userId = p.user.id;
       if (!groupedByUser[userId]) {
-        console.log('🔍 ÉTAPE 2 - Création utilisateur:', {
-          userId,
-          email: p.user.email,
-          nom: p.user.nom,
-          prenom: p.user.prenom,
-          nomType: typeof p.user.nom,
-          prenomType: typeof p.user.prenom
-        });
         groupedByUser[userId] = {
           email: p.user.email,
           nom: p.user.nom,
@@ -524,13 +472,13 @@ const getPointagesParJour = async (req, res) => {
       }
       const userBlocs = groupedByUser[userId].blocs;
 
-      if (p.type === 'ENTRÉE' || p.type === 'arrivee') {
+      if (isEntree(p.type)) {
         // Si le dernier bloc est incomplet (pas de départ), on n'en crée pas un nouveau
         if (userBlocs.length === 0 || userBlocs[userBlocs.length - 1].depart) {
           userBlocs.push({ arrivee: p.horodatage });
         }
         // Sinon, on ignore l'arrivée (cas d'anomalie)
-      } else if (p.type === 'SORTIE' || p.type === 'depart') {
+      } else if (isSortie(p.type)) {
         // On complète le dernier bloc sans départ
         const lastBloc = userBlocs[userBlocs.length - 1];
         if (lastBloc && !lastBloc.depart) {
@@ -554,7 +502,6 @@ const getPointagesParJour = async (req, res) => {
           totalMs += new Date(b.depart) - new Date(b.arrivee);
           // Garder les dates ISO pour le frontend
           // b.arrivee et b.depart restent au format ISO
-          console.log(`Pointage pour ${user.email}: ${new Date(b.arrivee).toISOString()} -> ${new Date(b.depart).toISOString()}`);
         }
       });
 
@@ -570,21 +517,12 @@ const getPointagesParJour = async (req, res) => {
       };
     });
 
-    console.log('DEBUG: Données finales à envoyer:', final.length > 0 ? {
-      premier_utilisateur: {
-        email: final[0].email,
-        nom: final[0].nom,
-        prenom: final[0].prenom
-      }
-    } : 'Aucune donnée finale');
-
     res.json(final);
   } catch (err) {
     console.error("Erreur récupération pointages jour :", err);
     res.status(500).json({ error: "Erreur serveur" });
   }
 };
-
 
 module.exports = {
   enregistrerPointage,

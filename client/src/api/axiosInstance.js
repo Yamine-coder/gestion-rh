@@ -1,30 +1,39 @@
 import axios from 'axios';
-
-// Use explicit baseURL to avoid relying solely on CRA proxy (helps diagnose proxy issues)
-const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
+import { getToken, clearToken } from '../utils/tokenManager';
 
 const api = axios.create({
-  baseURL,
+  baseURL: API_BASE,
 });
 
-// Simple request/response logging in dev
-if (process.env.NODE_ENV === 'development') {
-  api.interceptors.request.use(cfg => {
-    console.debug('[API] Request', cfg.method?.toUpperCase(), cfg.baseURL + cfg.url, cfg.params || '', cfg.data || '');
-    return cfg;
-  });
-  api.interceptors.response.use(res => {
-    console.debug('[API] Response', res.status, res.config.url, res.data && (res.data.message || ''));
-    return res;
-  }, err => {
-    if (err.response) {
-      console.error('[API] Error Response', err.response.status, err.config?.url, err.response.data);
-    } else {
-      console.error('[API] Network/Proxy Error', err.message);
+// Intercepteur: injecter le token valide (via tokenManager) dans chaque requête
+api.interceptors.request.use(cfg => {
+  const token = getToken(); // Vérifie l'expiration automatiquement
+  if (token) {
+    cfg.headers.Authorization = `Bearer ${token}`;
+  }
+  return cfg;
+});
+
+// Intercepteur réponse: auto-logout sur 401/403
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+      // Token invalide ou expiré côté serveur
+      const token = localStorage.getItem('token');
+      if (token) {
+        clearToken();
+        localStorage.removeItem('role');
+        // Rediriger vers login sauf si déjà sur /login
+        if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
+          window.location.href = '/login';
+        }
+      }
     }
     return Promise.reject(err);
-  });
-}
+  }
+);
 
 export default api;
-export { baseURL };
+export { API_BASE as baseURL };

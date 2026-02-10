@@ -1,5 +1,5 @@
 const prisma = require('../prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { validerMotDePasse } = require('../utils/passwordUtils');
 const { recordLoginAttempt } = require('../middlewares/rateLimitMiddleware');
@@ -20,29 +20,36 @@ const signup = async (req, res) => {
       return res.status(400).json({ error: 'Email déjà utilisé' });
     }
 
+    // 🔒 Validation du mot de passe
+    const erreurMdp = validerMotDePasse(password);
+    if (erreurMdp) {
+      return res.status(400).json({ error: erreurMdp });
+    }
+
     // Hash du mot de passe
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Création du nouvel utilisateur
+    // 🔒 SÉCURITÉ: Forcer le rôle à 'employee' — seul un admin peut promouvoir
+    // L'escalade de rôle via req.body est bloquée
     const newUser = await prisma.user.create({
       data: {
         email: normalizedEmail,
         password: hashedPassword,
-        role: role || 'employee',
+        role: 'employee',
         prenom,
         nom
       },
     });
 
-    // Génération du token avec `id` bien inclus
+    // Génération du token avec `userId` (cohérent avec login)
     const token = jwt.sign(
       {
-        id: newUser.id,
+        userId: newUser.id,
         email: newUser.email,
         role: newUser.role,
       },
-      process.env.JWT_SECRET || 'secretjwt',
-      { expiresIn: '7d' }
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
     );
 
     res.status(201).json({ token, role: newUser.role });
@@ -104,19 +111,14 @@ const login = async (req, res) => {
       data: { lastLoginAt: new Date() }
     });
 
-    console.log('🔍 LOGIN DEBUG:');
-    console.log('- user.email:', user.email);
-    console.log('- user.firstLoginDone:', user.firstLoginDone);
-    console.log('- firstLogin envoyé au client:', !user.firstLoginDone);
-
     const token = jwt.sign(
       {
         userId: user.id,
         email: user.email,
         role: user.role,
       },
-      process.env.JWT_SECRET || 'secretjwt',
-      { expiresIn: '7d' }
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
     );
 
     res.status(200).json({ 
@@ -137,11 +139,6 @@ const login = async (req, res) => {
 const completerOnboarding = async (req, res) => {
   const { nouveauMotDePasse } = req.body;
   const userId = req.userId; // Vient du middleware d'auth
-
-  console.log('🔄 ONBOARDING DEBUG:');
-  console.log('- userId:', userId);
-  console.log('- nouveauMotDePasse length:', nouveauMotDePasse?.length);
-  console.log('- req.body:', req.body);
 
   try {
     // Validation du mot de passe
@@ -177,8 +174,6 @@ const completerOnboarding = async (req, res) => {
       }
     });
 
-    console.log(`✅ Onboarding complété pour ${user.email}`);
-
     res.status(200).json({ 
       message: "Mot de passe mis à jour avec succès",
       onboardingComplete: true
@@ -194,9 +189,6 @@ const completerOnboarding = async (req, res) => {
 const demandeRecuperation = async (req, res) => {
   const { email } = req.body;
 
-  console.log('📧 DEMANDE RÉCUPÉRATION DEBUG:');
-  console.log('- email:', email);
-
   try {
     // Normaliser l'email en minuscules (standard de sécurité)
     const normalizedEmail = email.toLowerCase().trim();
@@ -210,7 +202,6 @@ const demandeRecuperation = async (req, res) => {
     // Même si l'utilisateur n'existe pas, on retourne toujours success
     // pour ne pas révéler quels emails sont dans la base
     if (!user) {
-      console.log('❌ Utilisateur non trouvé pour:', email);
       return res.json({ 
         success: true, 
         message: 'Si cet email existe, un lien de récupération a été envoyé.' 
@@ -224,7 +215,7 @@ const demandeRecuperation = async (req, res) => {
     // Sauvegarder en base
     await prisma.passwordReset.create({
       data: {
-        email,
+        email: normalizedEmail,
         token: resetToken,
         expiresAt,
         userId: user.id
@@ -247,7 +238,6 @@ const demandeRecuperation = async (req, res) => {
       return res.status(500).json({ error: 'Erreur lors de l\'envoi de l\'email' });
     }
 
-    console.log(`✅ Email de récupération envoyé à ${email}`);
     res.json({ 
       success: true, 
       message: 'Un lien de récupération a été envoyé à votre email.' 
@@ -262,10 +252,6 @@ const demandeRecuperation = async (req, res) => {
 // 🔑 RESET AVEC TOKEN : Valide le token et change le mot de passe
 const resetAvecToken = async (req, res) => {
   const { token, nouveauMotDePasse } = req.body;
-
-  console.log('🔑 RESET TOKEN DEBUG:');
-  console.log('- token:', token?.substring(0, 8) + '...');
-  console.log('- nouveauMotDePasse length:', nouveauMotDePasse?.length);
 
   try {
     // Validation du nouveau mot de passe
@@ -307,8 +293,6 @@ const resetAvecToken = async (req, res) => {
       })
     ]);
 
-    console.log(`✅ Mot de passe réinitialisé pour ${resetRequest.user.email}`);
-    console.log(`🔧 firstLoginDone mis à TRUE pour éviter l'onboarding`);
     res.json({ 
       success: true, 
       message: 'Mot de passe réinitialisé avec succès' 

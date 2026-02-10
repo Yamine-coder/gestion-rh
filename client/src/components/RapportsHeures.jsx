@@ -12,6 +12,7 @@ import {
   HiCalendar,
   HiChartBar
 } from "react-icons/hi";
+import { FileSpreadsheet } from 'lucide-react';
 import RapportHeuresEmploye from "./RapportHeuresEmploye";
 import { getCurrentDateString } from "../utils/parisTimeUtils";
 
@@ -131,10 +132,11 @@ const RapportsHeures = () => {
         exportButton.innerHTML = '<svg class="animate-spin h-5 w-5 mx-auto" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
       }
 
-      const response = await api.get('/api/stats/rapports/export-pdf', {
+      const response = await api.get('/api/stats/rapports/export-all', {
         params: { 
           periode, 
-          mois: periode === 'mois' ? moisSelectionne : undefined
+          mois: periode === 'mois' ? moisSelectionne : undefined,
+          format: 'excel' // Format Excel avec images Navigo intégrées
         },
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
@@ -147,7 +149,7 @@ const RapportsHeures = () => {
       
       // Nom du fichier basé sur la période
       const dateStr = getCurrentDateString();
-      const fileName = `rapport_heures_navigo_${periode}_${dateStr}.zip`;
+      const fileName = `rapport_heures_navigo_${periode}_${dateStr}.xlsx`;
       
       link.setAttribute('download', fileName);
       document.body.appendChild(link);
@@ -158,13 +160,13 @@ const RapportsHeures = () => {
       // Restaurer le bouton
       if (exportButton) {
         exportButton.disabled = false;
-        exportButton.innerHTML = '<svg class="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span class="hidden sm:inline ml-2">📦 ZIP (PDF + Justificatifs)</span><span class="sm:hidden ml-2">📦 ZIP</span>';
+        exportButton.innerHTML = '<svg class="lucide lucide-file-spreadsheet h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg><span class="hidden sm:inline ml-2">Excel + Navigo</span><span class="sm:hidden ml-2">Excel</span>';
       }
 
       // Notification de succès
       const notification = document.createElement('div');
       notification.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in';
-      notification.textContent = `✓ Export réussi ! ${employes.length} employés exportés`;
+      notification.textContent = `Export réussi ! ${employes.length} employés exportés`;
       document.body.appendChild(notification);
       setTimeout(() => {
         notification.classList.add('animate-fade-out');
@@ -178,7 +180,7 @@ const RapportsHeures = () => {
       const exportButton = document.querySelector('[data-export-all]');
       if (exportButton) {
         exportButton.disabled = false;
-        exportButton.innerHTML = '<svg class="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span class="hidden sm:inline ml-2">📦 ZIP (PDF + Justificatifs)</span><span class="sm:hidden ml-2">📦 ZIP</span>';
+        exportButton.innerHTML = '<svg class="lucide lucide-file-spreadsheet h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg><span class="hidden sm:inline ml-2">Excel + Navigo</span><span class="sm:hidden ml-2">Excel</span>';
       }
 
       alert(
@@ -248,16 +250,14 @@ const RapportsHeures = () => {
               className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all shadow-sm"
             />
           </div>
-<button
+          <button
             onClick={exporterTousRapports}
             data-export-all
             className="w-full lg:w-auto bg-[#cf292c] text-white px-4 py-2.5 rounded-lg hover:bg-[#b82528] transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            <span className="hidden sm:inline">Exporter (Excel + Navigo)</span>
-            <span className="sm:hidden">Export ZIP</span>
+            <FileSpreadsheet className="h-4 w-4" />
+            <span className="hidden sm:inline">Excel + Navigo</span>
+            <span className="sm:hidden">Excel</span>
           </button>
         </div>
       </div>

@@ -6,8 +6,8 @@ const fs = require('fs');
 const { authMiddleware: authenticateToken } = require('../middlewares/authMiddleware');
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const { demanderConge, getMesConges, mettreAJourStatutConge } = require('../controllers/congeController');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
+const { notifierManagers, NOTIFICATION_TYPES } = require('../services/notificationService');
 const { 
   uploadDocument, 
   deleteFile, 
@@ -135,11 +135,6 @@ router.put('/:id/update', authenticateToken, async (req, res) => {
         select: { nom: true, prenom: true, email: true }
       });
 
-      const managers = await prisma.user.findMany({
-        where: { role: { in: ['admin', 'manager'] } },
-        select: { id: true }
-      });
-
       const employeName = employe?.prenom && employe?.nom 
         ? `${employe.prenom} ${employe.nom}` 
         : employe?.email || 'Un employé';
@@ -147,22 +142,15 @@ router.put('/:id/update', authenticateToken, async (req, res) => {
       const dateDebutStr = new Date(debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
       const dateFinStr = new Date(fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
-      if (managers.length > 0) {
-        await prisma.notifications.createMany({
-          data: managers.map(manager => ({
-            employe_id: manager.id,
-            type: 'modification_demande_conge',
-            titre: 'Demande de conge modifiee',
-            message: JSON.stringify({
-              text: `${employeName} a modifie sa demande de ${type} : nouvelles dates du ${dateDebutStr} au ${dateFinStr}`,
-              congeId: updated.id,
-              employeNom: employeName
-            }),
-            lue: false
-          }))
-        });
-        console.log(`Notification envoyee aux ${managers.length} manager(s) pour modification de demande`);
-      }
+      await notifierManagers({
+        type: NOTIFICATION_TYPES.MODIFICATION_DEMANDE_CONGE,
+        titre: 'Demande de congé modifiée',
+        message: {
+          text: `${employeName} a modifié sa demande de ${type} : nouvelles dates du ${dateDebutStr} au ${dateFinStr}`,
+          congeId: updated.id,
+          employeNom: employeName
+        }
+      });
     } catch (notifError) {
       console.error('Erreur création notification modification:', notifError);
     }
@@ -287,7 +275,6 @@ router.post('/:id/justificatif', authenticateToken, upload.single('justificatif'
           resourceType
         );
         fileUrl = result.url;
-        console.log(`☁️  Justificatif uploadé sur Cloudinary: ${fileUrl}`);
       } catch (cloudinaryError) {
         console.error('❌ Erreur Cloudinary:', cloudinaryError.message);
         return res.status(500).json({ error: 'Erreur lors de l\'upload vers le cloud' });
@@ -302,7 +289,6 @@ router.post('/:id/justificatif', authenticateToken, upload.single('justificatif'
         }
       }
       fileUrl = `/uploads/justificatifs/${req.file.filename}`;
-      console.log(`📁 Justificatif stocké localement: ${fileUrl}`);
     }
 
     // Mettre à jour le congé avec le chemin du justificatif
@@ -313,31 +299,19 @@ router.post('/:id/justificatif', authenticateToken, upload.single('justificatif'
 
     // 🔔 Notifier les managers/admins qu'un justificatif a été ajouté
     try {
-      const managers = await prisma.user.findMany({
-        where: { role: { in: ['admin', 'manager'] } },
-        select: { id: true }
-      });
-
       const employeName = conge.user?.prenom && conge.user?.nom 
         ? `${conge.user.prenom} ${conge.user.nom}` 
         : conge.user?.email || 'Un employé';
 
-      // Créer une notification pour chaque manager
-      if (managers.length > 0) {
-        await prisma.notifications.createMany({
-          data: managers.map(manager => ({
-            employe_id: manager.id,
-            type: 'justificatif_ajoute',
-            titre: 'Justificatif ajoute',
-            message: JSON.stringify({
-              text: `${employeName} a ajoute un justificatif a sa demande de ${conge.type} (${new Date(conge.dateDebut).toLocaleDateString('fr-FR')} - ${new Date(conge.dateFin).toLocaleDateString('fr-FR')})`,
-              congeId: conge.id,
-              employeNom: employeName
-            }),
-            lue: false
-          }))
-        });
-      }
+      await notifierManagers({
+        type: NOTIFICATION_TYPES.JUSTIFICATIF_AJOUTE,
+        titre: 'Justificatif ajouté',
+        message: {
+          text: `${employeName} a ajouté un justificatif à sa demande de ${conge.type} (${new Date(conge.dateDebut).toLocaleDateString('fr-FR')} - ${new Date(conge.dateFin).toLocaleDateString('fr-FR')})`,
+          congeId: conge.id,
+          employeNom: employeName
+        }
+      });
     } catch (notifError) {
       console.error('Erreur création notification:', notifError);
       // Ne pas bloquer l'upload si la notification échoue
@@ -382,13 +356,11 @@ router.delete('/:id/justificatif', authenticateToken, async (req, res) => {
       if (publicId) {
         const resourceType = conge.justificatif.includes('/raw/') ? 'raw' : 'image';
         await deleteFile(publicId, resourceType);
-        console.log(`☁️  Justificatif Cloudinary supprimé: ${publicId}`);
       }
     } else {
       const filePath = path.join(__dirname, '..', conge.justificatif);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log(`🗑️  Justificatif local supprimé: ${conge.justificatif}`);
       }
     }
 
@@ -431,7 +403,6 @@ const congeReminderService = require('../services/congeReminderService');
 
 router.post('/admin/force-reminder', authenticateToken, isAdmin, async (req, res) => {
   try {
-    console.log('📧 [CONGES] Envoi forcé du rappel des congés en attente...');
     const result = await congeReminderService.forceReminder();
     res.json(result);
   } catch (error) {

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useContext, useRef } from 'r
 import { Link, useLocation } from 'react-router-dom';
 import { Clock, Calendar, FileText, User, ChevronRight, Timer, AlertCircle, Sun, Moon, Coffee, Users, ChevronLeft, Briefcase, Hand, Check, X, UserX, CalendarOff, PlayCircle, PauseCircle, TrendingUp, Zap, Award, Flame, Megaphone, CalendarDays, GraduationCap, Stethoscope, AlertTriangle, Target, Plane, Trophy, CheckCircle2, CalendarCheck, UserPlus, ChevronDown, ChevronUp, UserCheck, ThumbsUp, Star, Medal, Gem, BarChart3, Lock, MessageCircle, Search, CheckCircle, Handshake, Home, Sparkles } from 'lucide-react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import api from '../api/axiosInstance';
 import BottomNav from '../components/BottomNav';
 import ScoreWidget from '../components/ScoreWidget';
 import { BadgesPreview, BADGES, BadgesList } from '../components/BadgesSystem';
@@ -14,8 +14,6 @@ import { getCreneauFromSegments, getCreneauStyle, isWorkShift, isCongeShift } fr
 import MobileOnboarding, { useOnboarding } from '../components/onboarding/MobileOnboarding';
 import SplashScreen, { useSplashScreen } from '../components/onboarding/SplashScreen';
 import InstallPWABanner from '../components/InstallPWABanner';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // Couleur de marque centrale (utilisée aussi sur la page Pointage)
 const brand = '#cf292c';
@@ -288,18 +286,13 @@ function HomeEmploye() {
       const currentPoints = scoreData.score.total_points || scoreData.score.score_total || 0;
       const storedPoints = localStorage.getItem('lastScorePoints_home');
       
-      console.log('🎮 [LEVEL] currentPoints:', currentPoints, 'storedPoints:', storedPoints);
-      
       if (storedPoints !== null) {
         const lastPoints = parseInt(storedPoints, 10);
         const oldIdx = getNiveauIndex(lastPoints);
         const newIdx = getNiveauIndex(currentPoints);
         
-        console.log('🎮 [LEVEL] oldIdx:', oldIdx, 'newIdx:', newIdx, 'oldLevel:', NIVEAUX_CONFIG[oldIdx]?.label, 'newLevel:', NIVEAUX_CONFIG[newIdx]?.label);
-        
         // Si le niveau a changé (monté)
         if (newIdx > oldIdx && newIdx >= 0) {
-          console.log('🎮 [LEVEL] LEVEL UP DETECTED! Triggering animation...');
           triggerLevelUpAnimation(NIVEAUX_CONFIG[oldIdx], NIVEAUX_CONFIG[newIdx]);
         }
       }
@@ -343,7 +336,7 @@ function HomeEmploye() {
     if (prenom && prenom !== 'Employé' && nom) return; // déjà complet
     (async()=>{
       try {
-        const res = await axios.get(`${API_BASE}/user/profile`, { headers: { Authorization: `Bearer ${token}` }});
+        const res = await api.get('/user/profile');
         if (res.data) {
           if (res.data.prenom && (!prenom || prenom === 'Employé')) { setPrenom(res.data.prenom); try { localStorage.setItem('prenom', res.data.prenom); } catch {} }
           if (res.data.nom && !nom) { setNom(res.data.nom); try { localStorage.setItem('nom', res.data.nom); } catch {} }
@@ -365,8 +358,8 @@ function HomeEmploye() {
     setStatsError(null);
     try {
   const [totalRes, pointagesRes] = await Promise.all([
-        axios.get(`${API_BASE}/pointage/total-aujourdhui`, { headers: { Authorization: `Bearer ${token}` }}),
-        axios.get(`${API_BASE}/pointage/mes-pointages`, { headers: { Authorization: `Bearer ${token}` }})
+        api.get('/pointage/total-aujourdhui'),
+        api.get('/pointage/mes-pointages')
       ]);
       setJourneeHeures(formatHeures(totalRes.data.totalHeures || 0));
   const arr = Array.isArray(pointagesRes.data) ? pointagesRes.data : [];
@@ -404,12 +397,8 @@ function HomeEmploye() {
       
       // Charger mes shifts et les shifts équipe en parallèle
       const [myRes, teamRes] = await Promise.all([
-        axios.get(`${API_BASE}/shifts/mes-shifts?start=${startStr}&end=${endStr}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_BASE}/shifts/equipe?start=${startStr}&end=${endStr}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).catch(() => ({ data: { shifts: [] } })) // Fallback si pas accès équipe
+        api.get(`/shifts/mes-shifts?start=${startStr}&end=${endStr}`),
+        api.get(`/shifts/equipe?start=${startStr}&end=${endStr}`).catch(() => ({ data: { shifts: [] } })) // Fallback si pas accès équipe
       ]);
       
       setMyShifts(Array.isArray(myRes.data) ? myRes.data : []);
@@ -435,15 +424,9 @@ function HomeEmploye() {
     setLoadingRemplacements(true);
     try {
       const [disponiblesRes, demandesRes, candidaturesRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/remplacements/disponibles`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_BASE}/api/remplacements/mes-demandes`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_BASE}/api/remplacements/mes-candidatures`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        api.get('/api/remplacements/disponibles'),
+        api.get('/api/remplacements/mes-demandes'),
+        api.get('/api/remplacements/mes-candidatures')
       ]);
       
       setRemplacementsDisponibles(Array.isArray(disponiblesRes.data) ? disponiblesRes.data : []);
@@ -494,9 +477,7 @@ function HomeEmploye() {
     if (!token) return;
     setLoadingConsignes(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/consignes`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/api/consignes');
       setConsignes(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error('Erreur chargement consignes:', err);
@@ -510,9 +491,7 @@ function HomeEmploye() {
     if (!token) return;
     setLoadingPonctualite(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/consignes/stats/ponctualite`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/api/consignes/stats/ponctualite');
       setStatsPonctualite(res.data);
     } catch (err) {
       console.error('Erreur chargement ponctualité:', err);
@@ -526,9 +505,7 @@ function HomeEmploye() {
     if (!token) return;
     setLoadingScore(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/scoring/mon-score`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/api/scoring/mon-score');
       setScoreData(res.data?.data || null);
     } catch (err) {
       console.error('Erreur chargement score:', err);
@@ -543,12 +520,8 @@ function HomeEmploye() {
     setLoadingFeedbacks(true);
     try {
       const [recusRes, envoyesRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/scoring/peer-feedback/mes-recus`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        axios.get(`${API_BASE}/api/scoring/peer-feedback/mes-envois`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        api.get('/api/scoring/peer-feedback/mes-recus'),
+        api.get('/api/scoring/peer-feedback/mes-envois')
       ]);
       setFeedbacksRecus(recusRes.data?.data || []);
       setFeedbacksEnvoyes(envoyesRes.data?.data || []);
@@ -565,9 +538,7 @@ function HomeEmploye() {
     if (!token) return;
     setLoadingAnomalies(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/anomalies`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/api/anomalies');
       // Filtrer seulement les anomalies en attente
       const enAttente = (res.data?.anomalies || res.data || []).filter(a => a.statut === 'en_attente');
       setMesAnomalies(enAttente);
@@ -583,9 +554,7 @@ function HomeEmploye() {
     if (!token) return;
     setLoadingEvenements(true);
     try {
-      const res = await axios.get(`${API_BASE}/api/consignes/stats/evenements`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/api/consignes/stats/evenements');
       // L'API renvoie directement un tableau
       setEvenementsAVenir(Array.isArray(res.data) ? res.data : res.data?.evenements || []);
     } catch (err) {
@@ -654,9 +623,7 @@ function HomeEmploye() {
     setConfirmModal({ show: false, title: '', message: '', onConfirm: null, type: 'warning' });
     setCandidatingId(demandeId);
     try {
-      await axios.post(`${API_BASE}/api/remplacements/${demandeId}/candidater`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post(`/api/remplacements/${demandeId}/candidater`, {});
       // Rafraîchir les données
       fetchRemplacements();
       showToast('Candidature envoyée avec succès !', 'success');
@@ -673,9 +640,7 @@ function HomeEmploye() {
   const handleAnnulerCandidature = async (candidatureId) => {
     if (!token) return;
     try {
-      await axios.delete(`${API_BASE}/api/remplacements/candidature/${candidatureId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/api/remplacements/candidature/${candidatureId}`);
       fetchRemplacements();
       showToast('Candidature annulée', 'success');
     } catch (err) {
@@ -710,9 +675,7 @@ function HomeEmploye() {
     setConfirmModal({ show: false, title: '', message: '', onConfirm: null, type: 'warning' });
     setAnnulationDemandeId(demandeId);
     try {
-      await axios.delete(`${API_BASE}/api/remplacements/${demandeId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/api/remplacements/${demandeId}`);
       fetchRemplacements();
       showToast('Demande annulée avec succès', 'success');
     } catch (err) {
@@ -791,13 +754,11 @@ function HomeEmploye() {
     if (!token || !selectedShiftForDemande || !demandeMotif.trim()) return;
     setCreatingDemande(true);
     try {
-      await axios.post(`${API_BASE}/api/remplacements/demande`, {
+      await api.post('/api/remplacements/demande', {
         shiftId: selectedShiftForDemande.id,
         motif: demandeMotif.trim(),
         priorite: demandePriorite,
         commentaire: demandeCommentaire.trim() || null
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
       setShowDemandeModal(false);
       setSelectedShiftForDemande(null);

@@ -7,6 +7,10 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const { authMiddleware } = require('../middlewares/authMiddleware');
+
+// Protéger toutes les routes events
+router.use(authMiddleware);
 
 // ══════════════════════════════════════════════════════════════════
 // ⚽ MATCHS DE FOOT (PSG, équipe de France)
@@ -36,10 +40,10 @@ router.get('/matches', async (req, res) => {
     const [psgRes, franceRes] = await Promise.all([
       axios.get(`https://api.football-data.org/v4/teams/524/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
         headers: { 'X-Auth-Token': API_KEY }
-      }).catch(() => null),
+      }).catch(err => { console.warn('[EVENTS] Erreur API PSG:', err.message); return null; }),
       axios.get(`https://api.football-data.org/v4/teams/773/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`, {
         headers: { 'X-Auth-Token': API_KEY }
-      }).catch(() => null)
+      }).catch(err => { console.warn('[EVENTS] Erreur API France:', err.message); return null; })
     ]);
 
     const matches = [];

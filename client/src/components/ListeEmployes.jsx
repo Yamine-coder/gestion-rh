@@ -9,9 +9,7 @@ import ConfirmModal from "./ConfirmModal";
 import NavigoEmployeTab from "./NavigoEmployeTab";
 import { getCurrentDateString, toLocalDateString } from "../utils/parisTimeUtils";
 import "./animations.css"; // Import des animations partagées
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 // Fonction de formatage automatique du téléphone
 const formatTelephone = (value) => {
@@ -36,7 +34,6 @@ const formatTelephone = (value) => {
 };
 
 function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
-  console.log('🚀 ListeEmployes - VERSION AVEC LOGS DE DEBUG - 17:30');
   
   const location = useLocation();
   
@@ -192,6 +189,12 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
         'Date Création': new Date(e.createdAt).toLocaleDateString('fr-FR')
       }));
 
+      // Vérifier qu'il y a des données
+      if (dataToExport.length === 0) {
+        toast.info('Aucun employé à exporter');
+        return;
+      }
+
       // Créer le CSV
       const headers = Object.keys(dataToExport[0]);
       const csvContent = [
@@ -248,17 +251,14 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   };
 
   const handleSelectOne = (id, checked) => {
-    console.log('🔲 handleSelectOne:', { id, checked });
     if (checked) {
       setSelectedIds(prev => {
         const newIds = [...prev, id];
-        console.log('✅ Ajout - IDs sélectionnés:', newIds);
         return newIds;
       });
     } else {
       setSelectedIds(prev => {
         const newIds = prev.filter(selectedId => selectedId !== id);
-        console.log('❌ Retrait - IDs sélectionnés:', newIds);
         return newIds;
       });
     }
@@ -331,7 +331,6 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
       onConfirm: async () => {
         try {
           setIsSaving(true);
-          console.log('🔄 Modification en masse:', { selectedIds, newStatus });
           
           const results = await Promise.allSettled(
             selectedIds.map(id =>
@@ -345,8 +344,6 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
           
           const succeeded = results.filter(r => r.status === 'fulfilled').length;
           const failed = results.filter(r => r.status === 'rejected').length;
-          
-          console.log('✅ Résultats:', { succeeded, failed });
           
           if (succeeded > 0) {
             toast.success(`✓ ${succeeded} compte(s) modifié(s)${failed > 0 ? `, ${failed} échec(s)` : ''}`, { autoClose: 2500 });
@@ -664,7 +661,6 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
       confirmText: "Annuler le départ",
       onConfirm: async () => {
         try {
-          console.log('🔄 Annulation départ employé:', employe.id);
           setIsSaving(true);
           
           const token = localStorage.getItem("token");
@@ -673,8 +669,6 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
             {},
             { headers: { Authorization: `Bearer ${token}` } }
           );
-          
-          console.log('✅ Réponse annulation:', response.data);
           
           toast.success("✓ Départ annulé, compte réactivé", { autoClose: 2500 });
           
@@ -1867,7 +1861,6 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
-                      console.log('🖱️ CLICK sur badge statut détecté (mobile) !', e);
                       handleToggleStatut(e);
                     }}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${

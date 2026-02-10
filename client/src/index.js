@@ -43,10 +43,8 @@ reportWebVitals();
 if (process.env.NODE_ENV === 'production') {
   serviceWorkerRegistration.register({
     onSuccess: (registration) => {
-      console.log('✅ PWA: Application prête pour utilisation hors-ligne');
     },
     onUpdate: (registration) => {
-      console.log('📦 PWA: Nouvelle version disponible');
       // Stocker la registration pour mise à jour manuelle ultérieure
       window.__SW_REGISTRATION__ = registration;
     }
@@ -54,7 +52,6 @@ if (process.env.NODE_ENV === 'production') {
 } else {
   // En développement, désactiver le service worker
   serviceWorkerRegistration.unregister();
-  console.log('🔧 DEV: Service Worker désactivé');
 }
 
 // Initialiser la détection d'installation PWA

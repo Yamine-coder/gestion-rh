@@ -3,9 +3,7 @@ import { Calendar, Send, AlertTriangle, FileText, Info, X, Heart, GraduationCap,
 import DatePickerCustom from './DatePickerCustom';
 import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
 import { getImageUrl } from '../utils/imageUtils';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 // Types nécessitant un justificatif obligatoire
 const TYPES_JUSTIFICATIF_OBLIGATOIRE = ['maladie', 'maternite', 'paternite', 'deces'];

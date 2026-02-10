@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Mail, Lock } from "lucide-react"; // Icônes pour les champs
 import logo from "../assets/onboarding/logo.png";
 import { setToken } from "../utils/tokenManager";
+import { API_BASE } from '../config/api';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -40,19 +41,12 @@ function LoginPage() {
     setIsLoading(true);
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5000";
-      const res = await axios.post(`${apiUrl}/auth/login`, {
+      const res = await axios.post(`${API_BASE}/auth/login`, {
         email,
         password,
       });
 
       const { token, userId, role, prenom, nom, firstLogin } = res.data;
-
-      console.log('🔍 LOGIN DEBUG:');
-      console.log('- userId reçu:', userId);
-      console.log('- role reçu du serveur:', role);
-      console.log('- prenom:', prenom);
-      console.log('- firstLogin:', firstLogin);
 
       setToken(token); // Utiliser setToken avec timestamp au lieu de localStorage.setItem direct
       // Normaliser le rôle en minuscule pour cohérence
@@ -63,18 +57,14 @@ function LoginPage() {
       
       // Vérification immédiate après stockage
       const storedRole = localStorage.getItem("role");
-      console.log('- role stocké dans localStorage:', storedRole);
-      console.log('- token stocké avec expiration:', localStorage.getItem("token") ? 'OK' : 'ERREUR');
 
       // Si c'est la première connexion, rediriger vers la page d'onboarding
       if (firstLogin) {
-        console.log('- Redirection vers onboarding');
         navigate("/onboarding");
       } else {
         // Connexion normale - normaliser le rôle en minuscule pour la comparaison
         const normalizedRole = role?.toLowerCase();
         const destination = normalizedRole === "admin" ? "/admin" : "/home";
-        console.log('- Redirection vers:', destination);
         navigate(destination);
       }
     } catch (err) {
@@ -93,8 +83,7 @@ function LoginPage() {
     setIsLoadingRecuperation(true);
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:5000";
-      await axios.post(`${apiUrl}/auth/forgot-password`, {
+      await axios.post(`${API_BASE}/auth/forgot-password`, {
         email: emailRecuperation
       });
 

@@ -7,7 +7,12 @@ const {
   traiterAnomalie, 
   getStatsAnomalies, 
   marquerAnomaliesVues,
-  getBilanJournalier 
+  getBilanJournalier,
+  getAnalytics,
+  getEmployeScore,
+  getEmployePatterns,
+  invaliderAnomaliesPourShift,
+  getAlertesNonTraitees
 } = require('../controllers/anomaliesController');
 
 // Import du middleware d'authentification centralisé
@@ -19,8 +24,18 @@ router.get('/stats', authMiddleware, getStatsAnomalies);
 router.get('/bilan-journalier/:employeId/:date', authMiddleware, getBilanJournalier);
 router.put('/marquer-vues', authMiddleware, marquerAnomaliesVues);
 
+// Routes alertes (admin)
+router.get('/alertes-non-traitees', authMiddleware, adminMiddleware, getAlertesNonTraitees);
+
+// Routes analytics (manager+)
+router.get('/analytics', authMiddleware, getAnalytics);
+router.get('/score/:employeId', authMiddleware, getEmployeScore);
+router.get('/patterns/:employeId', authMiddleware, getEmployePatterns);
+
 // Routes admin
 router.post('/sync-from-comparison', authMiddleware, adminMiddleware, syncAnomaliesFromComparison);
 router.put('/:id/traiter', authMiddleware, adminMiddleware, traiterAnomalie);
+// Route invalidation anomalies (appelée après modif shift)
+router.post('/invalider-pour-shift', authMiddleware, adminMiddleware, invaliderAnomaliesPourShift);
 
 module.exports = router;

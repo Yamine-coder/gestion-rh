@@ -1,7 +1,7 @@
 // server/controllers/anomaliesController.js
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { getParisDateString } = require("../utils/parisTimeUtils");
+const { parseCategories } = require('../utils/categoriesHelper');
 
 /**
  * Types et gravités d'anomalies supportés
@@ -212,7 +212,6 @@ const isEcartSignificatif = (ecart) => {
   ];
   
   if (typesToujoursCritiques.includes(ecart.type)) {
-    console.log(`✅ [isEcartSignificatif] Type critique accepté: ${ecart.type}`);
     return true;
   }
   
@@ -222,7 +221,6 @@ const isEcartSignificatif = (ecart) => {
   ];
   
   if (typesValidation.includes(ecart.type)) {
-    console.log(`✅ [isEcartSignificatif] Type validation accepté: ${ecart.type}`);
     return true;
   }
   
@@ -233,40 +231,34 @@ const isEcartSignificatif = (ecart) => {
   ];
   
   if (typesIgnores.includes(ecart.type)) {
-    console.log(`⚠️ [isEcartSignificatif] Type ignoré (normal): ${ecart.type}`);
     return false;
   }
   
   // 4. Retards modérés : vérifier seuil
   if (ecart.type === 'retard_modere' || ecart.type === 'retard') {
     const estSignificatif = ecart.ecartMinutes && Math.abs(ecart.ecartMinutes) >= ANOMALIE_CRITERIA.RETARD_ATTENTION_MINUTES;
-    console.log(`${estSignificatif ? '✅' : '⚠️'} [isEcartSignificatif] Retard ${ecart.ecartMinutes}min: ${estSignificatif ? 'accepté' : 'ignoré'}`);
     return estSignificatif;
   }
   
   // 5. Départs anticipés : vérifier seuil
   if (ecart.type === 'depart_anticipe') {
     const estSignificatif = ecart.ecartMinutes && Math.abs(ecart.ecartMinutes) >= 15;
-    console.log(`${estSignificatif ? '✅' : '⚠️'} [isEcartSignificatif] Départ anticipé ${ecart.ecartMinutes}min: ${estSignificatif ? 'accepté' : 'ignoré'}`);
     return estSignificatif;
   }
   
   // 6. Heures sup auto-validées : toujours créer (traçabilité paiement)
   if (ecart.type === 'heures_sup_auto_validees') {
     const estSignificatif = ecart.ecartMinutes && Math.abs(ecart.ecartMinutes) >= 15;
-    console.log(`${estSignificatif ? '✅' : '⚠️'} [isEcartSignificatif] H.sup auto ${ecart.ecartMinutes}min: ${estSignificatif ? 'accepté' : 'ignoré'}`);
     return estSignificatif;
   }
   
   // 7. Autres heures sup
   if (ecart.type === 'heures_sup' || ecart.type?.includes('heures_sup')) {
     const estSignificatif = ecart.ecartMinutes && Math.abs(ecart.ecartMinutes) >= 15;
-    console.log(`${estSignificatif ? '✅' : '⚠️'} [isEcartSignificatif] Heures sup ${ecart.ecartMinutes}min: ${estSignificatif ? 'accepté' : 'ignoré'}`);
     return estSignificatif;
   }
   
   // 8. Type inconnu : accepter par défaut (principe de précaution)
-  console.log(`⚠️ [isEcartSignificatif] Type inconnu accepté par précaution: ${ecart.type}`);
   return true;
 };
 
@@ -284,10 +276,6 @@ const syncAnomaliesFromComparison = async (req, res) => {
     });
   }
 
-  console.log(`📊 [Sync] Traitement ${ecarts.length} écart(s) pour employé ${employeId} le ${date}`);
-  console.log(`📊 [Sync] Force create: ${forceCreate}`);
-  console.log(`📊 [Sync] Écarts reçus:`, ecarts);
-
   // Validation des écarts avec critères stricts (sauf si forceCreate)
   const ecartsSignificatifs = [];
   for (const ecart of ecarts) {
@@ -302,11 +290,8 @@ const syncAnomaliesFromComparison = async (req, res) => {
     const isSignificant = forceCreate || isEcartSignificatif(ecart);
     
     if (!isSignificant) {
-      console.log(`📊 [Sync] Écart non significatif ignoré:`, ecart);
       continue; // Ignorer cet écart
     }
-    
-    console.log(`✅ [Sync] Écart accepté:`, { type: ecart.type, ecartMinutes: ecart.ecartMinutes, forceCreate });
     
     // S'assurer que chaque écart a une description
     if (!ecart.description) {
@@ -324,9 +309,6 @@ const syncAnomaliesFromComparison = async (req, res) => {
     const message = forceCreate 
       ? "Aucun écart valide trouvé (même avec forceCreate)"
       : "Aucun écart significatif détecté selon les critères établis";
-    
-    console.log(`⚠️ [Sync] ${message}`);
-    console.log(`📊 [Sync] Écarts originaux:`, ecarts);
     
     return res.json({
       success: true,
@@ -418,18 +400,9 @@ const syncAnomaliesFromComparison = async (req, res) => {
 
   } catch (error) {
     console.error("Erreur synchronisation anomalies:", error);
-    console.error("Stack trace:", error.stack);
-    
-    // Erreur spécifique Prisma
-    if (error.code) {
-      console.error("Code erreur Prisma:", error.code);
-      console.error("Meta:", error.meta);
-    }
     
     res.status(500).json({ 
-      error: "Erreur lors de la synchronisation des anomalies",
-      details: error.message,
-      code: error.code || null
+      error: "Erreur lors de la synchronisation des anomalies"
     });
   }
 };
@@ -454,7 +427,6 @@ const getAnomalies = async (req, res) => {
     if (userRole === 'employee') {
       where.employeId = parseInt(userId);
       // Ignorer le paramètre employeId de la query pour les employés
-      console.log(`🔒 [getAnomalies] Employé ${userId} - Accès restreint à ses propres anomalies`);
     } else if (employeId) {
       where.employeId = parseInt(employeId);
     }
@@ -584,17 +556,12 @@ const traiterAnomalie = async (req, res) => {
   const userId = req.userId || req.user?.userId || req.user?.id;
   const userRole = req.user?.role || 'employee';
 
-  console.log('🔍 traiterAnomalie - Action:', action, 'User:', userId, 'Role:', userRole);
-  if (payerHeuresManquantes) {
-    console.log('💰 Payer heures manquantes:', heuresARecuperer, 'heures');
-  }
-
   if (!id) {
     return res.status(400).json({ error: "ID de l'anomalie requis" });
   }
 
-  if (!action || !['valider', 'refuser', 'corriger', 'payer_extra', 'reporter', 'convertir_extra', 'justifier', 'ignorer'].includes(action)) {
-    return res.status(400).json({ error: "Action invalide (valider, refuser, corriger, payer_extra, reporter, convertir_extra, justifier, ignorer)" });
+  if (!action || !['valider', 'refuser', 'corriger', 'payer_extra', 'convertir_extra', 'justifier', 'ignorer'].includes(action)) {
+    return res.status(400).json({ error: "Action invalide (valider, refuser, corriger, payer_extra, convertir_extra, justifier, ignorer)" });
   }
 
   try {
@@ -617,8 +584,7 @@ const traiterAnomalie = async (req, res) => {
       return res.status(404).json({ error: "Anomalie non trouvée" });
     }
 
-    // Permettre de traiter les anomalies "en_attente" ou "a_verifier"
-    const statutsModifiables = [STATUTS.EN_ATTENTE, 'a_verifier'];
+    const statutsModifiables = [STATUTS.EN_ATTENTE];
     if (!statutsModifiables.includes(anomalie.statut)) {
       return res.status(400).json({ 
         error: `Cette anomalie a déjà été traitée (statut: ${anomalie.statut})`,
@@ -638,17 +604,13 @@ const traiterAnomalie = async (req, res) => {
       traiteAt: new Date()
     };
 
-    console.log('🎯 TRAITEMENT ANOMALIE - action reçue:', action, '| type:', anomalie.type);
-
     switch (action) {
       case 'valider':
-        console.log('✅ ENTREE CASE VALIDER');
         // ✅ VALIDATION
         nouveauStatut = STATUTS.VALIDEE;
         
         // 🆕 RÉGULARISATION POINTAGE HORS PLANNING - Créer un shift normal
         if (anomalie.type === 'pointage_hors_planning') {
-          console.log('📌 ANOMALIE TYPE pointage_hors_planning DETECTEE');
           // Parser les details si c'est une chaîne JSON
           let details = {};
           try {
@@ -656,10 +618,7 @@ const traiterAnomalie = async (req, res) => {
               ? JSON.parse(anomalie.details) 
               : (anomalie.details || {});
           } catch (e) {
-            console.log('⚠️ Erreur parsing details:', e.message);
           }
-          
-          console.log(`🔍 RÉGULARISATION pointage_hors_planning pour employé ${anomalie.employeId}`);
           
           // 🔍 RÉCUPÉRER LES VRAIS POINTAGES de la journée (pas les heures de l'anomalie)
           const dateAnomalie = new Date(anomalie.date);
@@ -668,8 +627,6 @@ const traiterAnomalie = async (req, res) => {
           const finJour = new Date(dateAnomalie);
           finJour.setHours(23, 59, 59, 999);
           
-          console.log(`   Recherche pointages entre ${debutJour.toISOString()} et ${finJour.toISOString()}`);
-          
           const pointagesJour = await prisma.pointage.findMany({
             where: {
               userId: anomalie.employeId,
@@ -677,9 +634,6 @@ const traiterAnomalie = async (req, res) => {
             },
             orderBy: { horodatage: 'asc' }
           });
-          
-          console.log(`   Pointages trouvés: ${pointagesJour.length}`);
-          pointagesJour.forEach(p => console.log(`   - ${p.type}: ${p.horodatage}`));
           
           // Trouver arrivée et départ réels
           const arrivee = pointagesJour.find(p => 
@@ -698,8 +652,6 @@ const traiterAnomalie = async (req, res) => {
               hour: '2-digit', minute: '2-digit', hour12: false 
             });
             
-            console.log(`📍 Pointages réels trouvés: ${heureArriveeReelle} - ${heureDepartReelle}`);
-            
             // Créer le shift rétroactif avec les VRAIES heures pointées
             const nouveauShift = await prisma.shift.create({
               data: {
@@ -716,10 +668,6 @@ const traiterAnomalie = async (req, res) => {
                 version: 1
               }
             });
-            
-            console.log(`✅ RÉGULARISATION: Shift #${nouveauShift.id} créé pour employé ${anomalie.employeId}`);
-            console.log(`   📅 Date: ${anomalie.date.toISOString().split('T')[0]}`);
-            console.log(`   ⏰ Horaires réels: ${heureArriveeReelle} - ${heureDepartReelle}`);
             
             // Enrichir les détails avec l'info du shift créé
             updateData.details = {
@@ -751,7 +699,6 @@ const traiterAnomalie = async (req, res) => {
                 }
               });
               
-              console.log(`✅ RÉGULARISATION (fallback): Shift #${nouveauShift.id} créé`);
               updateData.details = {
                 ...details,
                 shiftCree: true,
@@ -759,7 +706,6 @@ const traiterAnomalie = async (req, res) => {
                 regularisationAt: new Date().toISOString()
               };
             } else {
-              console.log(`⚠️ Régularisation impossible: aucun pointage trouvé`);
             }
           }
         }
@@ -773,9 +719,7 @@ const traiterAnomalie = async (req, res) => {
         if (payerHeuresManquantes && heuresARecuperer > 0) {
           updateData.payerHeuresManquantes = true;
           updateData.heuresARecuperer = heuresARecuperer;
-          console.log(`💰 Validation avec paiement heures: ${heuresARecuperer}h à récupérer`);
         } else if (!anomalie.type.includes('pointage_hors_planning')) {
-          console.log(`✅ Validation simple: heures réelles payées`);
         }
         break;
 
@@ -784,7 +728,6 @@ const traiterAnomalie = async (req, res) => {
         nouveauStatut = STATUTS.REFUSEE;
         impactScore = calculerPenaliteRefus(anomalie);
         
-        console.log(`❌ Refus: Double pénalité ${impactScore} points`);
         break;
 
       case 'corriger':
@@ -806,8 +749,6 @@ const traiterAnomalie = async (req, res) => {
         nouveauStatut = STATUTS.CORRIGEE;
         shiftModifie = true;
 
-        console.log(`🔧 Correction shift: Type ${shiftCorrection.type}`);
-        
         // Note: La modification réelle du shift serait faite ici
         // Pour l'instant on marque juste l'anomalie comme corrigée
         updateData.details = {
@@ -972,13 +913,9 @@ const traiterAnomalie = async (req, res) => {
               where: { id: shiftDuJour.id },
               data: { segments: segments }
             });
-            console.log(`📅 Segment extra ${isArriveeAnticipee ? 'AVANT' : 'APRÈS'} ajouté au shift ${shiftDuJour.id} (index: ${segmentIndexExtra})`);
           }
         }
 
-        console.log(`📊 Paiement extra - Pointages trouvés: ${pointagesDuJour.length}, Arrivée: ${arriveePointage}, Départ: ${departPointage}`);
-        console.log(`📊 Créneau prévu: ${creneauPrevu}, Shift ID: ${shiftDuJour?.id || 'aucun'}`);
-        
         const paiementExtra = await prisma.paiementExtra.create({
           data: {
             employeId: anomalie.employeId,
@@ -1016,7 +953,6 @@ const traiterAnomalie = async (req, res) => {
                 where: { id: shiftIdFromDetails },
                 data: { segments: segmentsMaj }
               });
-              console.log(`💳 Segment extra #${segmentIndexExtra} lié au paiement #${paiementExtra.id}`);
             }
           }
         }
@@ -1034,50 +970,6 @@ const traiterAnomalie = async (req, res) => {
           tauxHoraire: tauxEffectif
         };
 
-        console.log(`💰 Paiement extra créé: ${heuresAPayer.toFixed(2)}h à ${tauxEffectif}€/h = ${montantCalcule.toFixed(2)}€ pour ${anomalie.employe.prenom} ${anomalie.employe.nom}`);
-        if (segmentIndexExtra !== null) {
-          console.log(`   ➕ Segment isExtra ajouté au shift ${shiftIdFromDetails}`);
-        }
-        
-        break;
-
-      case 'reporter':
-        // ⏳ REPORTER - Mettre en attente de vérification
-        nouveauStatut = 'a_verifier';
-        
-        // Stocker la question/note dans les détails
-        updateData.details = {
-          ...(typeof anomalie.details === 'object' ? anomalie.details : {}),
-          questionVerification: questionVerification || 'Vérification nécessaire',
-          reportePar: userId,
-          reporteAt: new Date().toISOString(),
-          notificationEnvoyee: notifierEmploye || false
-        };
-        
-        // TODO: Si notifierEmploye, créer une notification pour l'employé
-        if (notifierEmploye) {
-          try {
-            await prisma.notification.create({
-              data: {
-                userId: anomalie.employeId,
-                type: 'verification_demandee',
-                titre: 'Vérification demandée',
-                message: `Une vérification est demandée concernant l'anomalie du ${new Date(anomalie.date).toLocaleDateString('fr-FR')}. ${questionVerification || ''}`,
-                lien: `/anomalies/${anomalieId}`,
-                metadata: {
-                  anomalieId: anomalieId,
-                  questionVerification: questionVerification
-                }
-              }
-            });
-            console.log(`📧 Notification envoyée à l'employé ${anomalie.employe.prenom} ${anomalie.employe.nom}`);
-          } catch (notifError) {
-            console.warn('⚠️ Erreur création notification (non bloquant):', notifError.message);
-          }
-        }
-        
-        console.log(`⏳ Anomalie ${id} reportée - Question: "${questionVerification || 'Vérification nécessaire'}"`);
-        
         break;
 
       case 'convertir_extra':
@@ -1168,7 +1060,6 @@ const traiterAnomalie = async (req, res) => {
               }
             });
             
-            console.log(`📅 Shift extra créé: ID ${shiftExtraConverti.id}`);
           } else {
             // Ajouter le segment extra au shift existant
             const segmentsActuels = shiftExistant.segments || [];
@@ -1191,7 +1082,6 @@ const traiterAnomalie = async (req, res) => {
               }
             });
             
-            console.log(`📅 Segment extra ajouté au shift existant: ID ${shiftExistant.id}`);
           }
         } catch (shiftError) {
           console.warn('⚠️ Impossible de créer le shift extra (non bloquant):', shiftError.message);
@@ -1210,8 +1100,6 @@ const traiterAnomalie = async (req, res) => {
           shiftExtraId: shiftExtraConverti?.id || null
         };
 
-        console.log(`🔄 Anomalie ${id} convertie en extra: ${heuresExtraConversion.toFixed(2)}h à ${tauxConversion}€/h = ${montantConversion.toFixed(2)}€ pour ${anomalie.employe.prenom} ${anomalie.employe.nom}`);
-        
         break;
 
       case 'justifier':
@@ -1226,8 +1114,6 @@ const traiterAnomalie = async (req, res) => {
           justifieeAt: new Date().toISOString()
         };
         
-        console.log(`✅ Anomalie ${id} - Absence justifiée: "${commentaire || 'Absence justifiée'}"`);
-        
         break;
 
       case 'ignorer':
@@ -1241,8 +1127,6 @@ const traiterAnomalie = async (req, res) => {
           ignorePar: userId,
           ignoreAt: new Date().toISOString()
         };
-        
-        console.log(`⬜ Anomalie ${id} - Ignorée: "${commentaire || 'Ignoré par le manager'}"`);
         
         break;
     }
@@ -1264,8 +1148,6 @@ const traiterAnomalie = async (req, res) => {
     });
 
     // Log de l'action
-    console.log(`🔧 Anomalie ${id} ${action}ée par ${userRole} ${userId} pour employé ${anomalie.employe.nom} ${anomalie.employe.prenom}`);
-    console.log(`📊 Shift modifié: ${shiftModifie}`);
 
     // 🆕 CRÉER L'AUDIT TRAIL
     try {
@@ -1559,7 +1441,7 @@ const getAnalytics = async (req, res) => {
       validees,
       refusees
     ] = await Promise.all([
-      prisma.user.count({ where: { role: { in: ['employee', 'manager'] } } }),
+      prisma.user.count({ where: { role: { in: ['employee', 'manager'] }, statut: 'actif' } }),
       prisma.anomalie.count({ where }),
       prisma.anomalie.count({ where: wherePeriodePrecedente }),
       prisma.anomalie.count({ where: { ...where, statut: STATUTS.EN_ATTENTE } }),
@@ -1647,8 +1529,8 @@ const getAnalytics = async (req, res) => {
 
     const topEmployesIds = anomaliesParEmploye.slice(0, 10).map(a => a.employeId);
     const employesDetails = await prisma.user.findMany({
-      where: { id: { in: topEmployesIds } },
-      select: { id: true, nom: true, prenom: true, categorie: true }
+      where: { id: { in: topEmployesIds }, statut: 'actif' },
+      select: { id: true, nom: true, prenom: true, categorie: true, categories: true }
     });
 
     const topEmployes = await Promise.all(
@@ -1659,7 +1541,7 @@ const getAnalytics = async (req, res) => {
         
         return {
           nom: employe ? `${employe.prenom} ${employe.nom}` : 'Inconnu',
-          poste: employe?.categorie || 'N/A',
+          poste: employe ? parseCategories(employe.categories, employe.categorie).join(', ') || 'N/A' : 'N/A',
           nbAnomalies: a._count,
           score: score,
           tendance: tendance
@@ -1976,7 +1858,6 @@ const demanderJustification = async (req, res) => {
     });
 
     // TODO: Envoyer notification à l'employé (email/push)
-    console.log(`📧 Justification demandée pour anomalie ${id} - Employé: ${anomalie.employe.email}`);
 
     res.json({
       success: true,
@@ -2047,8 +1928,6 @@ const invaliderAnomaliesPourShift = async (req, res) => {
     );
 
     await Promise.all(updatePromises);
-
-    console.log(`🔄 ${anomaliesAInvalider.length} anomalie(s) invalidée(s) suite à modification shift pour employé ${employeId} le ${date}`);
 
     res.json({
       success: true,
@@ -2182,8 +2061,6 @@ const getBilanJournalier = async (req, res) => {
     const dateDebut = new Date(date + 'T00:00:00.000Z');
     const dateFin = new Date(date + 'T23:59:59.999Z');
     
-    console.log(`📊 Bilan journalier: employeId=${employeId}, date=${date}`);
-    
     // 1. Récupérer le shift prévu pour ce jour
     const shift = await prisma.shift.findFirst({
       where: {
@@ -2216,8 +2093,6 @@ const getBilanJournalier = async (req, res) => {
       orderBy: { createdAt: 'asc' }
     });
     
-    console.log(`   Shift trouvé: ${shift ? 'OUI' : 'NON'}, Pointages: ${pointages.length}, Anomalies: ${anomalies.length}`);
-    
     // Helper: convertir "HH:MM" en minutes depuis minuit
     const heureEnMinutes = (heure) => {
       if (!heure) return 0;
@@ -2247,8 +2122,6 @@ const getBilanJournalier = async (req, res) => {
         segments = [];
       }
     }
-    
-    console.log(`   Segments parsés: ${segments.length}`, segments);
     
     // Regrouper les pointages en paires arrivée/départ
     const pairesPointages = [];
@@ -2343,8 +2216,6 @@ const getBilanJournalier = async (req, res) => {
       return `${signe}${h}h${m.toString().padStart(2, '0')}`;
     };
     
-    console.log(`📊 Bilan: Prévu=${minutesPrevues}min, Travaillé=${minutesTravaillees}min, Solde=${soldeMinutes}min`);
-    
     res.json({
       success: true,
       employeId: parseInt(employeId),
@@ -2406,7 +2277,6 @@ module.exports = {
   getAnalytics,
   getEmployeScore,
   getEmployePatterns,
-  demanderJustification,
   invaliderAnomaliesPourShift,
   getAlertesNonTraitees,
   getBilanJournalier,

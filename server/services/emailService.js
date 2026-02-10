@@ -14,7 +14,11 @@ const createTransporter = () => {
 // Petite aide: délai asynchrone
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// Fonction d'envoi universelle via Gmail
+// Configuration retry
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 3000, 8000]; // Backoff exponentiel: 1s, 3s, 8s
+
+// Fonction d'envoi universelle via Gmail avec retry + alerting
 async function sendEmail({ to, subject, html, from }) {
   const restaurantName = 'Chez Antoine';
   const fromEmail = from || process.env.EMAIL_FROM || process.env.EMAIL_USER;
@@ -23,24 +27,71 @@ async function sendEmail({ to, subject, html, from }) {
     throw new Error('Configuration Gmail manquante (EMAIL_USER / EMAIL_PASSWORD)');
   }
   
-  console.log('📧 Envoi via Gmail...');
-  try {
-    const transporter = createTransporter();
-    
-    const mailOptions = {
-      from: `"${restaurantName}" <${fromEmail}>`,
-      to: to,
-      subject: subject,
-      html: html
-    };
-    
-    const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email envoyé via Gmail:', info.messageId);
-    return { success: true, provider: 'gmail', id: info.messageId };
-  } catch (err) {
-    console.error('❌ Erreur Gmail:', err.message || err);
-    throw err;
+  let lastError = null;
+  
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const transporter = createTransporter();
+      
+      const mailOptions = {
+        from: `"${restaurantName}" <${fromEmail}>`,
+        to: to,
+        subject: subject,
+        html: html
+      };
+      
+      const info = await transporter.sendMail(mailOptions);
+      
+      if (attempt > 1) {
+        console.log(`✅ Email envoyé à ${to} après ${attempt} tentative(s)`);
+      }
+      
+      return { success: true, provider: 'gmail', id: info.messageId, attempts: attempt };
+    } catch (err) {
+      lastError = err;
+      console.error(`⚠️ Tentative ${attempt}/${MAX_RETRIES} échouée pour ${to}: ${err.message}`);
+      
+      if (attempt < MAX_RETRIES) {
+        await delay(RETRY_DELAYS[attempt - 1]);
+      }
+    }
   }
+  
+  // Toutes les tentatives ont échoué — alerter
+  console.error(`❌ ALERTE: Email définitivement échoué vers ${to} après ${MAX_RETRIES} tentatives`);
+  console.error(`   Sujet: ${subject}`);
+  console.error(`   Erreur: ${lastError?.message}`);
+  
+  // Créer une notification admin pour l'échec d'email
+  try {
+    const prisma = require('../prisma/client');
+    const admins = await prisma.user.findMany({
+      where: { role: 'admin', statut: 'actif' },
+      select: { id: true }
+    });
+    
+    if (admins.length > 0) {
+      await prisma.notifications.createMany({
+        data: admins.map(admin => ({
+          employe_id: admin.id,
+          type: 'erreur_email',
+          titre: '⚠️ Échec envoi email',
+          message: JSON.stringify({
+            text: `L'envoi d'email à ${to} a échoué après ${MAX_RETRIES} tentatives. Sujet: "${subject}". Erreur: ${lastError?.message}`,
+            destinataire: to,
+            sujet: subject,
+            erreur: lastError?.message,
+            date: new Date().toISOString()
+          }),
+          lue: false
+        }))
+      });
+    }
+  } catch (notifErr) {
+    console.error('❌ Impossible de notifier les admins de l\'échec email:', notifErr.message);
+  }
+  
+  throw lastError;
 }
 
 // Template email professionnel pour nouvel employé
@@ -270,7 +321,6 @@ const envoyerEmailAccueil = async (employeData, motDePasseTemporaire) => {
 
   try {
     const result = await sendEmail(mailOptions);
-    console.log(`✅ Email de bienvenue envoyé avec succès à ${email}`);
     return { success: true, provider: result.provider };
   } catch (error) {
     console.error('❌ Erreur envoi email:', error);
@@ -284,21 +334,8 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
   const supportPhone = '07 58 87 54 64';
   const supportEmail = 'moussaouiyamine1@gmail.com';
   
-  console.log('📧 EMAIL RÉCUPÉRATION DEBUG:');
-  console.log('- destinataire:', email);
-  console.log('- nom:', nom, prenom);
-  console.log('- resetUrl:', resetUrl);
-  
   // 🧪 MODE TEST - Simuler l'envoi d'email
   if (process.env.EMAIL_PASSWORD === 'test-mode-disabled' || !process.env.EMAIL_PASSWORD || process.env.EMAIL_PASSWORD === 'votre-mot-de-passe-application') {
-    console.log('🧪 MODE TEST ACTIVÉ - Email de récupération simulé');
-    console.log('='.repeat(80));
-    console.log('📧 EMAIL DE RÉCUPÉRATION SIMULÉ');
-    console.log('👤 DESTINATAIRE:', `${prenom} ${nom} (${email})`);
-    console.log('🔗 LIEN DE RÉCUPÉRATION:', resetUrl);
-    console.log('⏰ VALIDITÉ: 24 heures');
-    console.log('📄 CONTENU HTML GÉNÉRÉ ✅');
-    console.log('='.repeat(80));
     
     // Simuler un délai d'envoi
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -407,7 +444,6 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
 
   try {
     const result = await sendEmail(mailOptions);
-    console.log(`✅ Email de récupération envoyé à ${email}`);
     return { success: true, provider: result.provider };
   } catch (error) {
     console.error('❌ Erreur envoi email récupération:', error);
@@ -547,7 +583,6 @@ const envoyerEmailNouvelleDemandeConge = async (adminEmail, demandeData) => {
 
   try {
     const result = await sendEmail(mailOptions);
-    console.log(`✅ Email nouvelle demande congé envoyé à ${adminEmail}`);
     return { success: true, provider: result.provider };
   } catch (error) {
     console.error('❌ Erreur envoi email nouvelle demande:', error);
@@ -675,7 +710,6 @@ const envoyerEmailRappelConges = async (adminEmail, congesEnAttente) => {
 
   try {
     const result = await sendEmail(mailOptions);
-    console.log(`✅ Email rappel congés envoyé à ${adminEmail}`);
     return { success: true, provider: result.provider };
   } catch (error) {
     console.error('❌ Erreur envoi email rappel congés:', error);

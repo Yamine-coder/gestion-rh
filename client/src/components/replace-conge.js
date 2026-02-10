@@ -90,13 +90,9 @@ const newCode = `  // Priorité : Congé validé
   }`;
 
 if (content.includes(oldCode)) {
-  console.log('Found exact match, replacing...');
   const newContent = content.replace(oldCode, newCode);
   fs.writeFileSync(file, newContent, 'utf8');
-  console.log('✅ Remplacement effectué avec succès!');
 } else {
-  console.log('❌ Code original non trouvé. Recherche de variantes...');
   // Essayer sans les caractères spéciaux
   const simplified = content.substring(content.indexOf('// Priorité'), content.indexOf('// Priorité') + 1000);
-  console.log('Extrait trouvé:', simplified.substring(0, 200));
 }

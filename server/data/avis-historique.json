@@ -34,6 +34,17 @@
       "month": "2026-01"
     },
     {
+      "author": "Missaw",
+      "rating": 4,
+      "text": "Niveau rapport qualité/prix c’est bien mais c’est pas le plat de l’année. J’avais déjà prix une pizza par le passé aussi c’était pas mal mais en tout cas ça fait le taff. Le serveur était cool ce jour là aussi ça j’ai vraiment apprécié. Très bien aussi concernant les plats sont adaptés pour tout type de clientèle.\nCependant, il faut savoir quand on commande c’est sur la borne et que si on veut manger sur place, c’est compliqué. Dans ce restaurant, il y a 3 salles : la cuisine où on fait les pizzas, une autre où il y a les pâtes et une dernière où on retrouve un bar. Dans les 3 salles, on a des places mais quand on commande sur la borne, on ne peut pas choisir de salle, on s’installe au hasard et pour les serveurs bon courage pour nous trouver (c’est long pour eux surtout). Je pense que le restaurant tournerait mieux si ce détail serait réglé.\nPar ailleurs, malgré ce petit souci je recommande cette adresse tout de même.",
+      "time": 1768859074000,
+      "relativeTime": "il y a 2 semaines",
+      "profilePhoto": "https://lh3.googleusercontent.com/a-/ALV-UjWMCHjLeczDIOubfN8uqYZT0A1_RXJTtllspR-xoaPFayfm2byF=s128-c0x00000000-cc-rp-mo-ba3",
+      "isNegative": false,
+      "addedAt": 1770653564235,
+      "month": "2026-01"
+    },
+    {
       "author": "Abdelrahman Khaled",
       "rating": 4,
       "text": "Très bon restaurant avec des bons plats, le prix est très raisonnable et intéressant. Parfois c’est un galère à trouver une table.\nJe vous conseille les pizzas",
@@ -145,5 +156,5 @@
     }
   ],
   "snapshots": [],
-  "lastUpdate": 1770293467485
+  "lastUpdate": 1770733509215
 }

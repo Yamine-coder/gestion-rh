@@ -3,8 +3,8 @@
  * Centralise la création de notifications pour garantir la cohérence
  */
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
+const { sendToEmployee, sendToEmployees } = require('./sseManager');
 
 // Types de notifications disponibles
 const NOTIFICATION_TYPES = {
@@ -69,7 +69,13 @@ async function creerNotification({ employeId, type, titre, message }) {
       }
     });
     
-    console.log(`🔔 Notification créée: [${type}] "${titre}" pour employé #${employeId}`);
+    // 🔔 Push SSE temps réel
+    try {
+      sendToEmployee(employeId, 'notification', notification);
+    } catch (sseErr) {
+      // SSE non bloquant
+    }
+    
     return notification;
   } catch (error) {
     console.error('❌ Erreur création notification:', error);
@@ -100,7 +106,13 @@ async function creerNotifications({ employeIds, type, titre, message }) {
       }))
     });
     
-    console.log(`🔔 ${result.count} notifications créées: [${type}] "${titre}"`);
+    // 🔔 Push SSE temps réel à tous les destinataires
+    try {
+      sendToEmployees(employeIds, 'notification', { type, titre, message: messageStr });
+    } catch (sseErr) {
+      // SSE non bloquant
+    }
+    
     return result;
   } catch (error) {
     console.error('❌ Erreur création notifications:', error);
@@ -125,7 +137,6 @@ async function notifierManagers({ type, titre, message }) {
     });
     
     if (managers.length === 0) {
-      console.log('⚠️ Aucun manager trouvé pour les notifications');
       return { count: 0 };
     }
     

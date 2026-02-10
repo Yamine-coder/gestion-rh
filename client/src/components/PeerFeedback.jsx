@@ -8,8 +8,8 @@ import {
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import BottomNav from './BottomNav';
+import { API_BASE } from '../config/api';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const API_URL = API_BASE.endsWith('/api') ? API_BASE : `${API_BASE}/api`;
 
 const CATEGORIES = [

@@ -7,6 +7,7 @@ const prisma = require('../prisma/client');
 const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
+const scoringService = require('../services/scoringService');
 const {
   getMesPointages,
   getMesPointagesAujourdhui,
@@ -107,7 +108,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     const conge = await prisma.conge.findFirst({
       where: {
         userId,
-        statut: 'approuve',
+        statut: 'approuvé',
         dateDebut: { lte: new Date(dateJour) },
         dateFin: { gte: new Date(dateJour) }
       }
@@ -169,7 +170,6 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     // � EXTRAIRE LES HEURES DU SHIFT (depuis segments ou champs directs)
     // ═══════════════════════════════════════════════════════════════════════════
     const shiftHours = getShiftHours(shift);
-    console.log(`📋 Shift ${shift.id} du ${dateJour} - Heures: ${shiftHours.heureDebut} - ${shiftHours.heureFin}`);
     
     if (!shiftHours.heureDebut || !shiftHours.heureFin) {
       console.warn(`⚠️ Shift ${shift.id} sans heures définies, skip détection`);
@@ -313,7 +313,6 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         
         // ⏰ Retard modéré (5-30 min) - Info seulement, pas d'anomalie
         else if (diffMinutes >= 5 && diffMinutes < 30) {
-          console.log(`⏰ RETARD MODÉRÉ (info): ${diffMinutes} min pour employé ${userId}`);
           anomaliesDetectees.push({
             type: 'retard_modere',
             message: `⏰ Retard de ${diffMinutes} minutes`,
@@ -325,7 +324,6 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       
         // 🔴 Retard critique (>30 min) - Info seulement, pas d'anomalie
         else if (diffMinutes >= 30) {
-          console.log(`🔴 RETARD CRITIQUE (info): ${diffMinutes} min pour employé ${userId}`);
           anomaliesDetectees.push({
             type: 'retard_critique',
             message: `🔴 Retard critique de ${diffMinutes} minutes`,
@@ -350,7 +348,6 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       // 🚪 Départ anticipé modéré (15-60 min avant) - Info seulement, pas d'anomalie
       // NOTE: Les départs anticipés ne créent plus d'anomalies - pratique standard SIRH
       if (diffMinutes >= 15 && diffMinutes < 60) {
-        console.log(`🚪 DÉPART ANTICIPÉ (info): ${diffMinutes} min pour employé ${userId}`);
         anomaliesDetectees.push({
           type: 'depart_anticipe',
           message: `🚪 Départ anticipé de ${diffMinutes} min`,
@@ -362,7 +359,6 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       
       // 🚨 Départ prématuré critique (>60 min avant) - Info seulement, pas d'anomalie
       else if (diffMinutes >= 60) {
-        console.log(`🚨 DÉPART CRITIQUE (info): ${diffMinutes} min pour employé ${userId}`);
         anomaliesDetectees.push({
           type: 'depart_premature_critique',
           message: `🚨 Départ critique ${diffMinutes} min avant la fin`,
@@ -381,8 +377,6 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         const tempsExtra = depassementHeures > 0 
           ? (depassementMin > 0 ? `${depassementHeures}h${depassementMin}min` : `${depassementHeures}h`)
           : `${depassementMinutes}min`;
-        
-        console.log(`⏱️ DÉPART TARDIF: ${tempsExtra} après la fin du shift - Extra potentiel`);
         
         // ✅ Créer anomalie extra_potentiel
         const anomalie = await creerAnomalieTempsReel({
@@ -512,7 +506,6 @@ async function creerAnomalieTempsReel({ userId, shiftId, type, gravite, descript
     });
     
     if (existante) {
-      console.log(`⚠️ [TEMPS RÉEL] Anomalie ${type} déjà existante pour ce jour`);
       return null;
     }
     
@@ -530,7 +523,6 @@ async function creerAnomalieTempsReel({ userId, shiftId, type, gravite, descript
       }
     });
     
-    console.log(`🔥 [TEMPS RÉEL] Anomalie créée: ${type} - ${description}`);
     return anomalie;
     
   } catch (error) {
@@ -569,25 +561,38 @@ router.post('/auto', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Employé non trouvé" });
     }
     
-    // 🧪 MODE TEST: Permet de simuler une heure pour les tests
-    // Utilisation: POST /pointage/auto { "testTime": "2025-12-06T12:45:00" }
-    // 📴 MODE HORS-LIGNE: Utilise l'heure du scan original (max 30 min de retard)
+    // 🧪 MODE TEST: Uniquement en développement et pour les admins
     const testTime = req.body?.testTime;
     const offlineTimestamp = req.body?.offlineTimestamp;
     
     let maintenant = new Date();
     
     if (testTime) {
-      maintenant = new Date(testTime);
-      console.log(`🧪 MODE TEST: Heure simulée = ${maintenant.toISOString()}`);
+      // 🔒 SÉCURITÉ: testTime autorisé UNIQUEMENT en dev + admin
+      const isDev = process.env.NODE_ENV !== 'production';
+      const isAdmin = req.user.role === 'admin';
+      if (isDev && isAdmin) {
+        maintenant = new Date(testTime);
+        console.warn(`[POINTAGE] ⚠️ testTime utilisé par admin ${userId}: ${testTime}`);
+      } else {
+        console.warn(`[POINTAGE] 🚫 testTime rejeté (env=${process.env.NODE_ENV}, role=${req.user.role})`);
+        // Ignoré silencieusement — on utilise l'heure réelle
+      }
     } else if (offlineTimestamp) {
-      // 📴 MODE HORS-LIGNE: Tablette fixe = pas de risque de fraude
-      // On accepte le pointage avec l'heure exacte du scan original
+      // 📴 MODE HORS-LIGNE: max 30 minutes de retard
       const offlineTime = new Date(offlineTimestamp);
       const ageMs = Date.now() - offlineTime.getTime();
+      const MAX_OFFLINE_MS = 30 * 60 * 1000; // 30 minutes
       
-      maintenant = offlineTime;
-      console.log(`📴 MODE HORS-LIGNE: Heure originale = ${maintenant.toISOString()} (synchro après ${Math.round(ageMs / 1000)}s)`);
+      if (ageMs < 0) {
+        // Timestamp dans le futur → rejeté
+        console.warn(`[POINTAGE] 🚫 offlineTimestamp dans le futur rejeté (user ${userId})`);
+      } else if (ageMs > MAX_OFFLINE_MS) {
+        // Trop ancien → rejeté, on utilise l'heure actuelle
+        console.warn(`[POINTAGE] 🚫 offlineTimestamp trop ancien (${Math.round(ageMs / 60000)} min, max 30 min) pour user ${userId}`);
+      } else {
+        maintenant = offlineTime;
+      }
     }
 
     // 🛡️ Validations de sécurité
@@ -597,8 +602,6 @@ router.post('/auto', authenticateToken, async (req, res) => {
 
     // Utiliser la configuration centralisée (basée sur l'heure simulée si mode test)
     const { debutJournee, finJournee } = getWorkDayBounds(maintenant);
-
-    console.log(`🔁 POINTAGE AUTO pour journée: ${debutJournee.toLocaleString()} → ${finJournee.toLocaleString()}`);
 
     const pointagesDuJour = await prisma.pointage.findMany({
       where: {
@@ -694,6 +697,24 @@ router.post('/auto', authenticateToken, async (req, res) => {
     // Analyse immédiate au moment du pointage (comme Factorial, PayFit, Lucca)
     const anomaliesDetectees = await detecterAnomaliesTempsReel(userId, type, maintenant);
 
+    // 🎯 SCORING - Attribuer/retirer des points selon ponctualité
+    if (isEntree(type)) {
+      try {
+        const shift = await prisma.shift.findFirst({
+          where: { employeId: userId, date: new Date(maintenant.toISOString().slice(0, 10) + 'T00:00:00.000Z') }
+        });
+        if (shift && shift.segments && shift.segments.length > 0) {
+          const heurePointage = maintenant.toTimeString().slice(0, 5);
+          await scoringService.onPointage(
+            { id: nouveau.id, employe_id: userId, type, heure: heurePointage, date: maintenant.toISOString().split('T')[0] },
+            { start: shift.segments[0].start, end: shift.segments[0].end }
+          );
+        }
+      } catch (scoringErr) {
+        // Non bloquant
+      }
+    }
+
     res.status(201).json({
       message: `✅ ${type === TYPE_CANONIQUE_ENTREE ? 'Arrivée' : 'Départ'} enregistré`,
       pointage: nouveau,
@@ -727,8 +748,6 @@ router.get('/total-aujourdhui', authenticateToken, async (req, res) => {
 
     // Utiliser la configuration centralisée
     const { debutJournee, finJournee } = getWorkDayBounds();
-
-    console.log(`🧮 CALCUL TEMPS pour journée: ${debutJournee.toLocaleString()} → ${finJournee.toLocaleString()}`);
 
     const pointages = await prisma.pointage.findMany({
       where: {
@@ -767,8 +786,6 @@ router.get('/total-aujourdhui', authenticateToken, async (req, res) => {
 
     const totalHeures = Math.round((totalMinutes / 60) * 100) / 100; // ex : 7.5
 
-    console.log(`✅ RÉSULTAT: ${totalHeures}h (${pairesValides} paires) sur ${pointages.length} pointages`);
-
     res.json({
       totalHeures,
       pairesValides,
@@ -788,8 +805,6 @@ router.get('/total-aujourdhui', authenticateToken, async (req, res) => {
 router.delete('/delete-error', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { employeId, date, reason } = req.body;
-
-    console.log(`🗑️ Suppression pointage erroné - Employé: ${employeId}, Date: ${date}, Raison: ${reason}`);
 
     // Valider les paramètres
     if (!employeId || !date || !reason) {
@@ -833,8 +848,6 @@ router.delete('/delete-error', authenticateToken, isAdmin, async (req, res) => {
       }
     });
 
-    console.log(`✅ ${deleteResult.count} pointage(s) supprimé(s) pour employé ${employeId} le ${date}`);
-
     // Optionnel: Logger l'action admin
     try {
       await prisma.logAdmin.create({
@@ -865,8 +878,7 @@ router.delete('/delete-error', authenticateToken, isAdmin, async (req, res) => {
   } catch (error) {
     console.error('❌ Erreur lors de la suppression du pointage:', error);
     res.status(500).json({ 
-      message: "Erreur serveur lors de la suppression du pointage",
-      error: error.message 
+      message: "Erreur serveur lors de la suppression du pointage"
     });
   }
 });

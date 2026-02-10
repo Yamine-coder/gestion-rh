@@ -28,12 +28,12 @@
 /**
  * Tous les types reconnus comme "entrée/arrivée"
  */
-const TYPES_ENTREE = ['arrivee', 'arrivée', 'ENTRÉE', 'entrée', 'ARRIVEE', 'ARRIVÉE'];
+const TYPES_ENTREE = ['arrivee', 'arrivée', 'entree', 'entrée', 'ENTRÉE', 'ENTREE', 'ARRIVEE', 'ARRIVÉE'];
 
 /**
  * Tous les types reconnus comme "sortie/départ"
  */
-const TYPES_SORTIE = ['depart', 'départ', 'SORTIE', 'sortie', 'DEPART', 'DÉPART'];
+const TYPES_SORTIE = ['depart', 'départ', 'sortie', 'SORTIE', 'DEPART', 'DÉPART'];
 
 /**
  * Type canonique à utiliser lors de la création de pointages

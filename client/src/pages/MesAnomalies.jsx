@@ -23,8 +23,7 @@ import { CheckCircleIcon as CheckCircleSolid } from '@heroicons/react/24/solid';
 import BottomNav from '../components/BottomNav';
 import { ThemeContext } from '../context/ThemeContext';
 import useNotificationHighlight from '../hooks/useNotificationHighlight';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 const brand = '#cf292c';
 
 // Icônes de gravité avec heroicons

@@ -5,19 +5,7 @@ const isAdmin = require('../middlewares/isAdminMiddleware');
 const prisma = require('../prisma/client');
 const { toLocalDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, trouverPremiereEntree, trouverDerniereSortie } = require('../utils/pointageTypeUtils');
-
-// Fonction helper pour parser les segments JSON
-function parseSegments(segments) {
-  if (!segments) return [];
-  if (Array.isArray(segments)) return segments;
-  if (typeof segments === 'string') {
-    try {
-      const parsed = JSON.parse(segments);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) { return []; }
-  }
-  return [];
-}
+const { parseSegments } = require('../utils/segmentUtils');
 
 // 📊 Génération du rapport de présence/absence pour une période donnée
 router.get('/presence/:startDate/:endDate', authenticateToken, isAdmin, async (req, res) => {

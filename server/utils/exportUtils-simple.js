@@ -24,7 +24,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   // Sous-titre période
   sheet.mergeCells('A2:O2');
   const subtitleCell = sheet.getCell('A2');
-  subtitleCell.value = `${dateDebut.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} - ${dateFin.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} • ${periode}`;
+  subtitleCell.value = `${dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' })} - ${dateFin.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' })} • ${periode}`;
   subtitleCell.font = { size: 10, color: { argb: 'FF6B7280' } };
   subtitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
   sheet.getRow(2).height = 20;

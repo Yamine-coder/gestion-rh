@@ -5,23 +5,25 @@ const { signup, login, completerOnboarding, demandeRecuperation, resetAvecToken 
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { rateLimitLogin, rateLimitRecovery } = require('../middlewares/rateLimitMiddleware');
 const prisma = require('../prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { validerMotDePasse } = require('../utils/passwordUtils');
+const { validateBody, schemas } = require('../middlewares/validation');
 
 // 🔐 Route pour inscription
-router.post('/signup', signup);
+router.post('/signup', validateBody(schemas.signup), signup);
 
 // 🔑 Route pour connexion (avec rate limiting)
-router.post('/login', rateLimitLogin, login);
+router.post('/login', rateLimitLogin, validateBody(schemas.login), login);
 
 // 🔄 Route pour compléter l'onboarding (première connexion)
-router.post('/complete-onboarding', authMiddleware, completerOnboarding);
+router.post('/complete-onboarding', authMiddleware, validateBody(schemas.onboarding), completerOnboarding);
 
 // 📧 Route pour demande de récupération (avec rate limiting)
-router.post('/forgot-password', rateLimitRecovery, demandeRecuperation);
+router.post('/forgot-password', rateLimitRecovery, validateBody(schemas.resetDemande), demandeRecuperation);
 
 // 🔑 Route pour reset avec token (sans auth)
-router.post('/reset-password', resetAvecToken);
+router.post('/reset-password', validateBody(schemas.resetToken), resetAvecToken);
 
 // 👤 Route pour récupérer le profil utilisateur connecté
 router.get('/profile', authMiddleware, async (req, res) => {
@@ -41,7 +43,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
         telephone: true, 
         adresse: true,
         iban: true,
-        categorie: true, 
+        categorie: true,
+        categories: true,
         dateEmbauche: true,
         createdAt: true,
         statut: true
@@ -52,10 +55,34 @@ router.get('/profile', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
-    console.log(`👤 Profil récupéré pour ${user.email} (${user.role})`);
     res.status(200).json(user);
   } catch (error) {
     console.error('Erreur récupération profil:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// 🔄 Route pour rafraîchir un token valide (avant expiration)
+router.post('/refresh-token', authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { id: true, email: true, role: true, statut: true }
+    });
+
+    if (!user || user.statut !== 'actif') {
+      return res.status(403).json({ error: 'Compte inactif' });
+    }
+
+    const newToken = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '8h' }
+    );
+
+    res.json({ token: newToken });
+  } catch (error) {
+    console.error('Erreur refresh token:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
@@ -69,16 +96,14 @@ router.put('/profile', authMiddleware, async (req, res) => {
 
     const { nom, prenom, email, currentPassword, newPassword } = req.body;
     
-    console.log('📝 Mise à jour profil - Données reçues:', { nom, prenom, email, userId: req.userId });
+    // 🔒 Sanitize: strip HTML tags to prevent stored XSS
+    const stripHtml = (str) => typeof str === 'string' ? str.replace(/<[^>]*>/g, '').trim() : '';
     
-    // Données à mettre à jour
     const updateData = {};
-    
-    if (nom) updateData.nom = nom.trim();
-    if (prenom) updateData.prenom = prenom.trim();
-    if (email) updateData.email = email.toLowerCase().trim(); // Normaliser l'email
 
-    console.log('📝 UpdateData à envoyer:', updateData);
+    if (nom) updateData.nom = stripHtml(nom);
+    if (prenom) updateData.prenom = stripHtml(prenom);
+    if (email) updateData.email = email.toLowerCase().trim();
 
     // Si l'utilisateur veut changer son mot de passe
     if (newPassword && currentPassword) {
@@ -105,7 +130,6 @@ router.put('/profile', authMiddleware, async (req, res) => {
 
       // Hasher le nouveau mot de passe
       updateData.password = await bcrypt.hash(newPassword, 10);
-      console.log(`🔑 Mot de passe mis à jour pour ${user.email}`);
     }
 
     // Mettre à jour en base
@@ -126,7 +150,6 @@ router.put('/profile', authMiddleware, async (req, res) => {
       }
     });
 
-    console.log(`✅ Profil mis à jour pour ${updatedUser.email}`);
     res.status(200).json({ 
       message: 'Profil mis à jour avec succès',
       user: updatedUser 

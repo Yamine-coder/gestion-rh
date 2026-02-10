@@ -15,19 +15,8 @@ const {
   ,createRecurringShifts
   ,deleteRangeShifts
 } = require('../controllers/shiftController');
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// UTILITAIRE: Conversion de date en format YYYY-MM-DD LOCAL (évite les bugs UTC)
-// ═══════════════════════════════════════════════════════════════════════════════
-function toLocalDateString(dateValue) {
-  if (!dateValue) return null;
-  const date = new Date(dateValue);
-  if (isNaN(date.getTime())) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+const { getParisRangeBoundsUTC } = require('../utils/parisTimeUtils');
+const { toLocalDateString } = require('../utils/dateUtils');
 
 // Route pour les employés - accès à leurs propres shifts uniquement
 router.get('/mes-shifts', authenticateToken, async (req, res) => {
@@ -35,14 +24,8 @@ router.get('/mes-shifts', authenticateToken, async (req, res) => {
     const { start, end } = req.query;
     const employeId = req.user.userId;
     
-    console.log('🔍 DEBUG: Employé', employeId, 'demande ses shifts du', start, 'au', end);
-    
-    // Gérer le timezone Paris (UTC+1)
-    const startDate = new Date(start + 'T00:00:00.000Z');
-    startDate.setHours(startDate.getHours() - 2);
-    
-    const endDate = new Date(end + 'T23:59:59.999Z');
-    endDate.setHours(endDate.getHours() + 2);
+    // Bornes UTC correctes pour la plage de dates Paris (gère CET/CEST)
+    const { start: startDate, end: endDate } = getParisRangeBoundsUTC(start, end);
     
     const where = {
       employeId: employeId,
@@ -60,19 +43,15 @@ router.get('/mes-shifts', authenticateToken, async (req, res) => {
       orderBy: [{ date: "asc" }],
     });
 
-    console.log('🔍 DEBUG: Shifts trouvés pour employé', employeId, ':', shifts.length);
-
     // Récupérer les congés approuvés de l'employé pour cette période
     const conges = await require('../prisma/client').conge.findMany({
       where: {
         userId: employeId,
-        statut: 'approuve',
+        statut: 'approuvé',
         dateDebut: { lte: endDate },
         dateFin: { gte: startDate }
       }
     });
-    
-    console.log('🔍 DEBUG: Congés trouvés:', conges.length);
     
     // Créer un map des congés par date (utilise LOCAL date string)
     const congesMap = {};
@@ -83,8 +62,6 @@ router.get('/mes-shifts', authenticateToken, async (req, res) => {
         congesMap[toLocalDateString(d)] = conge.type || 'congé';
       }
     });
-    
-    console.log('🔍 DEBUG: CongesMap keys:', Object.keys(congesMap));
     
     // Récupérer les demandes de remplacement pour ces shifts (avec info remplaçant)
     const remplacements = await require('../prisma/client').demandeRemplacement.findMany({
@@ -117,8 +94,6 @@ router.get('/mes-shifts', authenticateToken, async (req, res) => {
       
       // Détecter si c'est un shift de remplacement (ne peut pas être re-remplacé)
       const isRemplacement = shift.motif?.toLowerCase()?.includes('remplacement de');
-      
-      console.log('🔍 DEBUG shift:', shiftDateStr, '- estEnConge:', !!isEnConge, '- isRemplacement:', isRemplacement);
       
       return {
         ...shift,
@@ -173,12 +148,8 @@ router.get('/equipe', authenticateToken, async (req, res) => {
       orderBy: [{ prenom: 'asc' }, { nom: 'asc' }]
     });
     
-    // Gérer le timezone Paris
-    const startDate = new Date(start + 'T00:00:00.000Z');
-    startDate.setHours(startDate.getHours() - 2);
-    
-    const endDate = new Date(end + 'T23:59:59.999Z');
-    endDate.setHours(endDate.getHours() + 2);
+    // Bornes UTC correctes pour la plage de dates Paris (gère CET/CEST)
+    const { start: startDate, end: endDate } = getParisRangeBoundsUTC(start, end);
     
     // Récupérer les shifts de tous ces employés (collègues uniquement)
     const shifts = await require('../prisma/client').shift.findMany({
@@ -196,7 +167,7 @@ router.get('/equipe', authenticateToken, async (req, res) => {
     const conges = await require('../prisma/client').conge.findMany({
       where: {
         userId: { in: employes.map(e => e.id) },
-        statut: 'approuve',
+        statut: 'approuvé',
         dateDebut: { lte: endDate },
         dateFin: { gte: startDate }
       },
@@ -204,9 +175,6 @@ router.get('/equipe', authenticateToken, async (req, res) => {
         user: { select: { id: true, nom: true, prenom: true } }
       }
     });
-    
-    console.log('🔍 DEBUG équipe - Congés trouvés:', conges.length);
-    conges.forEach(c => console.log('  -', c.user?.prenom, c.type, c.dateDebut, 'à', c.dateFin));
     
     // Récupérer les demandes de remplacement en cours pour ces shifts
     const remplacements = await require('../prisma/client').demandeRemplacement.findMany({
@@ -236,8 +204,6 @@ router.get('/equipe', authenticateToken, async (req, res) => {
     
     // Formater les données avec statut absence
     // Filtrer les shifts de type "repos" (employés remplacés)
-    console.log('🔍 DEBUG équipe - Avant filtre:', shifts.length, 'shifts');
-    console.log('🔍 DEBUG équipe - Types:', shifts.map(s => `${s.employe?.prenom}: ${s.type}`).join(', '));
     
     const formattedShifts = shifts
       .filter(shift => shift.type !== 'repos') // Exclure les repos/remplacés

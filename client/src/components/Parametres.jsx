@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../api/axiosInstance';
 import { toast } from 'react-toastify';
 import { 
   User, 
@@ -33,9 +33,6 @@ import {
   ClipboardCheck
 } from 'lucide-react';
 import FichePosteEditor from './FichePosteEditor';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const Parametres = () => {
   const [activeTab, setActiveTab] = useState('profil');
@@ -90,11 +87,8 @@ const Parametres = () => {
     const loadSettings = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
         
-        const profileRes = await axios.get(`${API_BASE}/auth/profile`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const profileRes = await api.get(`/auth/profile`);
         
         setProfileData(prev => ({
           ...prev,
@@ -114,7 +108,7 @@ const Parametres = () => {
         // Charger la config centralisée des notifications (admin seulement)
         if (profileRes.data.role === 'admin') {
           try {
-            const notifRes = await axios.get(`${API_BASE}/api/notifications-config/config`);
+            const notifRes = await api.get(`/api/notifications-config/config`);
             setNotifConfig(notifRes.data);
             // Mettre aussi à jour alertConfig pour compatibilité
             if (notifRes.data.avisGoogle) {
@@ -141,7 +135,7 @@ const Parametres = () => {
   // Fonctions de gestion des notifications (système centralisé)
   const handleToggleNotifType = async (type, enabled) => {
     try {
-      const res = await axios.patch(`${API_BASE}/api/notifications-config/config/${type}/toggle`, { enabled });
+      const res = await api.patch(`/api/notifications-config/config/${type}/toggle`, { enabled });
       if (res.data.config) {
         setNotifConfig(res.data.config);
       }
@@ -157,7 +151,7 @@ const Parametres = () => {
     }
     try {
       setAlertsLoading(true);
-      const res = await axios.post(`${API_BASE}/api/notifications-config/recipients/${type}`, {
+      const res = await api.post(`/api/notifications-config/recipients/${type}`, {
         email: newRecipientEmail,
         name: newRecipientName
       });
@@ -177,7 +171,7 @@ const Parametres = () => {
   const handleRemoveRecipient = async (type, email) => {
     try {
       setAlertsLoading(true);
-      const res = await axios.delete(`${API_BASE}/api/notifications-config/recipients/${type}/${encodeURIComponent(email)}`);
+      const res = await api.delete(`/api/notifications-config/recipients/${type}/${encodeURIComponent(email)}`);
       if (res.data.config) {
         setNotifConfig(res.data.config);
         toast.success('Destinataire supprimé');
@@ -191,7 +185,7 @@ const Parametres = () => {
 
   const handleToggleRecipient = async (type, email, active) => {
     try {
-      const res = await axios.patch(`${API_BASE}/api/notifications-config/recipients/${type}/${encodeURIComponent(email)}`, { active });
+      const res = await api.patch(`/api/notifications-config/recipients/${type}/${encodeURIComponent(email)}`, { active });
       if (res.data.config) {
         setNotifConfig(res.data.config);
       }
@@ -203,7 +197,7 @@ const Parametres = () => {
   const handleTestAlert = async () => {
     try {
       setAlertsLoading(true);
-      await axios.post(`${API_BASE}/api/avis/test-alert`);
+      await api.post(`/api/avis/test-alert`);
       toast.success('Email de test envoyé !');
     } catch (err) {
       toast.error('Erreur lors de l\'envoi');
@@ -253,7 +247,6 @@ const Parametres = () => {
 
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
 
       const updateData = {
         nom: profileData.nom.trim(),
@@ -266,13 +259,7 @@ const Parametres = () => {
         updateData.newPassword = profileData.newPassword;
       }
 
-      console.log('📤 Envoi mise à jour profil:', updateData);
-
-      const response = await axios.put(`${API_BASE}/auth/profile`, updateData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      console.log('📥 Réponse serveur:', response.data);
+      const response = await api.put(`/auth/profile`, updateData);
 
       // Mettre à jour les données avec la réponse du serveur
       if (response.data.user) {
@@ -326,7 +313,7 @@ const Parametres = () => {
     try {
       setSecurityData(prev => ({ ...prev, isRequestingRecovery: true }));
 
-      const response = await axios.post(`${API_BASE}/auth/forgot-password`, { email });
+      const response = await api.post(`/auth/forgot-password`, { email });
       
       if (response.data.success) {
         toast.success(`Lien de récupération envoyé à ${email}`);
@@ -757,11 +744,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.notifyOnNew !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnNew: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { notifyOnNew: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Nouvelle demande de congé</span>
                     </label>
@@ -771,11 +758,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.notifyOnStatus !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnStatus: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { notifyOnStatus: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Changement de statut (validé/refusé)</span>
                     </label>
@@ -793,7 +780,7 @@ const Parametres = () => {
                             key={n}
                             onClick={async () => {
                               try {
-                                const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { alertThreshold: n });
+                                const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { alertThreshold: n });
                                 if (res.data.config) setNotifConfig(res.data.config);
                               } catch (err) { toast.error('Erreur'); }
                             }}
@@ -814,11 +801,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.sendDailyReport !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { sendDailyReport: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { sendDailyReport: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Rapport quotidien (9h)</span>
                     </label>
@@ -836,7 +823,7 @@ const Parametres = () => {
                             key={g}
                             onClick={async () => {
                               try {
-                                const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { graviteMin: g });
+                                const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { graviteMin: g });
                                 if (res.data.config) setNotifConfig(res.data.config);
                               } catch (err) { toast.error('Erreur'); }
                             }}
@@ -857,11 +844,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.alertUrgent !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { alertUrgent: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { alertUrgent: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Alerte immédiate (gravité haute)</span>
                     </label>
@@ -871,11 +858,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.sendDailyRecap !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { sendDailyRecap: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { sendDailyRecap: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Récapitulatif quotidien (8h)</span>
                     </label>
@@ -892,11 +879,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.notifyOnDemande !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnDemande: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { notifyOnDemande: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Nouvelle demande de remplacement</span>
                     </label>
@@ -906,11 +893,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.notifyOnCandidature !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnCandidature: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { notifyOnCandidature: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Nouvelle candidature reçue</span>
                     </label>
@@ -920,11 +907,11 @@ const Parametres = () => {
                         checked={currentTypeConfig.notifyOnValidation !== false}
                         onChange={async (e) => {
                           try {
-                            const res = await axios.put(`${API_BASE}/api/notifications-config/config/${selectedNotifType}`, { notifyOnValidation: e.target.checked });
+                            const res = await api.put(`/api/notifications-config/config/${selectedNotifType}`, { notifyOnValidation: e.target.checked });
                             if (res.data.config) setNotifConfig(res.data.config);
                           } catch (err) { toast.error('Erreur'); }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c]"
+                        className="w-4 h-4 rounded border-gray-300 accent-[#cf292c] focus:ring-[#cf292c]"
                       />
                       <span className="text-sm text-gray-700">Validation d'un remplacement</span>
                     </label>

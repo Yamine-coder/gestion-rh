@@ -76,10 +76,5 @@ export const clearPlanningNavigation = () => {
 // Fonction pour débugger - affiche l'état de navigation actuel
 export const debugNavigationState = () => {
   const state = restorePlanningNavigation();
-  console.log('État de navigation Planning RH:', {
-    ...state,
-    sessionFresh: isNavigationSessionFresh(state.lastVisit),
-    timeSinceLastVisit: state.lastVisit ? `${Math.round((new Date() - state.lastVisit) / (1000 * 60))} minutes` : 'N/A'
-  });
   return state;
 };

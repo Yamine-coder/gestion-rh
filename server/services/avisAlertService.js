@@ -128,7 +128,6 @@ async function checkAndAlertNegativeReviews(reviews, restaurant) {
     try {
       await sendNegativeReviewAlert(review, restaurant);
       alertedReviews.add(review.time);
-      console.log(`📧 Alerte envoyée pour avis de ${review.author}`);
     } catch (error) {
       console.error('Erreur envoi alerte:', error.message);
     }
@@ -147,7 +146,6 @@ async function checkAndAlertNegativeReviews(reviews, restaurant) {
 async function sendNegativeReviewAlert(review, restaurant) {
   const recipients = getAlertRecipients();
   if (!recipients.length) {
-    console.log('⚠️ Aucun destinataire configuré pour les alertes avis');
     return;
   }
 
@@ -158,7 +156,6 @@ async function sendNegativeReviewAlert(review, restaurant) {
       suggestedResponse = await generateAIResponse(review);
       suggestedResponse = suggestedResponse?.replace(/^"|"$/g, '') || '';
     } catch (e) {
-      console.log('IA non disponible pour la suggestion');
     }
   }
 
@@ -370,7 +367,6 @@ async function sendDailyReport(reviews, restaurant, analysis) {
     : '-';
 
   if (last24h.length === 0) {
-    console.log('Pas de nouveaux avis dans les dernières 24h, pas de rapport envoyé');
     return;
   }
 
@@ -444,7 +440,6 @@ async function sendDailyReport(reviews, restaurant, analysis) {
     html
   });
 
-  console.log('📧 Rapport quotidien envoyé');
 }
 
 /**

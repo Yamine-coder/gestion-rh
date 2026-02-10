@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 
 // ========================================
@@ -127,7 +126,6 @@ router.put('/modification-directe', authMiddleware, async (req, res) => {
       data: updateData
     });
 
-    console.log(`✅ Modification directe: ${champ} mis à jour pour employé ${employeId}`);
     res.json({ 
       message: 'Modification enregistrée avec succès',
       champ,
@@ -217,8 +215,6 @@ router.post('/demande-modification', authMiddleware, async (req, res) => {
         statut: 'en_attente'
       }
     });
-
-    console.log(`📝 Nouvelle demande de modification: ${champ} pour employé ${employeId}`);
 
     // Notifier les admins de la nouvelle demande
     try {
@@ -414,7 +410,6 @@ router.put('/traiter-demande/:id', authMiddleware, async (req, res) => {
         }
       });
 
-      console.log(`✅ Demande approuvée: ${demande.champ_modifie} mis à jour pour employé ${demande.employe_id}`);
     } else {
       // Créer une notification de rejet pour l'employé
       await prisma.notifications.create({
@@ -426,7 +421,6 @@ router.put('/traiter-demande/:id', authMiddleware, async (req, res) => {
         }
       });
 
-      console.log(`❌ Demande rejetée: ${demande.champ_modifie} pour employé ${demande.employe_id}`);
     }
 
     res.json({ 
@@ -454,8 +448,6 @@ router.put('/batch-update', authMiddleware, async (req, res) => {
     const { modifications } = req.body;
     const employeId = req.userId;
 
-    console.log('🔵 Batch update reçu:', { employeId, modifications });
-
     if (!modifications || typeof modifications !== 'object') {
       return res.status(400).json({ error: 'Format invalide: modifications attendu' });
     }
@@ -469,7 +461,6 @@ router.put('/batch-update', authMiddleware, async (req, res) => {
     });
 
     const champsDirectsAutorises = champsConfig.map(c => c.nom_champ);
-    console.log('📋 Champs directs autorisés:', champsDirectsAutorises);
 
     // Valider que tous les champs demandés sont modifiables directement
     const champsAModifier = Object.keys(modifications);
@@ -543,8 +534,6 @@ router.put('/batch-update', authMiddleware, async (req, res) => {
       where: { id: employeId },
       data: updateData
     });
-
-    console.log('✅ Utilisateur mis à jour:', updatedUser.id, 'Champs:', Object.keys(updateData));
 
     res.json({ 
       message: 'Modifications enregistrées avec succès',

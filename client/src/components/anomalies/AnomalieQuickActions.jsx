@@ -2,9 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { Check, X } from 'lucide-react';
 import { useToast } from '../ui/Toast';
-
-// Configuration API centralisée
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../../config/api';
 
 /**
  * SYSTÈME D'ANOMALIES SIMPLIFIÉ - VALIDATION RAPIDE UNIQUEMENT
@@ -25,15 +23,8 @@ export function useQuickAnomalieProcessor() {
     setProcessing(prev => new Set(prev).add(tempId));
 
     try {
-      console.log(`🔄 Action rapide pour écart ${ecartInfo.ecart.type}: ${action}`);
 
       // ÉTAPE 1: D'abord synchroniser/créer l'anomalie depuis l'écart
-      console.log(`🔄 Synchronisation automatique de l'écart en anomalie`);
-      console.log(`📊 Données envoyées:`, {
-        employeId: parseInt(ecartInfo.employeId),
-        date: ecartInfo.date,
-        ecarts: [ecartInfo.ecart]
-      });
       
       const syncResponse = await fetch(`${API_URL}/api/anomalies/sync-from-comparison`, {
         method: 'POST',
@@ -49,8 +40,6 @@ export function useQuickAnomalieProcessor() {
         })
       });
 
-      console.log(`📡 Réponse sync:`, syncResponse.status, syncResponse.statusText);
-
       if (!syncResponse.ok) {
         const syncError = await syncResponse.json();
         console.error('❌ Erreur synchronisation:', syncError);
@@ -58,7 +47,6 @@ export function useQuickAnomalieProcessor() {
       }
 
       const syncResult = await syncResponse.json();
-      console.log(`✅ Résultat synchronisation:`, syncResult);
       
       if (!syncResult.success) {
         throw new Error(syncResult.message || 'Échec de synchronisation');
@@ -69,7 +57,6 @@ export function useQuickAnomalieProcessor() {
       }
 
       const anomalieId = syncResult.anomalies[0].id;
-      console.log(`✅ Anomalie synchronisée avec ID: ${anomalieId}`);
 
       // ÉTAPE 2: Maintenant traiter l'anomalie réelle
       const response = await fetch(`${API_URL}/api/anomalies/${anomalieId}/traiter`, {
@@ -87,7 +74,6 @@ export function useQuickAnomalieProcessor() {
       }
 
       const result = await response.json();
-      console.log(`✅ Anomalie ${anomalieId} ${action}ée avec succès`);
       return result;
 
     } catch (error) {
@@ -146,7 +132,6 @@ export function QuickAnomalieActions({
         id: result?.anomalie?.id || tempId
       });
 
-      console.log('✅ Anomalie validée:', result);
     } catch (error) {
       console.error('❌ Erreur validation:', error);
       toast.error('Erreur', 'Erreur lors de la validation');
@@ -186,7 +171,6 @@ export function QuickAnomalieActions({
 
       setShowRefuseInput(false);
       setRefuseMotif('');
-      console.log('✅ Anomalie refusée:', result);
     } catch (error) {
       console.error('❌ Erreur refus:', error);
       toast.error('Erreur', 'Erreur lors du refus');

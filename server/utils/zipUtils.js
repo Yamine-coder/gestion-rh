@@ -76,7 +76,7 @@ async function generateRapportZIP(rapportsEmployes, periode, dateDebut, dateFin)
       indexContent += '1. Ouvrez le PDF pour consulter le rapport complet\n';
       indexContent += '2. Consultez les justificatifs dans le dossier "Justificatifs_Navigo"\n';
       indexContent += '3. Utilisez ce fichier INDEX pour trouver rapidement les documents\n\n';
-      indexContent += 'Généré le : ' + new Date().toLocaleString('fr-FR') + '\n';
+      indexContent += 'Généré le : ' + new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }) + '\n';
 
       archive.append(indexContent, { name: 'LIRE_MOI.txt' });
 
@@ -92,7 +92,7 @@ async function generateRapportZIP(rapportsEmployes, periode, dateDebut, dateFin)
 }
 
 function formatPeriod(debut, fin) {
-  const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  const options = { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' };
   return `${new Date(debut).toLocaleDateString('fr-FR', options)} au ${new Date(fin).toLocaleDateString('fr-FR', options)}`;
 }
 

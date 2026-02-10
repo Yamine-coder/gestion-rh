@@ -2,6 +2,7 @@ const prisma = require("../prisma/client");
 const { notifierNouveauShift, notifierPlanningModifie } = require('../services/notificationService');
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
 const { creerPaiementDepuisShiftExtra, TAUX_HORAIRE_DEFAUT } = require('../services/paiementExtrasService');
+const { auditShift, logAudit, getUserId, getIp } = require('../services/auditService');
 
 // Sanitisation basique pour éviter injection HTML (notes/commentaires)
 function sanitize(str) {
@@ -55,10 +56,8 @@ async function syncShiftExtrasWithPaiements(shift, segments, adminId, options = 
               commentaire: `${paiement.commentaire || ''} [Shift supprimé le ${new Date().toLocaleDateString('fr-FR')}]`.trim()
             }
           });
-          console.log(`⚠️ PaiementExtra ${paiement.id} marqué annulé (shift supprimé, déjà payé)`);
         } else {
           await prisma.paiementExtra.delete({ where: { id: paiement.id } });
-          console.log(`🗑️ PaiementExtra ${paiement.id} supprimé (shift supprimé)`);
         }
       }
       return { success: true };
@@ -129,7 +128,6 @@ async function syncShiftExtrasWithPaiements(shift, segments, adminId, options = 
                   commentaire
                 }
               });
-              console.log(`💰 PaiementExtra ${existingPaiement.id} mis à jour: ${anciennesHeures}h → ${heures}h`);
             }
           } else if (existingPaiement.statut === 'paye' && aEteModifie) {
             // ⚠️ Paiement déjà effectué + horaires changés → créer ajustement
@@ -153,15 +151,11 @@ async function syncShiftExtrasWithPaiements(shift, segments, adminId, options = 
                 commentaire: `Ajustement suite modification horaires (${anciennesHeures}h → ${heures}h)`
               }
             });
-            console.log(`📝 Ajustement créé: ${diffHeures > 0 ? '+' : ''}${diffHeures}h = ${montantAjustement}€`);
           }
           delete existingBySegment[i];
         } else {
           // Créer un nouveau PaiementExtra
           const paiement = await creerPaiementDepuisShiftExtra(shift, i, adminId);
-          if (paiement) {
-            console.log(`💰 Nouveau PaiementExtra créé pour shift ${shift.id} segment ${i}`);
-          }
         }
       } else {
         // Segment n'est plus extra
@@ -175,7 +169,6 @@ async function syncShiftExtrasWithPaiements(shift, segments, adminId, options = 
             });
           } else {
             await prisma.paiementExtra.delete({ where: { id: existingPaiement.id } });
-            console.log(`🗑️ PaiementExtra ${existingPaiement.id} supprimé (segment plus extra)`);
           }
           delete existingBySegment[i];
         }
@@ -194,10 +187,8 @@ async function syncShiftExtrasWithPaiements(shift, segments, adminId, options = 
             commentaire: `${orphanPaiement.commentaire || ''} [Segment supprimé le ${new Date().toLocaleDateString('fr-FR')}]`.trim()
           }
         });
-        console.log(`⚠️ PaiementExtra ${orphanPaiement.id} marqué annulé (segment supprimé, déjà payé)`);
       } else {
         await prisma.paiementExtra.delete({ where: { id: orphanPaiement.id } });
-        console.log(`🗑️ PaiementExtra ${orphanPaiement.id} supprimé (segment supprimé)`);
       }
     }
     
@@ -231,7 +222,7 @@ const getShifts = async (req, res) => {
 
     const shifts = await prisma.shift.findMany({
       where,
-      include: { employe: { select: { id: true, email: true, prenom: true, nom: true, categorie: true } } },
+      include: { employe: { select: { id: true, email: true, prenom: true, nom: true, categorie: true, categories: true, statut: true } } },
       orderBy: [{ date: "asc" }],
     });
 
@@ -270,8 +261,6 @@ const getShifts = async (req, res) => {
         segments: parsedSegments
       };
     });
-
-    console.log("Shifts envoyés au client:", formattedShifts.length);
 
     res.json(formattedShifts);
   } catch (error) {
@@ -313,7 +302,6 @@ const createOrUpdateShift = async (req, res) => {
         const typeConge = congeApprouve.type || 'congé';
         const dateDebutStr = new Date(congeApprouve.dateDebut).toLocaleDateString('fr-FR');
         const dateFinStr = new Date(congeApprouve.dateFin).toLocaleDateString('fr-FR');
-        console.log(`🚫 Blocage création shift: Congé approuvé existe (${typeConge}) du ${dateDebutStr} au ${dateFinStr}`);
         return res.status(409).json({ 
           error: `Impossible de planifier un shift : l'employé a un congé approuvé (${typeConge}) du ${dateDebutStr} au ${dateFinStr}`,
           congeId: congeApprouve.id,
@@ -345,7 +333,6 @@ const createOrUpdateShift = async (req, res) => {
         
         if (spansMultipleDays) {
           const duration = ((24 * 60) - startMinutes + endMinutes) / 60;
-          console.log(`🌙 Segment ${idx+1} franchit minuit: ${start} → ${end} (${duration.toFixed(1)}h) - OK pour restaurant`);
         }
         
         // Interdire seulement les durées impossibles
@@ -415,7 +402,15 @@ const createOrUpdateShift = async (req, res) => {
       const existingForUpdate = await prisma.shift.findUnique({ where: { id } });
       if (!existingForUpdate) return res.status(404).json({ error: 'Shift introuvable' });
       
-      // Mise à jour directe sans vérification de version
+      // 🔒 OPTIMISTIC LOCKING — vérifier que la version n'a pas changé
+      if (typeof version === 'number' && existingForUpdate.version !== version) {
+        return res.status(409).json({ 
+          error: 'Ce shift a été modifié par un autre utilisateur. Rechargez la page et réessayez.',
+          code: 'VERSION_CONFLICT',
+          serverVersion: existingForUpdate.version
+        });
+      }
+      
       shift = await prisma.shift.update({
         where: { id },
         data: {
@@ -423,9 +418,17 @@ const createOrUpdateShift = async (req, res) => {
           date: dateObj,
           type,
           motif: type === "absence" ? motif : null,
-          segments: type === "travail" ? safeSegments : []
-          // Suppression de l'incrémentation de version
+          segments: type === "travail" ? safeSegments : [],
+          version: { increment: 1 }
         },
+      });
+      
+      // 📋 AUDIT: modification shift
+      await auditShift(req, {
+        shiftId: id,
+        action: 'modification',
+        before: { employeId: existingForUpdate.employeId, date: existingForUpdate.date, type: existingForUpdate.type, motif: existingForUpdate.motif, segments: existingForUpdate.segments },
+        after: { employeId, date: dateObj, type, motif: type === "absence" ? motif : null, segments: type === "travail" ? safeSegments : [] }
       });
       
       // 🔄 INVALIDATION AUTOMATIQUE DES ANOMALIES
@@ -451,9 +454,6 @@ const createOrUpdateShift = async (req, res) => {
           }
         });
         
-        if (anomaliesInvalidees.count > 0) {
-          console.log(`🔄 ${anomaliesInvalidees.count} anomalie(s) invalidée(s) suite à modification shift ${id} pour employé ${employeId} le ${dateStr}`);
-        }
       } catch (invalidationError) {
         console.error('⚠️ Erreur invalidation anomalies (non bloquant):', invalidationError.message);
         // On continue même si l'invalidation échoue
@@ -463,14 +463,33 @@ const createOrUpdateShift = async (req, res) => {
       if (type === 'travail') {
         const existing = await prisma.shift.findFirst({ where: { employeId: Number(employeId), date: dateObj, type: 'travail' } });
         if (existing) {
-          // Fusion segments (concat + tri + revalidation overlap)
+          // 🚨 Un shift existe déjà — demander confirmation au client (pas de fusion silencieuse)
+          const forceMerge = req.body.forceMerge === true;
+          if (!forceMerge) {
+            return res.status(409).json({
+              error: 'Un shift existe déjà pour cet employé à cette date',
+              code: 'SHIFT_EXISTS',
+              existingShiftId: existing.id,
+              existingSegments: existing.segments,
+              message: 'Renvoyez avec forceMerge: true pour fusionner les segments'
+            });
+          }
+          // Fusion confirmée — concat + tri + validation overlaps (night-shift aware)
           const merged = [...existing.segments, ...safeSegments].sort((a,b)=> a.start.localeCompare(b.start));
           for (let i=1;i<merged.length;i++) {
-            if (merged[i-1].end > merged[i].start) {
-              return res.status(400).json({ error: 'Chevauchement après fusion segments' });
+            const prevEndMin = parseInt(merged[i-1].end.split(':')[0])*60 + parseInt(merged[i-1].end.split(':')[1]);
+            const currStartMin = parseInt(merged[i].start.split(':')[0])*60 + parseInt(merged[i].start.split(':')[1]);
+            const prevStartMin = parseInt(merged[i-1].start.split(':')[0])*60 + parseInt(merged[i-1].start.split(':')[1]);
+            const prevIsNight = prevEndMin < prevStartMin;
+            // Si le segment précédent ne franchit PAS minuit, overlap = prevEnd > currStart
+            // Si le segment précédent franchit minuit, overlap avec tout segment après minuit
+            if (!prevIsNight && prevEndMin > currStartMin) {
+              return res.status(400).json({ error: `Chevauchement après fusion segments ${i} et ${i+1}` });
             }
           }
-          shift = await prisma.shift.update({ where:{ id: existing.id }, data:{ segments: merged }});
+          shift = await prisma.shift.update({ where:{ id: existing.id }, data:{ segments: merged, version: { increment: 1 } }});
+          // 📋 AUDIT: fusion segments
+          await auditShift(req, { shiftId: existing.id, action: 'modification', before: { segments: existing.segments }, after: { segments: merged }, metadata: { type: 'fusion' } });
         } else {
           shift = await prisma.shift.create({
             data: {
@@ -479,9 +498,11 @@ const createOrUpdateShift = async (req, res) => {
               type,
               motif: type === 'absence' ? motif : null,
               segments: safeSegments,
-              // version supprimée
+              version: 0
             },
           });
+          // 📋 AUDIT: création shift travail
+          await auditShift(req, { shiftId: shift.id, action: 'creation', after: { employeId, date: dateObj, type, segments: safeSegments } });
         }
       } else {
         shift = await prisma.shift.create({
@@ -494,6 +515,8 @@ const createOrUpdateShift = async (req, res) => {
             version: 0
           },
         });
+        // 📋 AUDIT: création shift absence
+        await auditShift(req, { shiftId: shift.id, action: 'creation', after: { employeId, date: dateObj, type: 'absence', motif } });
         
         // 🎯 CRÉATION ABSENCE PAR ADMIN = Congé auto-validé
         // Quand un admin crée un shift "absence", on crée aussi un Conge validé
@@ -524,7 +547,6 @@ const createOrUpdateShift = async (req, res) => {
                   motifEmploye: `Absence posée par l'administration`,
                 }
               });
-              console.log(`✅ Congé auto-validé créé (ID: ${congeAutoValide.id}) pour shift absence ID: ${shift.id}, date: ${dateObj.toISOString()}`);
               
               // 🔔 Notifier l'employé de son absence
               const dateStr = dateObj.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -538,12 +560,10 @@ const createOrUpdateShift = async (req, res) => {
                     motif: motif,
                     date: dateObj.toISOString()
                   }),
-                  lu: false
+                  lue: false
                 }
               });
-              console.log(`🔔 Notification absence envoyée à l'employé ${employeId}`);
             } else {
-              console.log(`ℹ️ Congé existant trouvé (ID: ${congeExistant.id}), pas de création supplémentaire`);
             }
           } catch (congeError) {
             console.error('⚠️ Erreur création congé auto-validé (non bloquant):', congeError.message);
@@ -633,9 +653,6 @@ const deleteShift = async (req, res) => {
           }
         });
         
-        if (deletedConge.count > 0) {
-          console.log(`🗑️ Congé auto-validé supprimé (${deletedConge.count}) pour shift absence ID: ${id}`);
-        }
       } catch (congeError) {
         console.error('⚠️ Erreur suppression congé associé (non bloquant):', congeError.message);
       }
@@ -646,6 +663,8 @@ const deleteShift = async (req, res) => {
       // Supprimer les demandes de remplacement liées
       await tx.demandeRemplacement.deleteMany({ where: { shiftId: id } });
       await tx.extraPaymentLog.deleteMany({ where: { shiftId: id } });
+      // Supprimer les corrections de shift (FK vers Shift)
+      await tx.shiftCorrection.deleteMany({ where: { shiftId: id } });
       // Supprimer les PaiementExtra restants (ceux à payer, les payés sont déjà marqués annulés)
       await tx.paiementExtra.deleteMany({ 
         where: { 
@@ -654,6 +673,13 @@ const deleteShift = async (req, res) => {
         } 
       });
       await tx.shift.delete({ where: { id } });
+      // 📋 AUDIT: suppression shift (dans la transaction)
+      await logAudit({
+        entite: 'shift', entiteId: id, action: 'suppression',
+        userId: Number(adminId),
+        details: { before: { employeId: existing.employeId, date: existing.date, type: existing.type, motif: existing.motif, segments: existing.segments } },
+        ipAddress: getIp(req), tx
+      });
     });
 
     res.json({ message: 'Shift supprimé', id });
@@ -716,11 +742,9 @@ const getShiftExtraLogs = async (req, res) => {
   const { segmentIndex } = req.query;
   try {
     // Ajouter des logs de debug
-    console.log("📝 Recherche logs pour shiftId:", shiftId);
     
     // Vérifier si des logs existent dans la table
     const count = await prisma.extraPaymentLog.count();
-    console.log("📊 Nombre total de logs dans la table:", count);
     
     // Vérifier si des logs existent pour ce shift spécifique
     const where = {
@@ -736,14 +760,12 @@ const getShiftExtraLogs = async (req, res) => {
       include: { changedBy: { select: { id: true, email: true } } },
     });
     
-    console.log("🔍 Logs trouvés:", logs.length);
     if (logs.length === 0) {
       // Si aucun log, vérifier si le shift existe
       const shift = await prisma.shift.findUnique({ 
         where: { id: shiftId },
         select: { id: true, employeId: true }  
       });
-      console.log("🔍 Shift existe:", !!shift);
     }
     
     // Format compatible avec l'endpoint updateExtraPayment pour faciliter l'intégration côté client
@@ -832,7 +854,7 @@ const updateExtraPayment = async (req, res) => {
   }
 };
 
-// POST : création en batch de plusieurs shifts
+// POST : création en batch de plusieurs shifts (TRANSACTIONNEL)
 const createBatchShifts = async (req, res) => {
   const { shifts } = req.body;
   
@@ -841,14 +863,20 @@ const createBatchShifts = async (req, res) => {
   }
 
   try {
-    const result = [];
     const errors = [];
+    const validatedShifts = [];
     
+    // Pré-charger les employés actifs pour validation
+    const employeIds = [...new Set(shifts.map(s => Number(s.employeeId)).filter(Boolean))];
+    const activeEmployees = await prisma.user.findMany({
+      where: { id: { in: employeIds }, statut: 'actif' },
+      select: { id: true }
+    });
+    const activeIds = new Set(activeEmployees.map(e => e.id));
+    
+    // ── Phase 1: Validation de TOUS les shifts AVANT insertion ──
     for (const shiftData of shifts) {
-      // Support du nouveau format avec segments multiples ET de l'ancien format
       let { employeeId, date, segments, type = 'travail', startTime, endTime } = shiftData;
-      
-      // Conversion employeeId vers employeId pour compatibilité
       const employeId = Number(employeeId);
       
       if (!employeId || !date) {
@@ -856,19 +884,18 @@ const createBatchShifts = async (req, res) => {
         continue;
       }
       
-      // Si pas de segments mais startTime/endTime (ancien format), créer un segment
+      // Vérifier que l'employé est actif
+      if (!activeIds.has(employeId)) {
+        errors.push(`Employé #${employeId} inactif ou inexistant — shift ignoré`);
+        continue;
+      }
+      
+      // Ancien format startTime/endTime → segments
       if (!segments && startTime && endTime) {
         segments = [{
-          start: startTime,
-          end: endTime,
-          commentaire: "",
-          aValider: false,
-          isExtra: false,
-          extraMontant: '',
-          paymentStatus: 'à_payer',
-          paymentMethod: '',
-          paymentDate: '',
-          paymentNote: ''
+          start: startTime, end: endTime, commentaire: "", aValider: false,
+          isExtra: false, extraMontant: '', paymentStatus: 'à_payer',
+          paymentMethod: '', paymentDate: '', paymentNote: ''
         }];
       }
       
@@ -877,99 +904,84 @@ const createBatchShifts = async (req, res) => {
         continue;
       }
       
-      try {
-        // Normalisation date (YYYY-MM-DD) -> objet Date UTC minuit
-        let dateObj;
-        if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-          const [year, month, day] = date.split('-').map(Number);
-          dateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-        } else {
-          dateObj = new Date(date);
-        }
-        
-        if (isNaN(dateObj.getTime())) {
-          errors.push(`Date invalide: ${date}`);
-          continue;
-        }
-        
-        // Validation de tous les segments
-        const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
-        let segmentsValides = true;
-        
-        for (const segment of segments) {
-          if (!segment.start || !segment.end) {
-            errors.push(`Segment sans horaires: ${JSON.stringify(segment)}`);
-            segmentsValides = false;
-            break;
-          }
-          
-          if (!timeRegex.test(segment.start) || !timeRegex.test(segment.end)) {
-            errors.push(`Format heure invalide dans segment: ${segment.start} - ${segment.end}`);
-            segmentsValides = false;
-            break;
-          }
-          
-          if (segment.start >= segment.end) {
-            errors.push(`L'heure de début doit être antérieure à l'heure de fin dans segment: ${segment.start} - ${segment.end}`);
-            segmentsValides = false;
-            break;
-          }
-        }
-        
-        if (!segmentsValides) {
-          continue;
-        }
-        
-        // 🛡️ VÉRIFICATION CONGÉ APPROUVÉ - Empêcher création de travail sur jour de congé
-        if (type === 'travail') {
-          const congeApprouve = await prisma.conge.findFirst({
-            where: {
-              userId: employeId,
-              statut: 'approuvé',
-              dateDebut: { lte: dateObj },
-              dateFin: { gte: dateObj }
-            }
-          });
-          if (congeApprouve) {
-            errors.push(`Employé ${employeId} - Date ${date}: Congé approuvé (${congeApprouve.type}) du ${new Date(congeApprouve.dateDebut).toLocaleDateString('fr-FR')} au ${new Date(congeApprouve.dateFin).toLocaleDateString('fr-FR')}`);
-            continue;
-          }
-        }
-        
-        // Ajouter des IDs aux segments s'ils n'en ont pas
-        const segmentsAvecIds = segments.map(segment => ({
-          id: segment.id || require('crypto').randomUUID(),
-          start: segment.start,
-          end: segment.end,
-          commentaire: segment.commentaire || "",
-          aValider: segment.aValider || false,
-          isExtra: segment.isExtra || false,
-          extraMontant: segment.extraMontant || '',
-          paymentStatus: segment.paymentStatus || 'à_payer',
-          paymentMethod: segment.paymentMethod || '',
-          paymentDate: segment.paymentDate || '',
-          paymentNote: segment.paymentNote || ''
-        }));
-        
-        console.log(`[BATCH] Création planning - date: ${date}, employé: ${employeId}, segments: ${segmentsAvecIds.length}`);
-        
-        // Création du shift avec segments multiples
-        const shift = await prisma.shift.create({
-          data: {
-            employeId: parseInt(employeId, 10),
-            date: dateObj,
-            type,
-            motif: '',
-            segments: segmentsAvecIds,
-          }
-        });
-        
-        console.log(`Planning créé avec succès: id=${shift.id}, date=${shift.date}, segments=${shift.segments.length}`);
-        result.push(shift);
-      } catch (error) {
-        console.error(`Erreur pour un planning:`, error);
-        errors.push(`Erreur pour un planning: ${error.message}`);
+      // Normalisation date
+      let dateObj;
+      if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        const [year, month, day] = date.split('-').map(Number);
+        dateObj = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+      } else {
+        dateObj = new Date(date);
       }
+      if (isNaN(dateObj.getTime())) { errors.push(`Date invalide: ${date}`); continue; }
+      
+      // Validation segments
+      const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+      let segmentsValides = true;
+      for (const segment of segments) {
+        if (!segment.start || !segment.end) { errors.push(`Segment sans horaires: ${JSON.stringify(segment)}`); segmentsValides = false; break; }
+        if (!timeRegex.test(segment.start) || !timeRegex.test(segment.end)) { errors.push(`Format heure invalide: ${segment.start} - ${segment.end}`); segmentsValides = false; break; }
+        if (segment.start === segment.end) { errors.push(`Durée nulle: ${segment.start} - ${segment.end}`); segmentsValides = false; break; }
+      }
+      if (!segmentsValides) continue;
+      
+      // Vérification congé approuvé
+      if (type === 'travail') {
+        const congeApprouve = await prisma.conge.findFirst({
+          where: { userId: employeId, statut: 'approuvé', dateDebut: { lte: dateObj }, dateFin: { gte: dateObj } }
+        });
+        if (congeApprouve) {
+          errors.push(`Employé ${employeId} - Date ${date}: Congé approuvé (${congeApprouve.type})`);
+          continue;
+        }
+      }
+      
+      const segmentsAvecIds = segments.map(segment => ({
+        id: segment.id || require('crypto').randomUUID(),
+        start: segment.start, end: segment.end,
+        commentaire: segment.commentaire || "", aValider: segment.aValider || false,
+        isExtra: segment.isExtra || false, extraMontant: segment.extraMontant || '',
+        paymentStatus: segment.paymentStatus || 'à_payer', paymentMethod: segment.paymentMethod || '',
+        paymentDate: segment.paymentDate || '', paymentNote: segment.paymentNote || ''
+      }));
+      
+      validatedShifts.push({ employeId, dateObj, type, segmentsAvecIds });
+    }
+    
+    // ── Phase 2: Détection duplicats dans le batch ──
+    const existingShifts = await prisma.shift.findMany({
+      where: {
+        OR: validatedShifts.map(s => ({ employeId: s.employeId, date: s.dateObj, type: 'travail' }))
+      },
+      select: { employeId: true, date: true }
+    });
+    const existingKeys = new Set(existingShifts.map(s => `${s.employeId}|${s.date.toISOString().slice(0,10)}`));
+    
+    const toCreate = [];
+    for (const vs of validatedShifts) {
+      const key = `${vs.employeId}|${vs.dateObj.toISOString().slice(0,10)}`;
+      if (existingKeys.has(key)) {
+        errors.push(`Shift déjà existant pour employé ${vs.employeId} le ${vs.dateObj.toISOString().slice(0,10)} — ignoré`);
+      } else {
+        toCreate.push(vs);
+        existingKeys.add(key); // éviter doublons dans le batch lui-même
+      }
+    }
+    
+    // ── Phase 3: Insertion TRANSACTIONNELLE ──
+    let result = [];
+    if (toCreate.length > 0) {
+      result = await prisma.$transaction(
+        toCreate.map(vs => prisma.shift.create({
+          data: {
+            employeId: parseInt(vs.employeId, 10),
+            date: vs.dateObj,
+            type: vs.type,
+            motif: '',
+            segments: vs.segmentsAvecIds,
+            version: 0
+          }
+        }))
+      );
     }
     
     res.status(201).json({
@@ -977,8 +989,18 @@ const createBatchShifts = async (req, res) => {
       created: result.length,
       shifts: result.map(s => ({ ...s, date: s.date instanceof Date ? s.date.toISOString() : s.date })),
       errors: errors.length > 0 ? errors : undefined,
-      message: 'Batch créé (code sans status)'
+      message: `${result.length} shifts créés en transaction`
     });
+    
+    // 📋 AUDIT: batch creation (après réponse envoyée, non bloquant)
+    if (result.length > 0) {
+      logAudit({
+        entite: 'shift_batch', entiteId: null, action: 'batch_creation',
+        userId: Number(getUserId(req)),
+        details: { metadata: { count: result.length, shiftIds: result.map(s => s.id), errors: errors.length } },
+        ipAddress: getIp(req)
+      });
+    }
   } catch (error) {
     console.error("Erreur création batch shifts:", error);
     res.status(500).json({ error: "Erreur lors de la création des plannings" });
@@ -1008,7 +1030,7 @@ const createRecurringShifts = async (req, res) => {
   try {
     const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
     for (const seg of segments) {
-      if (!seg.start || !seg.end || !timeRegex.test(seg.start) || !timeRegex.test(seg.end) || seg.start >= seg.end) {
+      if (!seg.start || !seg.end || !timeRegex.test(seg.start) || !timeRegex.test(seg.end) || seg.start === seg.end) {
         return res.status(400).json({ error: `Segment invalide ${seg.start || '?'}-${seg.end || '?'}` });
       }
     }
@@ -1128,6 +1150,15 @@ const createRecurringShifts = async (req, res) => {
       await prisma.$transaction(async (tx) => {
         for (const op of slice) {
           if (op.action === 'replace') {
+            // 🔄 Nettoyer TOUTES les dépendances FK avant suppression
+            await tx.demandeRemplacement.deleteMany({ where: { shiftId: op.shiftId } });
+            await tx.extraPaymentLog.deleteMany({ where: { shiftId: op.shiftId } });
+            await tx.shiftCorrection.deleteMany({ where: { shiftId: op.shiftId } });
+            await tx.paiementExtra.updateMany({
+              where: { shiftId: op.shiftId, statut: 'paye' },
+              data: { statut: 'annule', motifAjustement: 'remplacement_recurrent' }
+            });
+            await tx.paiementExtra.deleteMany({ where: { shiftId: op.shiftId, statut: 'a_payer' } });
             await tx.shift.delete({ where: { id: op.shiftId } });
           }
           await tx.shift.create({
@@ -1155,6 +1186,16 @@ const createRecurringShifts = async (req, res) => {
       from: startDate,
       to: finalEnd.toISOString().slice(0,10)
     });
+    
+    // 📋 AUDIT: création récurrente
+    if (created > 0) {
+      logAudit({
+        entite: 'shift_batch', entiteId: null, action: 'batch_creation',
+        userId: Number(getUserId(req)),
+        details: { metadata: { type: 'recurrent', created, skipped: skipped.length, replaced: replaced.length, employeIds, startDate, endDate: finalEnd.toISOString().slice(0,10), daysOfWeek, mode } },
+        ipAddress: getIp(req)
+      });
+    }
   } catch (e) {
     console.error('Erreur createRecurringShifts:', e);
     res.status(500).json({ error: 'Erreur création récurrente' });
@@ -1183,7 +1224,7 @@ const deleteRangeShifts = async (req, res) => {
     // D'abord récupérer les IDs des shifts à supprimer
     const shiftsToDelete = await prisma.shift.findMany({
       where,
-      select: { id: true }
+      select: { id: true, type: true, employeId: true, date: true }
     });
     const shiftIds = shiftsToDelete.map(s => s.id);
     
@@ -1191,14 +1232,49 @@ const deleteRangeShifts = async (req, res) => {
       return res.json({ success: true, deleted: 0 });
     }
     
-    // Supprimer les demandes de remplacement liées à ces shifts
-    await prisma.demandeRemplacement.deleteMany({
-      where: { shiftId: { in: shiftIds } }
+    // 🔄 TRANSACTION COMPLÈTE — supprimer TOUTES les dépendances puis les shifts
+    await prisma.$transaction(async (tx) => {
+      // 1. Demandes de remplacement
+      await tx.demandeRemplacement.deleteMany({ where: { shiftId: { in: shiftIds } } });
+      // 2. ExtraPaymentLog (FK vers Shift)
+      await tx.extraPaymentLog.deleteMany({ where: { shiftId: { in: shiftIds } } });
+      // 3. ShiftCorrection (FK vers Shift)
+      await tx.shiftCorrection.deleteMany({ where: { shiftId: { in: shiftIds } } });
+      // 4. PaiementExtra liés (marquage annulé pour les payés, suppression pour à_payer)
+      await tx.paiementExtra.updateMany({ 
+        where: { shiftId: { in: shiftIds }, statut: 'paye' },
+        data: { statut: 'annule', motifAjustement: 'suppression_shift_range' }
+      });
+      await tx.paiementExtra.deleteMany({ 
+        where: { shiftId: { in: shiftIds }, statut: 'a_payer' }
+      });
+      // 5. Congés auto-créés pour les absences
+      const absenceShifts = shiftsToDelete.filter(s => s.type === 'absence');
+      for (const abs of absenceShifts) {
+        const absDate = new Date(abs.date);
+        const dayStart = new Date(absDate); dayStart.setHours(0,0,0,0);
+        const dayEnd = new Date(absDate); dayEnd.setHours(23,59,59,999);
+        await tx.conge.deleteMany({
+          where: {
+            userId: abs.employeId,
+            dateDebut: { lte: dayEnd },
+            dateFin: { gte: dayStart },
+            motifEmploye: 'Absence posée par l\'administration'
+          }
+        });
+      }
+      // 6. Supprimer les shifts
+      await tx.shift.deleteMany({ where: { id: { in: shiftIds } } });
+      // 📋 AUDIT: suppression en masse
+      await logAudit({
+        entite: 'shift_range', entiteId: null, action: 'batch_suppression',
+        userId: Number(getUserId(req)),
+        details: { before: { shiftIds, shifts: shiftsToDelete }, metadata: { startDate, endDate, type, employeIds } },
+        ipAddress: getIp(req), tx
+      });
     });
     
-    // Maintenant supprimer les shifts
-    const count = await prisma.shift.deleteMany({ where: { id: { in: shiftIds } } });
-    res.json({ success: true, deleted: count.count });
+    res.json({ success: true, deleted: shiftIds.length });
   } catch (e) {
     console.error('Erreur suppression plage:', e);
     res.status(500).json({ error: 'Erreur suppression plage' });

@@ -11,9 +11,7 @@ const { getDashboardStats } = require('../controllers/adminController');
 const { getAllPointages } = require('../controllers/statsController');
 const { envoyerIdentifiantsParEmail } = require('../controllers/emailController');
 const { getShifts } = require('../controllers/shiftController');
-
-// Nouvelle route : créer un employé (admin uniquement)
-router.post('/creer-employe', authenticateToken, isAdmin, creerEmploye);
+const { CATEGORIES_VALIDES } = require('../utils/categoriesHelper');
 
 // 🔐 Admin : voir tous les congés (optionnel : ?statut=approuvé&nonVu=true)
 router.get('/conges', authenticateToken, isAdmin, getTousLesConges);
@@ -24,25 +22,8 @@ router.post('/conges/vu', authenticateToken, isAdmin, marquerCongesCommeVus);
 // 🔐 Admin : obtenir le nombre de demandes non vues
 router.get('/conges/non-vues', authenticateToken, isAdmin, getDemandesNonVues);
 
-// Nouvelle route : créer un employé (admin uniquement)
 router.post('/employes', authenticateToken, isAdmin, creerEmploye);
-router.get('/employes', authenticateToken, isAdmin, (req, res, next) => {
-  console.log('🔍 [ADMIN DEBUG] Route /admin/employes (liste complète) appelée');
-  console.log('🔍 [ADMIN DEBUG] User:', req.user);
-  console.log('🔍 [ADMIN DEBUG] Query:', req.query);
-  console.log('🔍 [ADMIN DEBUG] Params:', req.params);
-  
-  try {
-    getTousLesEmployes(req, res, next);
-  } catch (error) {
-    console.error('❌ [ADMIN DEBUG] Erreur dans le wrapper getTousLesEmployes:', error);
-    console.error('❌ [ADMIN DEBUG] Stack:', error.stack);
-    res.status(500).json({ 
-      message: 'Erreur lors de la récupération des employés',
-      error: error.message 
-    });
-  }
-});
+router.get('/employes', authenticateToken, isAdmin, getTousLesEmployes);
 
 // Route pour envoyer les identifiants par email - IMPORTANT: cette route doit être avant les routes avec :id
 router.post('/employes/envoyer-identifiants', authenticateToken, isAdmin, envoyerIdentifiantsParEmail);
@@ -50,9 +31,6 @@ router.post('/employes/envoyer-identifiants', authenticateToken, isAdmin, envoye
 router.get('/employes/:id', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`🔍 [ADMIN DEBUG] Route /admin/employes/${id} appelée`);
-    console.log(`🔍 [ADMIN DEBUG] Params:`, req.params);
-    console.log(`🔍 [ADMIN DEBUG] User:`, req.user);
     
     const prisma = require('../prisma/client');
     const employe = await prisma.user.findUnique({
@@ -68,21 +46,14 @@ router.get('/employes/:id', authenticateToken, isAdmin, async (req, res) => {
       }
     });
 
-    console.log(`🔍 [ADMIN DEBUG] Employé trouvé:`, employe);
-
     if (!employe) {
-      console.log(`❌ [ADMIN DEBUG] Employé ${id} non trouvé`);
       return res.status(404).json({ message: 'Employé non trouvé' });
     }
 
-    console.log(`✅ [ADMIN DEBUG] Réponse envoyée pour employé ${id}`);
     res.json(employe);
   } catch (error) {
-    console.error('❌ [ADMIN DEBUG] Erreur récupération employé:', error);
-    console.error('❌ [ADMIN DEBUG] Stack:', error.stack);
     res.status(500).json({ 
-      message: 'Erreur lors de la récupération de l\'employé',
-      error: error.message 
+      message: 'Erreur lors de la récupération de l\'employé'
     });
   }
 });
@@ -101,5 +72,10 @@ router.get('/pointages', authenticateToken, isAdmin, getAllPointages);
 // Routes pour les shifts/planning
 router.get('/shifts', authenticateToken, isAdmin, getShifts);
 router.get('/planning/jour', authenticateToken, isAdmin, getShifts); // Alias pour compatibilité
+
+// Référentiel catégories
+router.get('/categories', authenticateToken, (req, res) => {
+  res.json(CATEGORIES_VALIDES);
+});
 
 module.exports = router;

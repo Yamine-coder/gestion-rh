@@ -117,6 +117,45 @@ function getParisBusinessDayKey(date, cutoffHour = 5) {
   return getParisDateString(date, { cutoffHour });
 }
 
+/**
+ * Retourne les bornes UTC d'une journée Paris (00:00 → 23:59:59.999 heure Paris)
+ * Utilisable directement dans les requêtes Prisma { gte: start, lte: end }
+ * Gère correctement CET (UTC+1) et CEST (UTC+2).
+ * @param {string} dateStr - Date au format YYYY-MM-DD
+ * @returns {{ start: Date, end: Date }}
+ */
+function getParisDateBoundsUTC(dateStr) {
+  // Créer un instant au milieu de la journée Paris pour déterminer l'offset
+  const midday = new Date(`${dateStr}T12:00:00Z`);
+  const parisStr = midday.toLocaleString('en-US', { timeZone: 'Europe/Paris', hour12: false });
+  const parisHour = new Date(parisStr).getHours();
+  const utcHour = midday.getUTCHours();
+  const offsetHours = parisHour - utcHour;
+  
+  // 00:00:00 Paris = (00:00:00 - offset) UTC
+  const start = new Date(`${dateStr}T00:00:00Z`);
+  start.setUTCHours(start.getUTCHours() - offsetHours);
+  
+  // 23:59:59.999 Paris
+  const end = new Date(`${dateStr}T23:59:59.999Z`);
+  end.setUTCHours(end.getUTCHours() - offsetHours);
+  
+  return { start, end };
+}
+
+/**
+ * Retourne les bornes UTC étendues entre deux dates Paris.
+ * Ajoute une marge pour couvrir le décalage CET/CEST.
+ * @param {string} startStr - Date début YYYY-MM-DD
+ * @param {string} endStr - Date fin YYYY-MM-DD
+ * @returns {{ start: Date, end: Date }}
+ */
+function getParisRangeBoundsUTC(startStr, endStr) {
+  const startBounds = getParisDateBoundsUTC(startStr);
+  const endBounds = getParisDateBoundsUTC(endStr);
+  return { start: startBounds.start, end: endBounds.end };
+}
+
 module.exports = {
   getParisTimeString,
   getParisDateString,
@@ -124,5 +163,7 @@ module.exports = {
   createParisDate,
   getCurrentParisDateString,
   getCurrentParisTimeString,
-  calculateTimeGapMinutes
+  calculateTimeGapMinutes,
+  getParisDateBoundsUTC,
+  getParisRangeBoundsUTC
 };

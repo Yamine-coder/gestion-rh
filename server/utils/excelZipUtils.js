@@ -60,8 +60,8 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
       const timestamp = `${dateStr}_${timeStr}`;
       
       // Format des dates de période pour le nom de fichier
-      const dateDebutStr = new Date(dateDebut).toLocaleDateString('fr-FR').replace(/\//g, '-'); // 01-11-2025
-      const dateFinStr = new Date(dateFin).toLocaleDateString('fr-FR').replace(/\//g, '-'); // 30-11-2025
+      const dateDebutStr = new Date(dateDebut).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }).replace(/\//g, '-'); // 01-11-2025
+      const dateFinStr = new Date(dateFin).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }).replace(/\//g, '-'); // 30-11-2025
       
       const excelFileName = `Rapport_Heures_${periode}_du_${dateDebutStr}_au_${dateFinStr}_genere_le_${timestamp}.xlsx`;
       archive.append(excelBuffer, { name: excelFileName });
@@ -70,7 +70,7 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
       let indexContent = '═══════════════════════════════════════════════════════════\n';
       indexContent += '  RAPPORT MENSUEL - HEURES & ABSENCES + NAVIGO\n';
       indexContent += `  Période: ${formatPeriod(dateDebut, dateFin)}\n`;
-      indexContent += `  Date de génération: ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR')}\n`;
+      indexContent += `  Date de génération: ${now.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${now.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris' })}\n`;
       indexContent += `  Généré par: Système de Gestion RH\n`;
       indexContent += '═══════════════════════════════════════════════════════════\n\n';
       indexContent += '📋 CONTENU DU ZIP :\n\n';
@@ -96,8 +96,8 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
             const fileSize = (stats.size / 1024).toFixed(2); // Taille en Ko
             // Utiliser la date d'upload du justificatif si dispo, sinon date du fichier
             const dateUpload = emp.dateUploadNavigo 
-              ? new Date(emp.dateUploadNavigo).toLocaleDateString('fr-FR')
-              : stats.mtime.toLocaleDateString('fr-FR');
+              ? new Date(emp.dateUploadNavigo).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
+              : stats.mtime.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
             
             const newFileName = `PJ${emp.pjNumber}_${emp.nom}_${emp.prenom}${extension}`;
             
@@ -121,7 +121,7 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
       indexContent += `📊 RÉSUMÉ :\n`;
       indexContent += `   Total: ${justifCount} justificatif(s) inclus\n`;
       indexContent += `   Période couverte: du ${dateDebutStr} au ${dateFinStr}\n`;
-      indexContent += `   Date et heure de génération: ${now.toLocaleString('fr-FR')}\n`;
+      indexContent += `   Date et heure de génération: ${now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}\n`;
       indexContent += '═══════════════════════════════════════════════════════════\n\n';
       indexContent += '📖 INSTRUCTIONS D\'UTILISATION :\n\n';
       indexContent += '1. Ouvrez le fichier Excel pour consulter le rapport complet\n';
@@ -148,7 +148,7 @@ async function generateRapportExcelZIP(rapportsEmployes, periode, dateDebut, dat
 }
 
 function formatPeriod(debut, fin) {
-  const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  const options = { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' };
   return `${new Date(debut).toLocaleDateString('fr-FR', options)} au ${new Date(fin).toLocaleDateString('fr-FR', options)}`;
 }
 

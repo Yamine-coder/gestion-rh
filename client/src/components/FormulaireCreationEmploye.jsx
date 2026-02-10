@@ -6,9 +6,7 @@ import "./animations.css";
 import { CATEGORIES_EMPLOYES, CATEGORIES_ADMIN } from '../utils/categoriesConfig';
 import { getCurrentDateString } from '../utils/parisTimeUtils';
 import { Mail, Send, CheckCircle, AlertTriangle, Printer, ArrowLeft, Clock, User, Lock, FileText, Shield } from 'lucide-react';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 // Fonction de formatage automatique du téléphone
 const formatTelephone = (value) => {
@@ -125,13 +123,6 @@ function FormulaireCreationEmploye({ onEmployeCreated, onClose, isEmbedded = fal
     try {
       const token = localStorage.getItem("token");
       
-      // Affichage des détails complets pour débogage
-      console.log("Détails complets de l'employé:", nouvelEmploye);
-      console.log("Infos de connexion:", {
-        ...infosConnexion,
-        motDePasseTemporaire: infosConnexion.motDePasseTemporaire ? "[MASQUÉ]" : undefined
-      });
-      
       // Appel à l'API pour envoyer l'email avec les identifiants
       const response = await axios.post(
         `${API_BASE}/admin/employes/envoyer-identifiants`, 
@@ -144,8 +135,6 @@ function FormulaireCreationEmploye({ onEmployeCreated, onClose, isEmbedded = fal
           headers: { Authorization: `Bearer ${token}` }
         }
       );
-      
-      console.log("Réponse du serveur:", response.data);
       
       setEmailSent(true);
       setShowConfirmEmail(false);

@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const helmet = require('helmet');
+const compression = require('compression');
 
 // Import des routes
 const shiftRoutes = require("./routes/shiftRoutes");
@@ -37,6 +39,7 @@ const anomalyScheduler = require('./services/anomalyScheduler');
 // Import des crons
 const avisAlertCron = require('./cron/avisAlertCron');
 const { startAnomaliesCron } = require('./cron/anomaliesCron');
+const { startScoringCron } = require('./cron/scoringCron');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -53,13 +56,20 @@ const corsOptions = {
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    // Accepter les origines explicites + le projet Vercel spécifique
+    const isVercelProject = process.env.VERCEL_PROJECT_SLUG 
+      ? origin.includes(process.env.VERCEL_PROJECT_SLUG) && origin.endsWith('.vercel.app')
+      : false; // Pas de fallback permissif — VERCEL_PROJECT_SLUG requis en prod
+    
+    if (allowedOrigins.includes(origin) || isVercelProject) {
       callback(null, true);
     } else {
       if (process.env.NODE_ENV !== 'production') {
-        console.log('⚠️ CORS bloqué pour origin:', origin);
+        console.log('CORS bloqué pour origin:', origin);
+        callback(null, true); // Permissif en dev
+      } else {
+        callback(new Error('Origin non autorisée par CORS'));
       }
-      callback(null, true); // En prod, on peut être plus strict
     }
   },
   credentials: true,
@@ -68,14 +78,41 @@ const corsOptions = {
 };
 
 // Middlewares globaux
+app.use(helmet());
+app.use(compression());
 app.use(cors(corsOptions));
-// Augmenter la limite pour les créations en masse de shifts
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
-// Servir les fichiers statiques (uploads)
+// Rate limiting global (protection contre les abus)
+const rateLimit = require('express-rate-limit');
+const isDev = process.env.NODE_ENV !== 'production';
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isDev ? 5000 : 1000, // Généreux en dev, 1000 en prod (app mono-restaurant)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes, réessayez dans quelques minutes.' },
+  skip: (req) => req.path === '/health' || req.path.includes('/notifications/stream')
+});
+const apiSensitiveLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 500 : 60, // 60 en prod pour les endpoints sensibles
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes sur cette ressource.' }
+});
+app.use(globalLimiter);
+app.use('/api/stats/export', apiSensitiveLimiter);
+app.use('/api/memo', apiSensitiveLimiter);
+app.use('/api/notifications-config', apiSensitiveLimiter);
+
+// Augmenter la limite pour les créations en masse de shifts
+app.use(bodyParser.json({ limit: '2mb' }));
+app.use(bodyParser.urlencoded({ limit: '2mb', extended: true }));
+
+// Servir les fichiers statiques (uploads) - protégé par auth
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+const { authMiddleware } = require('./middlewares/authMiddleware');
+app.use('/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
 
 // Routes principales
 app.use('/auth', authRoutes);           // Login / signup
@@ -104,87 +141,67 @@ app.use("/api/avis", avisRoutes); // Avis Google du restaurant
 app.use("/api/notifications-config", notificationsConfigRoutes); // Config notifications email
 app.use("/api/memo", memoRoutes); // Rappels mémo par email
 
-// Global Express error handler (placed before health/debug for catching async next(err))
-app.use((err, req, res, next) => {
-  console.error('🛑 [GLOBAL ERROR] Unhandled error middleware:', err);
-  res.status(err.status || 500).json({ message: 'Erreur serveur interne', error: err.message });
-});
-
-// 🧪 Route de health check pour les tests
+// Route de health check (avant le error handler)
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
-    message: 'Serveur backend fonctionnel',
-    timestamp: new Date().toISOString(),
-    emailTestMode: process.env.EMAIL_PASSWORD === 'test-mode-disabled'
+    timestamp: new Date().toISOString()
   });
 });
 
-// 🔍 Route de debug pour tester les routes stats
-app.get('/debug/routes', (req, res) => {
-  const routes = [];
-  app._router.stack.forEach(middleware => {
-    if (middleware.route) {
-      routes.push({
-        path: middleware.route.path,
-        method: Object.keys(middleware.route.methods)[0].toUpperCase()
-      });
-    } else if (middleware.name === 'router') {
-      middleware.handle.stack.forEach(handler => {
-        if (handler.route) {
-          routes.push({
-            path: middleware.regexp.toString() + handler.route.path,
-            method: Object.keys(handler.route.methods)[0].toUpperCase()
-          });
-        }
-      });
-    }
-  });
-  res.json({
-    message: 'Routes disponibles',
-    routes: routes.slice(0, 20), // Limiter pour éviter l'overflow
-    statsRoutesLoaded: !!require('./routes/statsRoutes')
-  });
+// Global Express error handler
+app.use((err, req, res, next) => {
+  console.error('[GLOBAL ERROR]', err.message);
+  const message = process.env.NODE_ENV === 'production' 
+    ? 'Erreur serveur interne' 
+    : err.message;
+  res.status(err.status || 500).json({ message });
 });
 
 // Lancement du serveur
-console.log('🟡 [BOOT] Initialisation express terminée, démarrage écoute...');
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Serveur backend lancé sur port ${PORT}`);
-  console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Serveur backend lancé sur port ${PORT} (${process.env.NODE_ENV || 'development'})`);
   
   // Démarrage du scheduler d'anomalies temps réel
   anomalyScheduler.start();
-  console.log('⏰ [SCHEDULER] Détection automatique des anomalies activée');
   
   // Démarrage des alertes email pour les avis négatifs
   avisAlertCron.startCronJobs();
-  console.log('📧 [CRON] Alertes email avis négatifs activées');
   
   // Démarrage du cron pour le récap anomalies
   startAnomaliesCron();
-  console.log('📧 [CRON] Récap quotidien anomalies activé (8h00)');
+
+  // Démarrage du cron scoring (bonus hebdo + malus 48h)
+  startScoringCron();
 });
 
 // Process-level crash diagnostics
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('🛑 [PROCESS] Unhandled Rejection:', reason);
+  console.error('[PROCESS] Unhandled Rejection:', reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('🛑 [PROCESS] Uncaught Exception:', err);
+  console.error('[PROCESS] Uncaught Exception:', err);
+  gracefulShutdown('uncaughtException');
 });
 
-// Optional heartbeat (temporary for debugging)
-if (process.env.ENABLE_HEARTBEAT === 'true') {
-  setInterval(() => {
-    console.log('💓 Heartbeat: process alive', new Date().toISOString());
-  }, 30000);
-}
+// Graceful shutdown: fermer les connexions DB proprement
+const gracefulShutdown = async (signal) => {
+  console.log(`[PROCESS] ${signal} reçu, fermeture propre...`);
+  try {
+    const pool = require('./db/pool');
+    await pool.end();
+    const prisma = require('./prisma/client');
+    await prisma.$disconnect();
+  } catch (e) { /* ignore */ }
+  process.exit(0);
+};
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Diagnostics de fin de vie du process
 process.on('beforeExit', (code) => {
-  console.log('⏳ [PROCESS] beforeExit déclenché avec code:', code);
+  if (code !== 0) console.log('[PROCESS] beforeExit code:', code);
 });
 process.on('exit', (code) => {
-  console.log('🔚 [PROCESS] exit déclenché avec code:', code);
+  if (code !== 0) console.log('[PROCESS] exit code:', code);
 });

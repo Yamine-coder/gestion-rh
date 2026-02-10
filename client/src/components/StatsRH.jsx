@@ -50,9 +50,7 @@ import {
 import axios from "axios";
 import NavigationRestoreNotification from "./NavigationRestoreNotification";
 import { saveNavigation, restoreNavigation, getSessionDuration } from "../utils/navigationUtils";
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 // Composant pour les cartes statistiques - Style Dashboard
 const StatCard = ({ icon, label, value, color = "text-[#cf292c]", bgColor = "bg-gray-50", alert, trend }) => (

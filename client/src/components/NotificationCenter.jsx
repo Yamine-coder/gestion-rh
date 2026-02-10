@@ -21,8 +21,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { getToken } from '../utils/tokenManager';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 const brand = '#cf292c';
 
 // Configuration des types de notifications avec icônes et couleurs

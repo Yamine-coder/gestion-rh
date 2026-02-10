@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { format, parseISO, addDays, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 /**
  * Composant de formulaire pour la création (rapide ou récurrente) de plannings avec options suppression.

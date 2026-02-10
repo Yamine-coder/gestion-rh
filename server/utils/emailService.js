@@ -215,7 +215,7 @@ const envoyerEmailRecuperation = async (email, nom, prenom, resetUrl) => {
 const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = []) => {
   // Informations de contact support
   const supportPhone = '07 58 87 54 64';
-  const supportEmail = 'moussaouiyamine1@gmail.com';
+  const supportEmail = process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || 'support@lefournilchezantoine.fr';
   const restaurantName = 'Chez Antoine';
   
   // Formater les catégories pour l'affichage
@@ -381,7 +381,7 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
         sendSmtpEmail.htmlContent = mailOptions.html;
         sendSmtpEmail.sender = { 
           name: restaurantName, 
-          email: process.env.EMAIL_FROM || 'moussaouiyamine1@gmail.com' 
+          email: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'noreply@lefournilchezantoine.fr' 
         };
         sendSmtpEmail.to = [{ email: email, name: `${prenom} ${nom}` }];
         
@@ -471,7 +471,7 @@ const envoyerRappelMemo = async (email, task) => {
     
     // Format date échéance
     const dueDateStr = task.dueDate 
-      ? new Date(task.dueDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      ? new Date(task.dueDate).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
       : null;
     
     // Emojis catégories
@@ -510,7 +510,7 @@ const envoyerRappelMemo = async (email, task) => {
                       <div style="font-size: 28px; margin-bottom: 6px;">⏰</div>
                       <h1 style="color: white; margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;">Rappel Mémo Manager</h1>
                       <p style="color: rgba(255,255,255,0.75); margin: 4px 0 0 0; font-size: 12px;">
-                        ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </td>
                     <td style="text-align: right; vertical-align: top;">

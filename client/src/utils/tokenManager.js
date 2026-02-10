@@ -5,12 +5,15 @@
  * - Stockage avec timestamp
  * - Vérification d'expiration (8h par défaut)
  * - Auto-logout sur expiration
- * - Refresh automatique
+ * - Refresh automatique avant expiration
  */
+
+import { API_BASE } from '../config/api';
 
 const TOKEN_KEY = 'token';
 const TOKEN_TIMESTAMP_KEY = 'token_timestamp';
 const TOKEN_EXPIRATION = 8 * 60 * 60 * 1000; // 8 heures en millisecondes
+const REFRESH_THRESHOLD = 30 * 60 * 1000; // Rafraîchir si < 30 min restantes
 
 /**
  * Stocke le token avec timestamp
@@ -85,16 +88,42 @@ export const getTimeUntilExpiration = () => {
  */
 export const isTokenExpiringSoon = () => {
   const remaining = getTimeUntilExpiration();
-  return remaining > 0 && remaining < (30 * 60 * 1000); // 30 minutes
+  return remaining > 0 && remaining < REFRESH_THRESHOLD;
 };
 
 /**
- * Rafraîchit le timestamp (à appeler après refresh token API)
+ * Rafraîchit le token via l'API avant expiration
+ * @returns {Promise<boolean>} true si le refresh a réussi
  */
-export const refreshTokenTimestamp = () => {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token) {
-    localStorage.setItem(TOKEN_TIMESTAMP_KEY, Date.now().toString());
+let refreshInProgress = false;
+export const refreshToken = async () => {
+  if (refreshInProgress) return false;
+  
+  const currentToken = localStorage.getItem(TOKEN_KEY);
+  if (!currentToken) return false;
+  
+  refreshInProgress = true;
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${currentToken}`
+      }
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        setToken(data.token);
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    refreshInProgress = false;
   }
 };
 
@@ -110,11 +139,17 @@ export const setupTokenExpirationCheck = (onExpired) => {
     return () => {};
   }
   
-  // Vérification toutes les minutes
-  const intervalId = setInterval(() => {
+  // Vérification toutes les minutes + refresh automatique
+  const intervalId = setInterval(async () => {
     if (!isTokenValid()) {
       clearInterval(intervalId);
       onExpired();
+      return;
+    }
+    
+    // Tenter un refresh si le token expire bientôt
+    if (isTokenExpiringSoon()) {
+      await refreshToken();
     }
   }, 60 * 1000); // Toutes les minutes
   

@@ -1,5 +1,6 @@
 // client/src/hooks/useBatchOperations.js
 import { useCallback, useRef } from 'react';
+import { API_BASE } from '../config/api';
 
 /**
  * Hook pour batch requests - groupe plusieurs appels API
@@ -21,7 +22,6 @@ export function useBatchRequests(batchSize = 5, delayMs = 100) {
       if (queueRef.current.length === 0) return;
 
       const batch = queueRef.current.splice(0, batchSize);
-      console.log(`🔄 Exécution batch de ${batch.length} opérations`);
 
       try {
         // Exécute toutes les opérations en parallèle
@@ -82,8 +82,6 @@ export function useDebouncedBatch(callback, delay = 300) {
       const updates = [...pendingUpdatesRef.current];
       pendingUpdatesRef.current = [];
 
-      console.log(`🔄 Debounced batch: ${updates.length} mises à jour`);
-      
       try {
         await callback(updates);
       } catch (error) {
@@ -114,16 +112,18 @@ export function useAnomaliesBatchOperations() {
   const { addToBatch } = useBatchRequests(10, 200);
 
   const batchUpdateAnomalies = useCallback((updates) => {
+    const token = localStorage.getItem('token');
     updates.forEach(({ anomalieId, updates: anomalieUpdates }) => {
       addToBatch({
-        execute: () => fetch(`/api/anomalies/${anomalieId}/traiter`, {
+        execute: () => fetch(`${API_BASE}/api/anomalies/${anomalieId}/traiter`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify(anomalieUpdates)
         }),
-        onSuccess: (response) => {
-          console.log(`✅ Anomalie ${anomalieId} mise à jour`);
-        },
+        onSuccess: (response) => {},
         onError: (error) => {
           console.error(`❌ Erreur anomalie ${anomalieId}:`, error);
         }
@@ -133,17 +133,21 @@ export function useAnomaliesBatchOperations() {
 
   const batchSyncAnomalies = useCallback((employeIds, dates) => {
     const syncOperations = [];
+    const token = localStorage.getItem('token');
     
     employeIds.forEach(employeId => {
       dates.forEach(date => {
         syncOperations.push({
-          execute: () => fetch('/api/anomalies/sync-from-comparison', {
+          execute: () => fetch(`${API_BASE}/api/anomalies/sync-from-comparison`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ employeId, date })
           }),
-          onSuccess: () => console.log(`✅ Sync ${employeId} - ${date}`),
-          onError: (error) => console.error(`❌ Sync error:`, error)
+          onSuccess: () => {},
+          onError: (error) => console.error('Sync error:', error)
         });
       });
     });

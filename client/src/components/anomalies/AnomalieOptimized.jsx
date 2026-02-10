@@ -1,6 +1,7 @@
 // client/src/components/anomalies/AnomalieOptimized.jsx
 import React, { useState, useCallback, useMemo } from 'react';
 import { Check, X, Clock, Eye, DollarSign } from 'lucide-react';
+import { API_BASE } from '../../config/api';
 
 /**
  * VERSION OPTIMISÉE FINALE DU SYSTÈME D'ANOMALIES
@@ -20,9 +21,7 @@ export function useAnomalieProcessor() {
     setProcessing(prev => new Set(prev).add(anomalieId));
 
     try {
-      console.log(`🔄 Traitement anomalie ${anomalieId}: ${action}`, data);
-
-      const response = await fetch(`/api/anomalies/${anomalieId}/traiter`, {
+      const response = await fetch(`${API_BASE}/api/anomalies/${anomalieId}/traiter`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -44,7 +43,6 @@ export function useAnomalieProcessor() {
       // Mise à jour localStorage
       updateLocalStorageCache(anomalieId, result.anomalie);
       
-      console.log(`✅ Anomalie ${anomalieId} traitée avec succès`);
       return result;
 
     } catch (error) {
@@ -81,7 +79,6 @@ function updateLocalStorageCache(anomalieId, updatedAnomalie) {
         );
         data.timestamp = Date.now();
         localStorage.setItem(cacheKey, JSON.stringify(data));
-        console.log(`📦 Cache localStorage mis à jour pour anomalie ${anomalieId}`);
       }
     }
   } catch (error) {

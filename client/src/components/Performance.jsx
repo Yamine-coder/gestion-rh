@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart3, Trophy, TrendingUp, HiChartBar } from 'lucide-react';
-import { HiChartPie } from 'react-icons/hi';
+import { BarChart3, Trophy, TrendingUp } from 'lucide-react';
 import StatsRH from './StatsRH';
 import ScoringManager from './ScoringManager';
 

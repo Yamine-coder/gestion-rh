@@ -3,7 +3,7 @@
  * Gère les URLs Cloudinary (complètes) et les URLs locales (relatives)
  */
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 /**
  * Retourne l'URL complète d'une image (photo de profil, document, etc.)

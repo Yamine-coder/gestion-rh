@@ -4,8 +4,7 @@ import { Medal, Gem, TrendingUp, TrendingDown, Clock, Calendar, Filter, Star, Us
 import axios from 'axios';
 import BottomNav from '../components/BottomNav';
 import { getNiveau } from '../services/scoringService';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 const brand = '#cf292c';
 
 // Configuration des icônes de niveau

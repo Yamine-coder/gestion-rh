@@ -1,17 +1,30 @@
 // =====================================================
 // API SCORING - Routes pour le système de points
+// Migré de raw SQL (pg Pool) vers Prisma ORM
 // =====================================================
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const { Pool } = require('pg');
-
-// Pool pour les requêtes directes (vue, agrégations)
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const prisma = require('../prisma/client');
+const { Prisma } = require('@prisma/client');
+const { TYPES_ENTREE } = require('../utils/pointageTypeUtils');
 
 // Middleware d'authentification
 const { authMiddleware, adminMiddleware } = require('../middlewares/authMiddleware');
+
+// Utilitaire: convertit les BigInt en Number dans les résultats $queryRaw
+function convertBigInts(obj) {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return Number(obj);
+  if (Array.isArray(obj)) return obj.map(convertBigInts);
+  if (typeof obj === 'object') {
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = typeof value === 'bigint' ? Number(value) : value;
+    }
+    return result;
+  }
+  return obj;
+}
 
 // =====================================================
 // ROUTES PUBLIQUES (employé connecté)
@@ -24,16 +37,16 @@ const { authMiddleware, adminMiddleware } = require('../middlewares/authMiddlewa
 router.get('/mon-score', authMiddleware, async (req, res) => {
   try {
     const employeId = req.user.userId || req.user.id;
-    console.log('📊 [MON-SCORE] Récupération score pour employé', employeId);
     
-    // Score total depuis la vue employe_scores (qui agrège employe_points)
-    const scoreResult = await pool.query(
-      'SELECT employe_id as employee_id, score_total::int as total_points, total_bonus::int as bonus_points, total_malus::int as malus_points FROM employe_scores WHERE employe_id = $1',
-      [employeId]
-    );
+    // Score total depuis la vue employe_scores (Prisma $queryRaw car c'est une VIEW)
+    const scoreRowsRaw = await prisma.$queryRaw`
+      SELECT employe_id as employee_id, score_total::int as total_points, total_bonus::int as bonus_points, total_malus::int as malus_points 
+      FROM employe_scores WHERE employe_id = ${employeId}
+    `;
+    const scoreRows = convertBigInts(scoreRowsRaw);
     
-    // Détail des points par catégorie depuis employe_points + scoring_rules
-    const categoriesResult = await pool.query(`
+    // Détail des points par catégorie (complex GROUP BY + CASE — garder en raw)
+    const categoriesRowsRaw = await prisma.$queryRaw`
       SELECT 
         COALESCE(sr.categorie, 
           CASE 
@@ -52,7 +65,7 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
         SUM(CASE WHEN ep.points < 0 THEN ep.points ELSE 0 END) as points_malus
       FROM employe_points ep
       LEFT JOIN scoring_rules sr ON sr.code = ep.rule_code
-      WHERE ep.employe_id = $1
+      WHERE ep.employe_id = ${employeId}
       GROUP BY COALESCE(sr.categorie, 
           CASE 
             WHEN ep.rule_code IN ('PONCTUALITE', 'POINTAGE_PONCTUEL', 'RETARD', 'RETARD_LEGER', 'RETARD_MODERE', 'RETARD_GRAVE', 'OUBLI_POINTAGE') THEN 'pointage'
@@ -66,138 +79,114 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
             ELSE 'special'
           END
         )
-    `, [employeId]);
+    `;
+    const categoriesRows = convertBigInts(categoriesRowsRaw);
     
-    // Construire les points par catégorie (toutes les catégories du système)
+    // Construire les points par catégorie
     const categoriePoints = {
-      pointage_points: 0,      // Ponctualité, retards
-      presence_points: 0,      // Assiduité, absences
-      comportement_points: 0,  // Attitude, initiative, formation
-      remplacement_points: 0,  // Remplacements, entraide
-      extra_points: 0,         // Extras effectués
-      conge_points: 0,         // Demandes de congé
-      anomalie_points: 0,      // Anomalies
-      feedback_points: 0,      // Feedbacks peer-to-peer
-      special_points: 0        // Bonus/malus manuels
+      pointage_points: 0, presence_points: 0, comportement_points: 0,
+      remplacement_points: 0, extra_points: 0, conge_points: 0,
+      anomalie_points: 0, feedback_points: 0, special_points: 0
     };
     
-    categoriesResult.rows.forEach(row => {
-      const total = parseInt(row.points_bonus || 0) + parseInt(row.points_malus || 0);
+    categoriesRows.forEach(row => {
+      const total = Number(row.points_bonus || 0) + Number(row.points_malus || 0);
       const key = `${row.categorie}_points`;
       if (categoriePoints.hasOwnProperty(key)) {
         categoriePoints[key] = total;
       }
     });
     
-    // Historique récent depuis employe_points (30 derniers jours)
-    const historiqueResult = await pool.query(`
-      SELECT ep.id, ep.employe_id as employee_id, ep.rule_code as category, ep.points, ep.motif as description, ep.date_evenement as created_at,
-             COALESCE(sr.label, ep.rule_code) as label
-      FROM employe_points ep
-      LEFT JOIN scoring_rules sr ON sr.code = ep.rule_code
-      WHERE ep.employe_id = $1
-      AND ep.date_evenement >= NOW() - INTERVAL '30 days'
-      ORDER BY ep.date_evenement DESC
-      LIMIT 20
-    `, [employeId]);
+    // Historique récent (30 jours) — Prisma with include
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    // Calcul du niveau/badge
-    const score = scoreResult.rows[0]?.total_points || 0;
+    const historiqueRaw = await prisma.employePoint.findMany({
+      where: {
+        employeId: employeId,
+        dateEvenement: { gte: thirtyDaysAgo }
+      },
+      include: { rule: { select: { label: true } } },
+      orderBy: { dateEvenement: 'desc' },
+      take: 20
+    });
+    
+    const historique = historiqueRaw.map(ep => ({
+      id: ep.id,
+      employee_id: ep.employeId,
+      category: ep.ruleCode,
+      points: ep.points,
+      description: ep.motif,
+      created_at: ep.dateEvenement,
+      label: ep.rule?.label || ep.ruleCode
+    }));
+    
+    // Calcul du niveau
+    const score = Number(scoreRows[0]?.total_points || 0);
     const niveau = calculerNiveau(score);
 
-    // Calculer les stats pour les badges
-    // Pour l'instant, on utilise des stats simplifiées basées sur le score
-    // TODO: Implémenter les vraies stats de ponctualité, remplacements, etc.
-    
+    // Stats ponctualité
     let arrivees_heure = 0;
     let remplacements = 0;
     
     try {
-      // Stats de ponctualité (compter les pointages "entrée" pour avoir une approximation)
-      const ponctualiteResult = await pool.query(`
-        SELECT COUNT(*) as arrivees_heure
-        FROM "Pointage" p
-        WHERE p."userId" = $1
-        AND p.type = 'entree'
-      `, [employeId]);
-      arrivees_heure = parseInt(ponctualiteResult.rows[0]?.arrivees_heure || 0);
-    } catch (e) {
-      console.log('Stats ponctualité non disponibles:', e.message);
-    }
+      arrivees_heure = await prisma.pointage.count({
+        where: { userId: employeId, type: { in: TYPES_ENTREE } }
+      });
+    } catch (e) { /* non bloquant */ }
 
     try {
-      // Stats de remplacements (candidatures acceptées aux demandes de remplacement)
-      const remplacementsResult = await pool.query(`
-        SELECT COUNT(*) as remplacements
-        FROM "CandidatureRemplacement" cr
-        WHERE cr."employeId" = $1
-        AND cr.statut = 'acceptee'
-      `, [employeId]);
-      remplacements = parseInt(remplacementsResult.rows[0]?.remplacements || 0);
-    } catch (e) {
-      console.log('Stats remplacements non disponibles:', e.message);
-    }
+      remplacements = await prisma.candidatureRemplacement.count({
+        where: { employeId: employeId, statut: 'acceptee' }
+      });
+    } catch (e) { /* non bloquant */ }
 
-    // Calculer les stats pour les badges
     const stats = {
       arrivees_heure,
-      mois_sans_absence: 1, // Par défaut, actif depuis 1 mois
+      mois_sans_absence: 1,
       remplacements,
       score_total: score,
-      extras: 0, // À implémenter
-      bonus_comportement: Math.floor((scoreResult.rows[0]?.bonus_points || 0) / 5),
-      mois_sans_malus_comportement: 6, // Par défaut
-      semaines_completes: 1, // Par défaut
-      streak_parfait: 0, // À implémenter
-      rang: 999 // Par défaut, à calculer depuis le classement
+      extras: 0,
+      bonus_comportement: Math.floor(Number(scoreRows[0]?.bonus_points || 0) / 5),
+      mois_sans_malus_comportement: 6,
+      semaines_completes: 1,
+      streak_parfait: 0,
+      rang: 999
     };
 
-    // Obtenir le rang dans le classement
-    const rangResult = await pool.query(`
-      SELECT COUNT(*) + 1 as rang
-      FROM employee_scores
-      WHERE total_points > $1
-    `, [score]);
-    stats.rang = parseInt(rangResult.rows[0]?.rang || 999);
+    // Rang dans le classement
+    const rangCount = await prisma.employeeScore.count({
+      where: { totalPoints: { gt: score } }
+    });
+    stats.rang = rangCount + 1;
     
-    // Calculer le plafond mensuel de feedbacks
+    // Plafond mensuel feedbacks
     const PLAFOND_MENSUEL_FEEDBACK = 50;
     let feedbackMoisUtilise = 0;
     try {
-      const feedbackMoisResult = await pool.query(`
-        SELECT COALESCE(SUM(points), 0) as points_mois
+      const feedbackAggRaw = await prisma.$queryRaw`
+        SELECT COALESCE(SUM(points), 0)::int as points_mois
         FROM score_history
-        WHERE employee_id = $1 
+        WHERE employee_id = ${employeId} 
           AND source = 'peer_feedback'
           AND created_at >= DATE_TRUNC('month', CURRENT_DATE)
           AND created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
-      `, [employeId]);
-      feedbackMoisUtilise = parseInt(feedbackMoisResult.rows[0]?.points_mois || 0);
-    } catch (e) {
-      console.log('Stats plafond feedback non disponibles:', e.message);
-    }
+      `;
+      const feedbackAgg = convertBigInts(feedbackAggRaw);
+      feedbackMoisUtilise = Number(feedbackAgg[0]?.points_mois || 0);
+    } catch (e) { /* non bloquant */ }
     
     res.json({
       success: true,
       data: {
         score: {
-          total_points: scoreResult.rows[0]?.total_points || 0,
-          // Toutes les catégories
-          pointage_points: categoriePoints.pointage_points,
-          presence_points: categoriePoints.presence_points,
-          comportement_points: categoriePoints.comportement_points,
-          remplacement_points: categoriePoints.remplacement_points,
-          extra_points: categoriePoints.extra_points,
-          conge_points: categoriePoints.conge_points,
-          anomalie_points: categoriePoints.anomalie_points,
-          feedback_points: categoriePoints.feedback_points,
-          special_points: categoriePoints.special_points,
-          // Totaux bonus/malus
-          total_bonus: scoreResult.rows[0]?.bonus_points || 0,
-          total_malus: scoreResult.rows[0]?.malus_points || 0
+          total_points: score,
+          ...categoriePoints,
+          total_bonus: Number(scoreRows[0]?.bonus_points || 0),
+          total_malus: Number(scoreRows[0]?.malus_points || 0)
         },
         niveau,
-        historique: historiqueResult.rows,
+        historique,
         stats,
         plafondFeedback: {
           plafond: PLAFOND_MENSUEL_FEEDBACK,
@@ -219,32 +208,40 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
 router.get('/mon-historique', authMiddleware, async (req, res) => {
   try {
     const employeId = req.user.id;
-    const { page = 1, limit = 50, categorie } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const { categorie } = req.query;
     const offset = (page - 1) * limit;
     
-    let whereClause = 'WHERE ep.employe_id = $1';
-    const params = [employeId];
-    
+    // Prisma with include + pagination (safe — no SQL injection)
+    const where = { employeId };
     if (categorie) {
-      whereClause += ' AND sr.categorie = $2';
-      params.push(categorie);
+      where.rule = { categorie };
     }
+
+    const data = await prisma.employePoint.findMany({
+      where,
+      include: {
+        rule: { select: { label: true, categorie: true, description: true } }
+      },
+      orderBy: [{ dateEvenement: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      skip: offset
+    });
     
-    const result = await pool.query(`
-      SELECT ep.*, sr.label, sr.categorie, sr.description,
-             u.nom as created_by_nom, u.prenom as created_by_prenom
-      FROM employe_points ep
-      LEFT JOIN scoring_rules sr ON ep.rule_id = sr.id
-      LEFT JOIN "User" u ON ep.created_by = u.id
-      ${whereClause}
-      ORDER BY ep.date_evenement DESC, ep.created_at DESC
-      LIMIT ${parseInt(limit)} OFFSET ${offset}
-    `, params);
+    // Map to original format for API compat
+    const rows = data.map(ep => ({
+      id: ep.id, employe_id: ep.employeId, rule_id: ep.ruleId,
+      rule_code: ep.ruleCode, points: ep.points, motif: ep.motif,
+      date_evenement: ep.dateEvenement, reference_type: ep.referenceType,
+      reference_id: ep.referenceId, created_at: ep.createdAt, created_by: ep.createdBy,
+      label: ep.rule?.label, categorie: ep.rule?.categorie, description: ep.rule?.description
+    }));
     
     res.json({
       success: true,
-      data: result.rows,
-      pagination: { page: parseInt(page), limit: parseInt(limit) }
+      data: rows,
+      pagination: { page, limit }
     });
   } catch (error) {
     console.error('Erreur historique:', error);
@@ -262,24 +259,19 @@ router.get('/mon-historique', authMiddleware, async (req, res) => {
  */
 router.get('/rules', authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT * FROM scoring_rules 
-      WHERE actif = true 
-      ORDER BY categorie, points DESC
-    `);
+    const rules = await prisma.scoringRule.findMany({
+      where: { actif: true },
+      orderBy: [{ categorie: 'asc' }, { points: 'desc' }]
+    });
     
     // Grouper par catégorie
-    const parCategorie = result.rows.reduce((acc, rule) => {
+    const parCategorie = rules.reduce((acc, rule) => {
       if (!acc[rule.categorie]) acc[rule.categorie] = [];
       acc[rule.categorie].push(rule);
       return acc;
     }, {});
     
-    res.json({
-      success: true,
-      data: result.rows,
-      parCategorie
-    });
+    res.json({ success: true, data: rules, parCategorie });
   } catch (error) {
     console.error('Erreur règles:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -289,50 +281,43 @@ router.get('/rules', authMiddleware, async (req, res) => {
 /**
  * GET /api/scoring/classement
  * Classement des employés par score
+ * 🔒 FIX: intervalClause était interpolé — maintenant paramétrisé
  */
 router.get('/classement', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { periode = '12months', limit = 50 } = req.query;
+    const { periode = '12months' } = req.query;
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
     
-    // Calcul de la date de début selon la période
-    let intervalClause = '12 months';
-    if (periode === '1month') intervalClause = '1 month';
-    else if (periode === '3months') intervalClause = '3 months';
-    else if (periode === '6months') intervalClause = '6 months';
+    // Map période vers un nombre de jours (élimine l'injection SQL)
+    const periodeJours = {
+      '1month': 30, '3months': 90, '6months': 180, '12months': 365
+    };
+    const jours = periodeJours[periode] || 365;
     
-    const result = await pool.query(`
+    const resultRaw = await prisma.$queryRaw`
       SELECT 
-        u.id,
-        u.nom,
-        u.prenom,
-        u.email,
-        u.categorie as poste,
-        u."photoProfil",
+        u.id, u.nom, u.prenom, u.email, u.categorie as poste, u."photoProfil",
         COALESCE(SUM(ep.points), 0)::int as score_total,
         COALESCE(SUM(CASE WHEN ep.points > 0 THEN ep.points ELSE 0 END), 0)::int as total_bonus,
         ABS(COALESCE(SUM(CASE WHEN ep.points < 0 THEN ep.points ELSE 0 END), 0))::int as total_malus,
         COUNT(ep.id)::int as nb_evenements
       FROM "User" u
       LEFT JOIN employe_points ep ON u.id = ep.employe_id 
-        AND ep.date_evenement >= CURRENT_DATE - INTERVAL '${intervalClause}'
+        AND ep.date_evenement >= CURRENT_DATE - make_interval(days => ${jours}::int)
       WHERE u.role = 'employee' AND u.statut = 'actif'
       GROUP BY u.id, u.nom, u.prenom, u.email, u.categorie, u."photoProfil"
       ORDER BY score_total DESC
-      LIMIT ${parseInt(limit)}
-    `);
+      LIMIT ${limit}
+    `;
+    const result = convertBigInts(resultRaw);
     
-    // Ajouter rang et niveau
-    const classement = result.rows.map((emp, index) => ({
+    const classement = result.map((emp, index) => ({
       ...emp,
       rang: index + 1,
-      niveau: calculerNiveau(emp.score_total)
+      niveau: calculerNiveau(Number(emp.score_total))
     }));
     
-    res.json({
-      success: true,
-      data: classement,
-      periode
-    });
+    res.json({ success: true, data: classement, periode });
   } catch (error) {
     console.error('Erreur classement:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -346,8 +331,8 @@ router.get('/classement', authMiddleware, adminMiddleware, async (req, res) => {
 router.get('/employe/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const employeId = parseInt(req.params.id);
+    if (isNaN(employeId)) return res.status(400).json({ success: false, error: 'ID invalide' });
     
-    // Infos employé
     const employe = await prisma.user.findUnique({
       where: { id: employeId },
       select: { id: true, nom: true, prenom: true, email: true, categorie: true, photoProfil: true }
@@ -357,47 +342,51 @@ router.get('/employe/:id', authMiddleware, adminMiddleware, async (req, res) => 
       return res.status(404).json({ success: false, error: 'Employé non trouvé' });
     }
     
-    // Score
-    const scoreResult = await pool.query(
-      'SELECT * FROM employe_scores WHERE employe_id = $1',
-      [employeId]
-    );
+    // Score (VIEW)
+    const scoreRowsRaw = await prisma.$queryRaw`
+      SELECT * FROM employe_scores WHERE employe_id = ${employeId}
+    `;
+    const scoreRows = convertBigInts(scoreRowsRaw);
     
-    // Historique complet
-    const historiqueResult = await pool.query(`
-      SELECT ep.*, sr.label, sr.categorie, sr.description,
-             u.nom as created_by_nom, u.prenom as created_by_prenom
+    // Historique — Prisma
+    const historiqueRaw = await prisma.employePoint.findMany({
+      where: { employeId },
+      include: { rule: { select: { label: true, categorie: true, description: true } } },
+      orderBy: [{ dateEvenement: 'desc' }, { createdAt: 'desc' }],
+      take: 100
+    });
+    
+    const historique = historiqueRaw.map(ep => ({
+      id: ep.id, employe_id: ep.employeId, rule_id: ep.ruleId,
+      rule_code: ep.ruleCode, points: ep.points, motif: ep.motif,
+      date_evenement: ep.dateEvenement, created_at: ep.createdAt,
+      label: ep.rule?.label, categorie: ep.rule?.categorie, description: ep.rule?.description
+    }));
+    
+    // Stats par catégorie (12 mois)
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    
+    const statsRowsRaw = await prisma.$queryRaw`
+      SELECT sr.categorie, SUM(ep.points)::int as total, COUNT(*)::int as nb
       FROM employe_points ep
       LEFT JOIN scoring_rules sr ON ep.rule_id = sr.id
-      LEFT JOIN "User" u ON ep.created_by = u.id
-      WHERE ep.employe_id = $1
-      ORDER BY ep.date_evenement DESC, ep.created_at DESC
-      LIMIT 100
-    `, [employeId]);
-    
-    // Stats par catégorie
-    const statsResult = await pool.query(`
-      SELECT 
-        sr.categorie,
-        SUM(ep.points) as total,
-        COUNT(*) as nb
-      FROM employe_points ep
-      LEFT JOIN scoring_rules sr ON ep.rule_id = sr.id
-      WHERE ep.employe_id = $1
-      AND ep.date_evenement >= CURRENT_DATE - INTERVAL '12 months'
+      WHERE ep.employe_id = ${employeId}
+      AND ep.date_evenement >= ${twelveMonthsAgo}
       GROUP BY sr.categorie
-    `, [employeId]);
+    `;
+    const statsRows = convertBigInts(statsRowsRaw);
     
-    const score = scoreResult.rows[0]?.score_total || 0;
+    const scoreTotal = Number(scoreRows[0]?.score_total || 0);
     
     res.json({
       success: true,
       data: {
         employe: { ...employe, poste: employe.categorie },
-        score: scoreResult.rows[0] || { score_total: 0, total_bonus: 0, total_malus: 0 },
-        niveau: calculerNiveau(score),
-        historique: historiqueResult.rows,
-        statsParCategorie: statsResult.rows
+        score: scoreRows[0] || { score_total: 0, total_bonus: 0, total_malus: 0 },
+        niveau: calculerNiveau(scoreTotal),
+        historique,
+        statsParCategorie: statsRows
       }
     });
   } catch (error) {
@@ -419,7 +408,6 @@ router.post('/attribuer', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'employe_id requis' });
     }
     
-    // Vérifier que l'employé existe
     const employe = await prisma.user.findUnique({ where: { id: employe_id } });
     if (!employe) {
       return res.status(404).json({ success: false, error: 'Employé non trouvé' });
@@ -431,13 +419,10 @@ router.post('/attribuer', authMiddleware, adminMiddleware, async (req, res) => {
     
     // Si une règle est spécifiée, récupérer ses points
     if (rule_code && rule_code !== 'BONUS_CUSTOM' && rule_code !== 'MALUS_CUSTOM') {
-      const ruleResult = await pool.query(
-        'SELECT id, points FROM scoring_rules WHERE code = $1',
-        [rule_code]
-      );
-      if (ruleResult.rows.length > 0) {
-        ruleId = ruleResult.rows[0].id;
-        points = ruleResult.rows[0].points;
+      const rule = await prisma.scoringRule.findUnique({ where: { code: rule_code } });
+      if (rule) {
+        ruleId = rule.id;
+        points = rule.points;
       }
     }
     
@@ -445,28 +430,22 @@ router.post('/attribuer', authMiddleware, adminMiddleware, async (req, res) => {
       return res.status(400).json({ success: false, error: 'points requis' });
     }
     
-    // Insérer les points
-    const result = await pool.query(`
-      INSERT INTO employe_points (employe_id, rule_id, rule_code, points, motif, date_evenement, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `, [
-      employe_id,
-      ruleId,
-      ruleCode,
-      points,
-      motif || null,
-      date_evenement || new Date().toISOString().split('T')[0],
-      createdBy
-    ]);
-    
-    // Log
-    console.log(`[SCORING] ${createdBy} a attribué ${points} pts à employé ${employe_id} (${rule_code || 'custom'})`);
+    const created = await prisma.employePoint.create({
+      data: {
+        employeId: employe_id,
+        ruleId,
+        ruleCode: ruleCode,
+        points,
+        motif: motif || null,
+        dateEvenement: date_evenement ? new Date(date_evenement) : new Date(),
+        createdBy
+      }
+    });
     
     res.json({
       success: true,
       message: `${points > 0 ? '+' : ''}${points} points attribués`,
-      data: result.rows[0]
+      data: created
     });
   } catch (error) {
     console.error('Erreur attribution points:', error);
@@ -481,21 +460,16 @@ router.post('/attribuer', authMiddleware, adminMiddleware, async (req, res) => {
 router.delete('/points/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const pointId = parseInt(req.params.id);
+    if (isNaN(pointId)) return res.status(400).json({ success: false, error: 'ID invalide' });
     
-    const result = await pool.query(
-      'DELETE FROM employe_points WHERE id = $1 RETURNING *',
-      [pointId]
-    );
-    
-    if (result.rows.length === 0) {
+    const existing = await prisma.employePoint.findUnique({ where: { id: pointId } });
+    if (!existing) {
       return res.status(404).json({ success: false, error: 'Point non trouvé' });
     }
     
-    res.json({
-      success: true,
-      message: 'Points supprimés',
-      data: result.rows[0]
-    });
+    await prisma.employePoint.delete({ where: { id: pointId } });
+    
+    res.json({ success: true, message: 'Points supprimés', data: existing });
   } catch (error) {
     console.error('Erreur suppression points:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -508,8 +482,8 @@ router.delete('/points/:id', authMiddleware, adminMiddleware, async (req, res) =
  */
 router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    // Top 5 meilleurs scores
-    const top5 = await pool.query(`
+    // Top 5 (complex aggregate — keep raw)
+    const top5Raw = await prisma.$queryRaw`
       SELECT 
         u.id, u.nom, u.prenom, u."photoProfil", u.categorie as poste,
         COALESCE(SUM(ep.points), 0)::int as score_total
@@ -520,10 +494,11 @@ router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
       GROUP BY u.id, u.nom, u.prenom, u."photoProfil", u.categorie
       ORDER BY score_total DESC
       LIMIT 5
-    `);
+    `;
+    const top5 = convertBigInts(top5Raw);
     
-    // 5 scores les plus bas (à surveiller)
-    const bottom5 = await pool.query(`
+    // Bottom 5
+    const bottom5Raw = await prisma.$queryRaw`
       SELECT 
         u.id, u.nom, u.prenom, u."photoProfil", u.categorie as poste,
         COALESCE(SUM(ep.points), 0)::int as score_total
@@ -534,20 +509,37 @@ router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
       GROUP BY u.id, u.nom, u.prenom, u."photoProfil", u.categorie
       ORDER BY score_total ASC
       LIMIT 5
-    `);
+    `;
+    const bottom5 = convertBigInts(bottom5Raw);
     
-    // Dernières attributions
-    const recents = await pool.query(`
-      SELECT ep.*, u.nom, u.prenom, sr.label, sr.categorie
-      FROM employe_points ep
-      JOIN "User" u ON ep.employe_id = u.id
-      LEFT JOIN scoring_rules sr ON ep.rule_id = sr.id
-      ORDER BY ep.created_at DESC
-      LIMIT 10
-    `);
+    // Dernières attributions — Prisma
+    const recentsRaw = await prisma.employePoint.findMany({
+      include: {
+        rule: { select: { label: true, categorie: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
     
-    // Stats globales
-    const stats = await pool.query(`
+    // Fetch user names for recents
+    const userIds = [...new Set(recentsRaw.map(r => r.employeId))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, nom: true, prenom: true }
+    });
+    const usersMap = new Map(users.map(u => [u.id, u]));
+    
+    const recents = recentsRaw.map(ep => ({
+      id: ep.id, employe_id: ep.employeId, rule_code: ep.ruleCode,
+      points: ep.points, motif: ep.motif, date_evenement: ep.dateEvenement,
+      created_at: ep.createdAt,
+      nom: usersMap.get(ep.employeId)?.nom,
+      prenom: usersMap.get(ep.employeId)?.prenom,
+      label: ep.rule?.label, categorie: ep.rule?.categorie
+    }));
+    
+    // Stats globales (30 jours)
+    const statsRowsRaw = await prisma.$queryRaw`
       SELECT 
         COUNT(DISTINCT employe_id)::int as nb_employes_notes,
         COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 0 END), 0)::int as total_bonus_global,
@@ -555,15 +547,16 @@ router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
         COUNT(*)::int as nb_attributions
       FROM employe_points
       WHERE date_evenement >= CURRENT_DATE - INTERVAL '30 days'
-    `);
+    `;
+    const statsRows = convertBigInts(statsRowsRaw);
     
     res.json({
       success: true,
       data: {
-        top5: top5.rows.map((e, i) => ({ ...e, rang: i + 1, niveau: calculerNiveau(e.score_total) })),
-        bottom5: bottom5.rows.map(e => ({ ...e, niveau: calculerNiveau(e.score_total) })),
-        recents: recents.rows,
-        stats: stats.rows[0]
+        top5: top5.map((e, i) => ({ ...e, rang: i + 1, niveau: calculerNiveau(Number(e.score_total)) })),
+        bottom5: bottom5.map(e => ({ ...e, niveau: calculerNiveau(Number(e.score_total)) })),
+        recents,
+        stats: statsRows[0]
       }
     });
   } catch (error) {
@@ -576,9 +569,6 @@ router.get('/dashboard', authMiddleware, adminMiddleware, async (req, res) => {
 // FONCTIONS UTILITAIRES
 // =====================================================
 
-/**
- * Calcule le niveau/badge selon le score
- */
 function calculerNiveau(score) {
   if (score >= 500) return { code: 'diamant', label: 'Diamant', emoji: '💎', color: '#B9F2FF' };
   if (score >= 300) return { code: 'or', label: 'Or', emoji: '🥇', color: '#FFD700' };
@@ -588,29 +578,30 @@ function calculerNiveau(score) {
 }
 
 // =====================================================
-// ROUTES PEER FEEDBACK (Feedback entre collègues)
+// ROUTES PEER FEEDBACK
 // =====================================================
 
 /**
  * GET /api/scoring/peer-feedback/colleagues
- * Liste des collègues actifs pour envoyer un feedback
  */
 router.get('/peer-feedback/colleagues', authMiddleware, async (req, res) => {
   try {
     const currentUserId = req.user.userId || req.user.id;
-    console.log('📋 [COLLEAGUES] Récupération collègues pour userId:', currentUserId);
     
-    const result = await pool.query(`
-      SELECT id, prenom, nom, categorie as poste, "photoProfil" as photo
-      FROM "User" 
-      WHERE statut = 'actif' 
-        AND id != $1
-        AND role IN ('employee', 'manager', 'admin', 'rh')
-      ORDER BY prenom, nom
-    `, [currentUserId]);
+    const colleagues = await prisma.user.findMany({
+      where: {
+        statut: 'actif',
+        id: { not: currentUserId },
+        role: { in: ['employee', 'manager', 'admin', 'rh'] }
+      },
+      select: { id: true, prenom: true, nom: true, categorie: true, photoProfil: true },
+      orderBy: [{ prenom: 'asc' }, { nom: 'asc' }]
+    });
     
-    console.log('📋 [COLLEAGUES] Trouvés:', result.rows.length, 'collègues');
-    res.json(result.rows);
+    // Map to original format
+    res.json(colleagues.map(c => ({
+      id: c.id, prenom: c.prenom, nom: c.nom, poste: c.categorie, photo: c.photoProfil
+    })));
   } catch (err) {
     console.error('❌ [COLLEAGUES] Erreur récupération collègues:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -619,7 +610,6 @@ router.get('/peer-feedback/colleagues', authMiddleware, async (req, res) => {
 
 /**
  * GET /api/scoring/peer-feedback/categories
- * Liste des catégories de feedback possibles
  */
 router.get('/peer-feedback/categories', authMiddleware, (req, res) => {
   const categories = [
@@ -635,75 +625,58 @@ router.get('/peer-feedback/categories', authMiddleware, (req, res) => {
 
 /**
  * POST /api/scoring/peer-feedback
- * Envoyer un feedback à un collègue (employé)
- * Limité à 2 feedbacks par semaine par employé
+ * Envoyer un feedback (limité à 2/semaine)
  */
 router.post('/peer-feedback', authMiddleware, async (req, res) => {
   try {
     const fromEmployeeId = req.user.userId || req.user.id;
     const { toEmployeeId, message, category } = req.body;
     
-    console.log('📤 [PEER-FEEDBACK] Création feedback de', fromEmployeeId, 'vers', toEmployeeId);
-    
-    // Validation
     if (!toEmployeeId || !message || message.trim().length < 10) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Message requis (minimum 10 caractères)' 
-      });
+      return res.status(400).json({ success: false, error: 'Message requis (minimum 10 caractères)' });
     }
-    
     if (fromEmployeeId === toEmployeeId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Vous ne pouvez pas vous auto-évaluer' 
-      });
+      return res.status(400).json({ success: false, error: 'Vous ne pouvez pas vous auto-évaluer' });
     }
     
-    // Vérifier la limite de 2 feedbacks par semaine
-    const weeklyCount = await pool.query(`
-      SELECT COUNT(*) as count FROM peer_feedbacks 
-      WHERE from_employee_id = $1 
+    // Limite 2/semaine
+    const weeklyCountRowsRaw = await prisma.$queryRaw`
+      SELECT COUNT(*)::int as count FROM peer_feedbacks 
+      WHERE from_employee_id = ${fromEmployeeId} 
       AND created_at >= DATE_TRUNC('week', CURRENT_DATE)
-    `, [fromEmployeeId]);
+    `;
+    const weeklyCountRows = convertBigInts(weeklyCountRowsRaw);
     
-    if (parseInt(weeklyCount.rows[0].count) >= 2) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Limite atteinte: vous avez déjà envoyé 2 feedbacks cette semaine' 
-      });
+    if (Number(weeklyCountRows[0].count) >= 2) {
+      return res.status(400).json({ success: false, error: 'Limite atteinte: vous avez déjà envoyé 2 feedbacks cette semaine' });
     }
     
-    // Déterminer les points selon la catégorie
-    const pointsMap = {
-      entraide: 3, rush: 5, formation: 4, 
-      attitude: 3, initiative: 4, polyvalence: 4
-    };
+    const pointsMap = { entraide: 3, rush: 5, formation: 4, attitude: 3, initiative: 4, polyvalence: 4 };
     const points = pointsMap[category] || 3;
     
-    // Créer le feedback
-    const result = await pool.query(`
-      INSERT INTO peer_feedbacks (from_employee_id, to_employee_id, message, category, points_proposed)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [fromEmployeeId, toEmployeeId, message.trim(), category || 'entraide', points]);
+    const created = await prisma.peerFeedback.create({
+      data: {
+        fromEmployeeId,
+        toEmployeeId,
+        message: message.trim(),
+        category: category || 'entraide',
+        pointsProposed: points
+      }
+    });
     
-    // Récupérer les infos des employés pour la notif
-    const employees = await pool.query(`
-      SELECT id, nom, prenom FROM "User" WHERE id IN ($1, $2)
-    `, [fromEmployeeId, toEmployeeId]);
+    // Noms des employés
+    const employees = await prisma.user.findMany({
+      where: { id: { in: [fromEmployeeId, toEmployeeId] } },
+      select: { id: true, nom: true, prenom: true }
+    });
     
-    const fromEmp = employees.rows.find(e => e.id === fromEmployeeId);
-    const toEmp = employees.rows.find(e => e.id === toEmployeeId);
+    const fromEmp = employees.find(e => e.id === fromEmployeeId);
+    const toEmp = employees.find(e => e.id === toEmployeeId);
     
     res.json({ 
       success: true, 
-      message: `Feedback envoyé ! Il sera validé par un manager.`,
-      data: {
-        ...result.rows[0],
-        from: fromEmp,
-        to: toEmp
-      }
+      message: 'Feedback envoyé ! Il sera validé par un manager.',
+      data: { ...created, from: fromEmp, to: toEmp }
     });
   } catch (error) {
     console.error('Erreur création peer feedback:', error);
@@ -713,23 +686,32 @@ router.post('/peer-feedback', authMiddleware, async (req, res) => {
 
 /**
  * GET /api/scoring/peer-feedback/mes-recus
- * Liste des feedbacks reçus par l'employé connecté
  */
 router.get('/peer-feedback/mes-recus', authMiddleware, async (req, res) => {
   try {
     const employeId = req.user.userId || req.user.id;
-    const result = await pool.query(`
-      SELECT 
-        pf.*,
-        u.nom as from_nom, u.prenom as from_prenom
-      FROM peer_feedbacks pf
-      JOIN "User" u ON pf.from_employee_id = u.id
-      WHERE pf.to_employee_id = $1 AND pf.status = 'approved'
-      ORDER BY pf.created_at DESC
-      LIMIT 20
-    `, [employeId]);
     
-    res.json({ success: true, data: result.rows });
+    const feedbacksRaw = await prisma.peerFeedback.findMany({
+      where: { toEmployeeId: employeId, status: 'approved' },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+    
+    // Fetch sender names
+    const senderIds = [...new Set(feedbacksRaw.map(f => f.fromEmployeeId))];
+    const senders = await prisma.user.findMany({
+      where: { id: { in: senderIds } },
+      select: { id: true, nom: true, prenom: true }
+    });
+    const sendersMap = new Map(senders.map(s => [s.id, s]));
+    
+    const data = feedbacksRaw.map(pf => ({
+      ...pf,
+      from_nom: sendersMap.get(pf.fromEmployeeId)?.nom,
+      from_prenom: sendersMap.get(pf.fromEmployeeId)?.prenom
+    }));
+    
+    res.json({ success: true, data });
   } catch (error) {
     console.error('Erreur liste feedbacks reçus:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -738,42 +720,41 @@ router.get('/peer-feedback/mes-recus', authMiddleware, async (req, res) => {
 
 /**
  * GET /api/scoring/peer-feedback/mes-envois
- * Liste des feedbacks envoyés par l'employé connecté
  */
 router.get('/peer-feedback/mes-envois', authMiddleware, async (req, res) => {
   try {
     const employeId = req.user.userId || req.user.id;
-    console.log('📤 [MES-ENVOIS] Récupération feedbacks envoyés par', employeId);
     
-    // Récupérer les feedbacks envoyés
-    const result = await pool.query(`
-      SELECT 
-        pf.*,
-        u.nom as to_nom, u.prenom as to_prenom
-      FROM peer_feedbacks pf
-      JOIN "User" u ON pf.to_employee_id = u.id
-      WHERE pf.from_employee_id = $1
-      ORDER BY pf.created_at DESC
-      LIMIT 20
-    `, [employeId]);
-    
-    // Compter combien de feedbacks cette semaine pour calculer le reste
-    const weekCount = await pool.query(`
-      SELECT COUNT(*) as count
-      FROM peer_feedbacks
-      WHERE from_employee_id = $1
-      AND created_at >= date_trunc('week', CURRENT_DATE)
-    `, [employeId]);
-    
-    const feedbacksRestants = Math.max(0, 2 - parseInt(weekCount.rows[0].count));
-    
-    console.log('📤 [MES-ENVOIS]', result.rows.length, 'feedbacks trouvés,', feedbacksRestants, 'restants cette semaine');
-    
-    res.json({ 
-      success: true, 
-      data: result.rows,
-      feedbacksRestants
+    const feedbacksRaw = await prisma.peerFeedback.findMany({
+      where: { fromEmployeeId: employeId },
+      orderBy: { createdAt: 'desc' },
+      take: 20
     });
+    
+    // Fetch receiver names
+    const receiverIds = [...new Set(feedbacksRaw.map(f => f.toEmployeeId))];
+    const receivers = await prisma.user.findMany({
+      where: { id: { in: receiverIds } },
+      select: { id: true, nom: true, prenom: true }
+    });
+    const receiversMap = new Map(receivers.map(r => [r.id, r]));
+    
+    const data = feedbacksRaw.map(pf => ({
+      ...pf,
+      to_nom: receiversMap.get(pf.toEmployeeId)?.nom,
+      to_prenom: receiversMap.get(pf.toEmployeeId)?.prenom
+    }));
+    
+    // Feedbacks cette semaine
+    const weekCountRowsRaw = await prisma.$queryRaw`
+      SELECT COUNT(*)::int as count FROM peer_feedbacks
+      WHERE from_employee_id = ${employeId}
+      AND created_at >= date_trunc('week', CURRENT_DATE)
+    `;
+    const weekCountRows = convertBigInts(weekCountRowsRaw);
+    const feedbacksRestants = Math.max(0, 2 - Number(weekCountRows[0].count));
+    
+    res.json({ success: true, data, feedbacksRestants });
   } catch (error) {
     console.error('Erreur liste feedbacks envoyés:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -782,23 +763,37 @@ router.get('/peer-feedback/mes-envois', authMiddleware, async (req, res) => {
 
 /**
  * GET /api/scoring/peer-feedback/pending
- * Liste des feedbacks en attente de validation (manager/admin)
+ * Feedbacks en attente de validation (admin)
  */
 router.get('/peer-feedback/pending', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT 
-        pf.*,
-        uf.nom as from_nom, uf.prenom as from_prenom, uf.categorie as from_poste,
-        ut.nom as to_nom, ut.prenom as to_prenom, ut.categorie as to_poste
-      FROM peer_feedbacks pf
-      JOIN "User" uf ON pf.from_employee_id = uf.id
-      JOIN "User" ut ON pf.to_employee_id = ut.id
-      WHERE pf.status = 'pending'
-      ORDER BY pf.created_at ASC
-    `);
+    const feedbacksRaw = await prisma.peerFeedback.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'asc' }
+    });
     
-    res.json({ success: true, data: result.rows });
+    // Fetch all user names involved
+    const userIds = [...new Set([
+      ...feedbacksRaw.map(f => f.fromEmployeeId),
+      ...feedbacksRaw.map(f => f.toEmployeeId)
+    ])];
+    const usersArr = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, nom: true, prenom: true, categorie: true }
+    });
+    const usersMap = new Map(usersArr.map(u => [u.id, u]));
+    
+    const data = feedbacksRaw.map(pf => ({
+      ...pf,
+      from_nom: usersMap.get(pf.fromEmployeeId)?.nom,
+      from_prenom: usersMap.get(pf.fromEmployeeId)?.prenom,
+      from_poste: usersMap.get(pf.fromEmployeeId)?.categorie,
+      to_nom: usersMap.get(pf.toEmployeeId)?.nom,
+      to_prenom: usersMap.get(pf.toEmployeeId)?.prenom,
+      to_poste: usersMap.get(pf.toEmployeeId)?.categorie
+    }));
+    
+    res.json({ success: true, data });
   } catch (error) {
     console.error('Erreur liste feedbacks pending:', error);
     res.status(500).json({ success: false, error: 'Erreur serveur' });
@@ -815,100 +810,81 @@ router.put('/peer-feedback/:id/validate', authMiddleware, adminMiddleware, async
     const { approved, rejectionReason, pointsAdjusted } = req.body;
     const validatorId = req.user.userId || req.user.id;
     
-    console.log('📋 [VALIDATE] Validation feedback', id, 'par', validatorId, 'approved:', approved);
+    const fb = await prisma.peerFeedback.findFirst({
+      where: { id: parseInt(id), status: 'pending' }
+    });
     
-    // Récupérer le feedback
-    const feedback = await pool.query(
-      'SELECT * FROM peer_feedbacks WHERE id = $1 AND status = $2',
-      [id, 'pending']
-    );
-    
-    if (feedback.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Feedback non trouvé ou déjà traité' 
-      });
+    if (!fb) {
+      return res.status(404).json({ success: false, error: 'Feedback non trouvé ou déjà traité' });
     }
     
-    const fb = feedback.rows[0];
-    
     if (approved) {
-      // PLAFOND MENSUEL: Vérifier les points feedback déjà accumulés ce mois
-      const PLAFOND_MENSUEL_FEEDBACK = 50; // Max 50 pts/mois via feedbacks
+      // Plafond mensuel
+      const PLAFOND_MENSUEL_FEEDBACK = 50;
       
-      const pointsMoisResult = await pool.query(`
-        SELECT COALESCE(SUM(points), 0) as points_mois
+      const pointsMoisRowsRaw = await prisma.$queryRaw`
+        SELECT COALESCE(SUM(points), 0)::int as points_mois
         FROM score_history
-        WHERE employee_id = $1 
+        WHERE employee_id = ${fb.toEmployeeId} 
           AND source = 'peer_feedback'
           AND created_at >= DATE_TRUNC('month', CURRENT_DATE)
           AND created_at < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
-      `, [fb.to_employee_id]);
+      `;
+      const pointsMoisRows = convertBigInts(pointsMoisRowsRaw);
       
-      const pointsMois = parseInt(pointsMoisResult.rows[0]?.points_mois || 0);
+      const pointsMois = Number(pointsMoisRows[0]?.points_mois || 0);
       const pointsRestants = Math.max(0, PLAFOND_MENSUEL_FEEDBACK - pointsMois);
       
-      console.log(`📊 [PLAFOND] Employé ${fb.to_employee_id}: ${pointsMois}/${PLAFOND_MENSUEL_FEEDBACK} pts feedback ce mois, reste ${pointsRestants} pts`);
-      
-      // Approuver: mettre à jour le feedback et attribuer les points
-      let finalPoints = pointsAdjusted || fb.points_proposed;
-      
-      // Appliquer le plafond
+      let finalPoints = pointsAdjusted || fb.pointsProposed;
       if (pointsRestants === 0) {
-        // Plafond atteint: approuver mais 0 points
-        console.log(`⚠️ [PLAFOND] Plafond mensuel atteint pour employé ${fb.to_employee_id}, feedback approuvé avec 0 pts`);
         finalPoints = 0;
       } else if (finalPoints > pointsRestants) {
-        // Réduire les points pour respecter le plafond
-        console.log(`⚠️ [PLAFOND] Points réduits de ${finalPoints} à ${pointsRestants} pour respecter le plafond`);
         finalPoints = pointsRestants;
       }
       
-      await pool.query(`
-        UPDATE peer_feedbacks 
-        SET status = 'approved', validated_by = $1, validated_at = NOW(), points_proposed = $2
-        WHERE id = $3
-      `, [validatorId, finalPoints, id]);
+      // Approuver le feedback
+      await prisma.peerFeedback.update({
+        where: { id: parseInt(id) },
+        data: { status: 'approved', validatedBy: validatorId, validatedAt: new Date(), pointsProposed: finalPoints }
+      });
       
-      // Mettre à jour employee_scores (seulement si points > 0)
+      // Écrire les points dans employe_points
       if (finalPoints > 0) {
-        await pool.query(`
-          INSERT INTO employee_scores (employee_id, peer_feedback_points, total_points)
-          VALUES ($1, $2, $2)
-          ON CONFLICT (employee_id) DO UPDATE 
-          SET peer_feedback_points = employee_scores.peer_feedback_points + $2,
-              total_points = employee_scores.total_points + $2,
-              updated_at = NOW()
-        `, [fb.to_employee_id, finalPoints]);
+        await prisma.employePoint.create({
+          data: {
+            employeId: fb.toEmployeeId,
+            ruleCode: 'PEER_FEEDBACK',
+            points: finalPoints,
+            motif: `Feedback collègue (${fb.category}): ${fb.message.substring(0, 100)}`,
+            dateEvenement: new Date(),
+            createdBy: validatorId
+          }
+        });
       }
       
-      // Ajouter dans l'historique (même si 0 pts pour traçabilité)
-      await pool.query(`
-        INSERT INTO score_history (employee_id, points, reason, category, source, created_by)
-        VALUES ($1, $2, $3, $4, 'peer_feedback', $5)
-      `, [
-        fb.to_employee_id,
-        finalPoints,
-        finalPoints === 0 
-          ? `Feedback collègue (plafond mensuel atteint): ${fb.message.substring(0, 80)}`
-          : `Feedback collègue: ${fb.message.substring(0, 100)}`,
-        fb.category,
-        validatorId
-      ]);
+      // Historique pour traçabilité plafond
+      await prisma.scoreHistory.create({
+        data: {
+          employeeId: fb.toEmployeeId,
+          points: finalPoints,
+          reason: finalPoints === 0 
+            ? `Feedback collègue (plafond mensuel atteint): ${fb.message.substring(0, 80)}`
+            : `Feedback collègue: ${fb.message.substring(0, 100)}`,
+          category: fb.category,
+          source: 'peer_feedback',
+          createdBy: validatorId
+        }
+      });
       
-      console.log('✅ [VALIDATE] Points attribués:', finalPoints, 'à employé', fb.to_employee_id);
-      
-      // Message adapté selon le plafond
       let message = `Feedback approuvé ! +${finalPoints} points attribués.`;
       if (finalPoints === 0) {
         message = `Feedback approuvé mais plafond mensuel atteint (50 pts max/mois). 0 points attribués.`;
-      } else if (finalPoints < (pointsAdjusted || fb.points_proposed)) {
+      } else if (finalPoints < (pointsAdjusted || fb.pointsProposed)) {
         message = `Feedback approuvé ! +${finalPoints} points (réduits pour respecter le plafond mensuel de 50 pts).`;
       }
       
       res.json({ 
-        success: true, 
-        message,
+        success: true, message,
         pointsAttribues: finalPoints,
         plafondInfo: {
           plafond: PLAFOND_MENSUEL_FEEDBACK,
@@ -918,11 +894,10 @@ router.put('/peer-feedback/:id/validate', authMiddleware, adminMiddleware, async
       });
     } else {
       // Rejeter
-      await pool.query(`
-        UPDATE peer_feedbacks 
-        SET status = 'rejected', validated_by = $1, validated_at = NOW(), rejection_reason = $2
-        WHERE id = $3
-      `, [validatorId, rejectionReason || 'Non approuvé', id]);
+      await prisma.peerFeedback.update({
+        where: { id: parseInt(id) },
+        data: { status: 'rejected', validatedBy: validatorId, validatedAt: new Date(), rejectionReason: rejectionReason || 'Non approuvé' }
+      });
       
       res.json({ success: true, message: 'Feedback rejeté.' });
     }
@@ -933,40 +908,39 @@ router.put('/peer-feedback/:id/validate', authMiddleware, adminMiddleware, async
 });
 
 /**
- * GET /api/scoring/peer-feedback/stats
- * Statistiques des feedbacks (manager)
+ * GET /api/scoring/peer-feedback/stats (admin)
  */
 router.get('/peer-feedback/stats', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const stats = await pool.query(`
+    // PostgreSQL FILTER syntax — keep as raw
+    const statsRowsRaw = await prisma.$queryRaw`
       SELECT 
-        COUNT(*) FILTER (WHERE status = 'pending') as pending,
-        COUNT(*) FILTER (WHERE status = 'approved') as approved,
-        COUNT(*) FILTER (WHERE status = 'rejected') as rejected,
-        COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('week', CURRENT_DATE)) as this_week
+        COUNT(*) FILTER (WHERE status = 'pending')::int as pending,
+        COUNT(*) FILTER (WHERE status = 'approved')::int as approved,
+        COUNT(*) FILTER (WHERE status = 'rejected')::int as rejected,
+        COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('week', CURRENT_DATE))::int as this_week
       FROM peer_feedbacks
-    `);
+    `;
+    const statsRows = convertBigInts(statsRowsRaw);
     
-    // Top receveurs de feedbacks
-    const topReceivers = await pool.query(`
+    // Top receveurs (aggregate)
+    const topReceiversRaw = await prisma.$queryRaw`
       SELECT 
         u.id, u.nom, u.prenom,
-        COUNT(*) as nb_feedbacks,
-        SUM(pf.points_proposed) as total_points
+        COUNT(*)::int as nb_feedbacks,
+        SUM(pf.points_proposed)::int as total_points
       FROM peer_feedbacks pf
       JOIN "User" u ON pf.to_employee_id = u.id
       WHERE pf.status = 'approved'
       GROUP BY u.id, u.nom, u.prenom
       ORDER BY nb_feedbacks DESC
       LIMIT 5
-    `);
+    `;
+    const topReceivers = convertBigInts(topReceiversRaw);
     
     res.json({ 
       success: true, 
-      data: { 
-        ...stats.rows[0],
-        topReceivers: topReceivers.rows 
-      } 
+      data: { ...statsRows[0], topReceivers } 
     });
   } catch (error) {
     console.error('Erreur stats feedbacks:', error);

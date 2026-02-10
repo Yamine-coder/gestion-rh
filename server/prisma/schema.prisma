@@ -74,6 +74,10 @@ model Pointage {
   horodatage DateTime @default(now())
   userId     Int
   user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([horodatage])
+  @@index([userId, horodatage])
 }
 
 model Conge {
@@ -103,11 +107,15 @@ model Shift {
   type             String
   motif            String?
   segments         Json
-  version          Int               @default(0)
+  version          Int               @default(0) // DEPRECATED: optimistic locking removed, kept for backward compat
   extraPaymentLogs ExtraPaymentLog[] @relation("ShiftExtraLogs")
   employe          User              @relation(fields: [employeId], references: [id])
   corrections      ShiftCorrection[]
   remplacements    DemandeRemplacement[]
+
+  @@index([employeId])
+  @@index([date])
+  @@index([employeId, date])
 }
 
 model ExtraPaymentLog {
@@ -468,6 +476,114 @@ model Consigne {
   @@index([cibleCategorie])
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDIT LOG GÉNÉRIQUE
+// Traçabilité des modifications sur shifts, congés, paiements
+// ═══════════════════════════════════════════════════════════════════════════
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  entite    String   // "shift", "conge", "paiement_extra", "shift_batch", "shift_range"
+  entiteId  Int?     // ID de l'entité (null si action batch)
+  action    String   // "creation", "modification", "suppression", "approbation", "refus", "batch_creation", "batch_suppression"
+  userId    Int      // Qui a fait l'action
+  details   Json?    // { before: {...}, after: {...}, metadata: {...} }
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([entite, entiteId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SYSTÈME DE SCORING (tables existantes via raw SQL, maintenant mappées Prisma)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ScoringRule {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.VarChar(50)
+  label       String    @db.VarChar(150)
+  description String?   @db.Text
+  points      Int
+  categorie   String    @db.VarChar(30)
+  type        String?   @default("auto") @db.VarChar(20)
+  actif       Boolean?  @default(true)
+  createdAt   DateTime? @default(now()) @map("created_at")
+  
+  employePoints EmployePoint[]
+
+  @@map("scoring_rules")
+  @@index([categorie])
+  @@index([code])
+}
+
+model EmployePoint {
+  id             Int       @id @default(autoincrement())
+  employeId      Int       @map("employe_id")
+  ruleId         Int?      @map("rule_id")
+  ruleCode       String?   @map("rule_code") @db.VarChar(50)
+  points         Int
+  motif          String?   @db.Text
+  dateEvenement  DateTime? @default(now()) @map("date_evenement") @db.Date
+  referenceType  String?   @map("reference_type") @db.VarChar(30)
+  referenceId    Int?      @map("reference_id")
+  createdAt      DateTime? @default(now()) @map("created_at")
+  createdBy      Int?      @map("created_by")
+  
+  rule           ScoringRule? @relation(fields: [ruleId], references: [id])
+
+  @@map("employe_points")
+  @@index([employeId], map: "idx_ep_employe_id")
+  @@index([dateEvenement], map: "idx_ep_date_evenement")
+}
+
+model EmployeeScore {
+  id                  Int       @id @default(autoincrement())
+  employeeId          Int       @unique @map("employee_id")
+  peerFeedbackPoints  Int?      @default(0) @map("peer_feedback_points")
+  totalPoints         Int?      @default(0) @map("total_points")
+  updatedAt           DateTime? @default(now()) @map("updated_at")
+
+  @@map("employee_scores")
+  @@index([employeeId])
+}
+
+model PeerFeedback {
+  id              Int       @id @default(autoincrement())
+  fromEmployeeId  Int       @map("from_employee_id")
+  toEmployeeId    Int       @map("to_employee_id")
+  message         String    @db.Text
+  category        String?   @default("entraide") @db.VarChar(50)
+  pointsProposed  Int?      @default(3) @map("points_proposed")
+  status          String?   @default("pending") @db.VarChar(20)
+  validatedBy     Int?      @map("validated_by")
+  validatedAt     DateTime? @map("validated_at")
+  rejectionReason String?   @map("rejection_reason") @db.Text
+  createdAt       DateTime? @default(now()) @map("created_at")
+  updatedAt       DateTime? @default(now()) @map("updated_at")
+
+  @@map("peer_feedbacks")
+  @@index([fromEmployeeId], map: "idx_pf_from")
+  @@index([toEmployeeId], map: "idx_pf_to")
+  @@index([status], map: "idx_pf_status")
+}
+
+model ScoreHistory {
+  id          Int       @id @default(autoincrement())
+  employeeId  Int       @map("employee_id")
+  points      Int
+  reason      String?   @db.Text
+  category    String?   @db.VarChar(50)
+  source      String?   @db.VarChar(50)
+  createdBy   Int?      @map("created_by")
+  createdAt   DateTime? @default(now()) @map("created_at")
+
+  @@map("score_history")
+  @@index([employeeId], map: "idx_sh_employee")
+  @@index([source], map: "idx_sh_source")
+}
+
 // FICHES DE POSTE (Éditeur intégré avec génération PDF)
 // ═══════════════════════════════════════════════════════════════════════════
 model FichePoste {
@@ -490,4 +606,22 @@ model FichePoste {
   
   @@index([categorie])
   @@index([active])
+}
+
+// 📊 Table permanente des mouvements d'effectif (entrées/sorties)
+// Survit aux hard-deletes pour que le turnover reste fiable
+model MouvementEffectif {
+  id            Int       @id @default(autoincrement())
+  userId        Int?      // null si l'employé a été hard-deleted
+  type          String    // "entree" ou "sortie"
+  date          DateTime  // dateEmbauche ou dateSortie
+  motif         String?   // motifDepart pour les sorties, null pour les entrées
+  nom           String?   // Snapshot du nom au moment du mouvement
+  prenom        String?   // Snapshot du prénom
+  categories    String?   // Snapshot des catégories
+  createdAt     DateTime  @default(now())
+
+  @@index([type])
+  @@index([date])
+  @@index([userId])
 }

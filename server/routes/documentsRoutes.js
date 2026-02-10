@@ -104,7 +104,6 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
           }
         }
 
-        console.log(`☁️  Document ${type} uploadé sur Cloudinary: ${fileUrl}`);
       } catch (cloudinaryError) {
         console.error('❌ Erreur Cloudinary:', cloudinaryError.message);
         return res.status(500).json({ error: 'Erreur lors de l\'upload vers le cloud' });
@@ -118,11 +117,9 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
         const fullOldPath = path.join(__dirname, '..', oldFileUrl);
         if (fs.existsSync(fullOldPath)) {
           fs.unlinkSync(fullOldPath);
-          console.log(`🗑️  Ancien document local supprimé: ${oldFileUrl}`);
         }
       }
 
-      console.log(`📁 Document ${type} stocké localement: ${fileUrl}`);
     }
 
     // Mettre à jour le champ correspondant dans la base
@@ -136,7 +133,6 @@ router.post('/upload', authMiddleware, upload.single('document'), async (req, re
       data: updateData
     });
 
-    console.log(`✅ Document ${type} uploadé pour l'utilisateur ${userId}`);
     res.json({
       message: 'Document uploadé avec succès',
       filePath: fileUrl,
@@ -193,14 +189,12 @@ router.delete('/delete/:type', authMiddleware, async (req, res) => {
       if (publicId) {
         const resourceType = fileUrl.includes('/raw/') ? 'raw' : 'image';
         await deleteFile(publicId, resourceType);
-        console.log(`☁️  Document Cloudinary supprimé: ${publicId}`);
       }
     } else {
       // 📁 LOCAL : Supprimer le fichier local
       const fullPath = path.join(__dirname, '..', fileUrl);
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
-        console.log(`🗑️  Document local supprimé: ${fileUrl}`);
       }
     }
 
@@ -215,7 +209,6 @@ router.delete('/delete/:type', authMiddleware, async (req, res) => {
       data: updateData
     });
 
-    console.log(`✅ Document ${type} supprimé pour l'utilisateur ${userId}`);
     res.json({ message: 'Document supprimé avec succès' });
 
   } catch (error) {

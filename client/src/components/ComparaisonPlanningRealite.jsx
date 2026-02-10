@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import './ComparaisonPlanningRealite.css';
 import { getCurrentDateString } from '../utils/parisTimeUtils';
 import { User, Calendar, ClipboardList } from 'lucide-react';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 const ComparaisonPlanningRealite = () => {
   const [comparaisons, setComparaisons] = useState([]);

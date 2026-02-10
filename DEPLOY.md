@@ -61,6 +61,7 @@ FRONTEND_URL=https://chez-antoine.vercel.app
 NODE_ENV=production
 EMAIL_USER=votre-email@gmail.com
 EMAIL_PASSWORD=xxxx xxxx xxxx xxxx
+BASE_URL=https://chez-antoine-api.onrender.com
 ```
 
 > 💡 **Générer JWT_SECRET** : https://generate-secret.vercel.app/32

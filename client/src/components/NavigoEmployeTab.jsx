@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Train, Eye, Check, X, Clock, FileText, AlertCircle, AlertTriangle, MessageSquare } from 'lucide-react';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 /**
  * Composant onglet Navigo pour la fiche employé (Vue Admin)

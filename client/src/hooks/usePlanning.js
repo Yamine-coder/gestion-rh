@@ -4,9 +4,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { detectConflicts } from '../utils/congeConflicts';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 export function usePlanningWithConges() {
   const [showCongesInPlanning, setShowCongesInPlanning] = useState(false);

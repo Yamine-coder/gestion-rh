@@ -3,8 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 
 // Configuration du stockage des fichiers
@@ -44,7 +43,7 @@ const upload = multer({
 });
 
 // Upload d'un justificatif Navigo (par admin)
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     const { employeId, eligibleNavigo } = req.body;
     
@@ -87,7 +86,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // Récupérer tous les employés avec leur statut Navigo
-router.get('/liste', async (req, res) => {
+router.get('/liste', authMiddleware, async (req, res) => {
   try {
     const employes = await prisma.user.findMany({
       where: {
@@ -177,7 +176,6 @@ router.post('/mon-justificatif', authMiddleware, upload.single('file'), async (r
       try {
         await fs.unlink(oldFilePath);
       } catch (error) {
-        console.log('Ancien fichier non trouvé ou déjà supprimé');
       }
     }
 
@@ -258,7 +256,7 @@ router.delete('/mon-justificatif', authMiddleware, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Toggle l'éligibilité Navigo d'un employé (sans upload de fichier)
-router.put('/eligible/:employeId', async (req, res) => {
+router.put('/eligible/:employeId', authMiddleware, async (req, res) => {
   try {
     const { employeId } = req.params;
     const { eligibleNavigo } = req.body;
@@ -305,7 +303,7 @@ router.put('/eligible/:employeId', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Supprimer un justificatif (par admin)
-router.delete('/:employeId', async (req, res) => {
+router.delete('/:employeId', authMiddleware, async (req, res) => {
   try {
     const { employeId } = req.params;
 
@@ -457,7 +455,6 @@ router.post('/mensuel/upload', authMiddleware, uploadMensuel.single('file'), asy
       try {
         await fs.unlink(oldFilePath);
       } catch (e) {
-        console.log('Ancien fichier non trouvé');
       }
       
       // Supprimer l'enregistrement existant
@@ -517,7 +514,6 @@ router.delete('/mensuel/:id', authMiddleware, async (req, res) => {
     try {
       await fs.unlink(filePath);
     } catch (e) {
-      console.log('Fichier non trouvé');
     }
 
     await prisma.justificatifNavigo.delete({
@@ -798,6 +794,7 @@ router.post('/mensuel/rappels/verifier', authMiddleware, async (req, res) => {
           data: {
             employe_id: emp.id,
             type: 'navigo_rappel',
+            titre: 'Rappel justificatif Navigo',
             message: `N'oubliez pas d'envoyer votre justificatif Navigo pour le mois de ${getNomMois(moisActuel)} ${anneeActuelle}. Vous avez jusqu'au 15 du mois.`,
             lue: false
           }

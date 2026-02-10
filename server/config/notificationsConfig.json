@@ -13,10 +13,10 @@
     "description": "Nouvelles demandes de congés et rappels"
   },
   "avisGoogle": {
-    "enabled": true,
+    "enabled": false,
     "recipients": [],
-    "alertThreshold": 3,
-    "sendDailyReport": false,
+    "alertThreshold": 2,
+    "sendDailyReport": true,
     "description": "Alertes avis négatifs Google"
   },
   "anomalies": {
@@ -29,8 +29,8 @@
       }
     ],
     "graviteMin": "basse",
-    "sendDailyRecap": false,
-    "alertUrgent": false,
+    "sendDailyRecap": true,
+    "alertUrgent": true,
     "description": "Anomalies de pointage détectées"
   },
   "remplacements": {

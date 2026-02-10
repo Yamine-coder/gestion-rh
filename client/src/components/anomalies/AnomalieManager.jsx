@@ -1,9 +1,7 @@
 // client/src/components/anomalies/AnomalieManager.jsx
 import React, { useState, useCallback, useMemo } from 'react';
 import { Check, X, AlertTriangle, Loader } from 'lucide-react';
-
-// Configuration API
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../../config/api';
 
 /**
  * SYSTÈME D'ANOMALIES UNIFIÉ - VERSION PARFAITE
@@ -27,21 +25,12 @@ export function useAnomalieProcessor() {
     const tempId = `${employeId}_${date}_${ecart.type}`;
     
     if (processing.has(tempId)) {
-      console.log(`⏳ Traitement déjà en cours pour ${tempId}`);
       return null;
     }
 
     setProcessing(prev => new Set(prev).add(tempId));
 
     try {
-      console.log(`🚀 [AnomalieManager] Début traitement:`, {
-        action, 
-        employeId, 
-        date, 
-        ecart: ecart.type,
-        options
-      });
-
       // ÉTAPE 1: Synchroniser l'écart en anomalie réelle
       const syncResponse = await fetch(`${API_URL}/api/anomalies/sync-from-comparison`, {
         method: 'POST',
@@ -63,14 +52,12 @@ export function useAnomalieProcessor() {
       }
 
       const syncResult = await syncResponse.json();
-      console.log(`✅ [AnomalieManager] Synchronisation réussie:`, syncResult);
 
       if (!syncResult.success || !syncResult.anomalies?.length) {
         throw new Error(`Impossible de créer l'anomalie: ${syncResult.message || 'Raison inconnue'}`);
       }
 
       const anomalieId = syncResult.anomalies[0].id;
-      console.log(`🆔 [AnomalieManager] ID anomalie: ${anomalieId}`);
 
       // ÉTAPE 2: Traiter l'anomalie
       const traitementResponse = await fetch(`${API_URL}/api/anomalies/${anomalieId}/traiter`, {
@@ -92,7 +79,6 @@ export function useAnomalieProcessor() {
       }
 
       const traitementResult = await traitementResponse.json();
-      console.log(`✅ [AnomalieManager] Traitement réussi:`, traitementResult);
 
       // ÉTAPE 3: Mise à jour des données locales
       const result = {
@@ -397,8 +383,6 @@ export default function AnomalieManager({
   className = '' 
 }) {
   const handleEcartUpdate = useCallback((updatedEcart, result) => {
-    console.log(`🔄 [AnomalieManager] Écart mis à jour:`, updatedEcart);
-    
     // Mettre à jour la liste des écarts
     const updatedEcarts = ecarts.map(ecart => 
       ecart.type === updatedEcart.type ? updatedEcart : ecart

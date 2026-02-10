@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { getToken } from '../utils/tokenManager';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 export const useNotifications = () => {
   const [notifications, setNotifications] = useState([]);
@@ -102,7 +100,7 @@ export const useNotifications = () => {
     }
   }, [fetchNotifications, fetchUnreadCount]);
 
-  // Charger les notifications au montage et toutes les 30 secondes
+  // SSE temps réel avec fallback polling
   useEffect(() => {
     const token = getToken();
     if (!token) return;
@@ -136,10 +134,85 @@ export const useNotifications = () => {
     loadNotifications();
     loadUnreadCount();
 
-    // Polling toutes les 30 secondes (uniquement le count)
-    const interval = setInterval(loadUnreadCount, 30000);
+    // === SSE temps réel ===
+    let eventSource = null;
+    let pollingInterval = null;
+    let sseConnected = false;
 
-    return () => clearInterval(interval);
+    const connectSSE = async () => {
+      try {
+        // 🔒 Obtenir un token SSE éphémère (2 min) au lieu d'exposer le JWT principal
+        let sseToken = token;
+        try {
+          const resp = await axios.post(`${API_BASE}/api/notifications/sse-token`, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          sseToken = resp.data.token;
+        } catch (e) {
+          // Fallback: utiliser le token principal si l'endpoint n'existe pas encore
+        }
+        const sseUrl = `${API_BASE}/api/notifications/stream?token=${encodeURIComponent(sseToken)}`;
+        eventSource = new EventSource(sseUrl);
+
+        eventSource.addEventListener('connected', () => {
+          sseConnected = true;
+          // Arrêter le polling si SSE connecté
+          if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+          }
+        });
+
+        eventSource.addEventListener('notification', (event) => {
+          // Nouvelle notification reçue en temps réel
+          loadNotifications();
+          loadUnreadCount();
+        });
+
+        eventSource.onerror = () => {
+          sseConnected = false;
+          // Fermer le SSE cassé
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          // Fallback: reprendre le polling
+          if (!pollingInterval) {
+            pollingInterval = setInterval(loadUnreadCount, 30000);
+          }
+          // Tenter de reconnecter après 5s
+          setTimeout(() => {
+            if (!sseConnected) {
+              connectSSE();
+            }
+          }, 5000);
+        };
+      } catch {
+        // SSE non supporté — rester sur le polling
+        if (!pollingInterval) {
+          pollingInterval = setInterval(loadUnreadCount, 30000);
+        }
+      }
+    };
+
+    connectSSE();
+
+    // Fallback polling au cas où SSE ne se connecte pas en 3s
+    const fallbackTimeout = setTimeout(() => {
+      if (!sseConnected && !pollingInterval) {
+        pollingInterval = setInterval(loadUnreadCount, 30000);
+      }
+    }, 3000);
+
+    return () => {
+      clearTimeout(fallbackTimeout);
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
   }, []); // Pas de dépendances - s'exécute une seule fois
 
   return {

@@ -3,15 +3,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { 
   X, AlertTriangle, CheckCircle, XCircle, MessageSquare, Banknote, Clock, 
-  TrendingDown, TrendingUp, AlertCircle, HelpCircle, Send, Eye, Users, 
+  TrendingDown, TrendingUp, AlertCircle, Eye, Users, 
   Calendar, FileText, Zap, LogIn, LogOut, ArrowRight, Sparkles, CalendarPlus, Calculator 
 } from 'lucide-react';
 import { useTraiterAnomalie } from '../../hooks/useAnomalies';
 import { anomaliesUtils } from '../../hooks/useAnomalies';
 import { toLocalDateString } from '../../utils/parisTimeUtils';
 import { useToast } from '../ui/Toast';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../../config/api';
 
 // Couleur brand
 const BRAND_COLOR = '#cf292c';
@@ -35,10 +34,6 @@ export default function ModalTraiterAnomalie({
   const [loadingBilan, setLoadingBilan] = useState(false);
   const [confirmSoldeNegatif, setConfirmSoldeNegatif] = useState(false);
   
-  // 🆕 États pour l'action "reporter"
-  const [questionEmploye, setQuestionEmploye] = useState('');
-  const [notifierEmploye, setNotifierEmploye] = useState(true);
-  
   // 🆕 États pour le contexte du jour
   const [showContexte, setShowContexte] = useState(false);
   const [contexteJour, setContexteJour] = useState(null);
@@ -60,11 +55,6 @@ export default function ModalTraiterAnomalie({
     const empId = anomalie?.employeId || anomalie?.employe?.id;
     
     if (!empId || !anomalie?.date) {
-      console.log('🔍 Bilan: employeId ou date manquant', { 
-        employeId: anomalie?.employeId, 
-        employeObjId: anomalie?.employe?.id,
-        date: anomalie?.date 
-      });
       return;
     }
     
@@ -73,14 +63,10 @@ export default function ModalTraiterAnomalie({
       const token = localStorage.getItem('token');
       const dateStr = toLocalDateString(new Date(anomalie.date));
       
-      console.log('🔍 Appel bilan journalier:', { employeId: empId, date: dateStr });
-      
       const response = await axios.get(
         `${API_URL}/api/anomalies/bilan-journalier/${empId}/${dateStr}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
-      console.log('📊 Réponse bilan journalier:', response.data);
       
       // 🆕 D'abord, extraire les données de l'anomalie comme fallback
       const anomalieDetails = anomalie?.details || {};
@@ -102,14 +88,6 @@ export default function ModalTraiterAnomalie({
         const finalMinutesPrevues = apiHasData ? calcul.minutesPrevues : tempsPlanifieAnomalie;
         const finalMinutesTravaillees = apiHasData ? calcul.minutesTravaillees : tempsTravailleAnomalie;
         const finalSoldeNet = apiHasData ? calcul.soldeHeures : soldeFromAnomalie;
-        
-        console.log('📊 Données finales:', { 
-          apiHasData, 
-          finalMinutesPrevues, 
-          finalMinutesTravaillees, 
-          finalSoldeNet,
-          fromAnomalie: !apiHasData 
-        });
         
         const transformedBilan = {
           // Méthode de calcul utilisée
@@ -145,7 +123,6 @@ export default function ModalTraiterAnomalie({
           }
         };
         
-        console.log('✅ Bilan transformé (méthode temps_travaille_net):', transformedBilan);
         setBilanJournalier(transformedBilan);
         
         // Auto-suggérer les heures si positif
@@ -176,7 +153,6 @@ export default function ModalTraiterAnomalie({
           }
         };
         
-        console.log('✅ Bilan transformé (ancien format):', transformedBilan);
         setBilanJournalier(transformedBilan);
         
         if (transformedBilan.recommendation.extraSuggere > 0) {
@@ -184,7 +160,6 @@ export default function ModalTraiterAnomalie({
         }
       } else {
         // 🆕 FALLBACK: Utiliser les données de l'anomalie elle-même
-        console.warn('⚠️ Réponse bilan sans données, utilisation des détails de l\'anomalie');
         
         // Extraire le solde depuis les détails de l'anomalie
         const details = anomalie?.details || {};
@@ -194,12 +169,6 @@ export default function ModalTraiterAnomalie({
         
         const tempsPlanifie = details.tempsPlanifie ? details.tempsPlanifie / 60 : 0;
         const tempsTravaille = details.tempsTravaille ? details.tempsTravaille / 60 : 0;
-        
-        console.log('📋 Détails anomalie:', { 
-          soldeNet: details.soldeNet, 
-          tempsPlanifie: details.tempsPlanifie,
-          tempsTravaille: details.tempsTravaille 
-        });
         
         setBilanJournalier({
           minutesPrevues: details.tempsPlanifie || 0,
@@ -287,7 +256,6 @@ export default function ModalTraiterAnomalie({
           );
           pointages = pointagesResponse.data || [];
         } catch (e) {
-          console.log('Pas de pointages trouvés');
         }
       }
       
@@ -356,8 +324,6 @@ export default function ModalTraiterAnomalie({
       
       // Forcer la conversion en nombre (Decimal de Prisma -> Number)
       const heures = Number(heuresRaw) || 0;
-      
-      console.log('🕐 Heures extra calculées:', { heures, anomalie: anomalie?.id, details: anomalie?.details });
       
       if (heures > 0) {
         setHeuresExtra(heures.toFixed(2));
@@ -459,12 +425,6 @@ export default function ModalTraiterAnomalie({
         };
       }
 
-      // 🆕 Pour le report, inclure la question et l'option de notification
-      if (action === 'reporter') {
-        options.questionVerification = questionEmploye.trim() || 'Vérification nécessaire';
-        options.notifierEmploye = notifierEmploye;
-      }
-
       // 🆕 Pour la conversion en extra (pointage hors planning)
       if (action === 'convertir_extra') {
         const heures = heuresExtra || anomalie?.details?.heuresTravaillees || 0;
@@ -482,14 +442,6 @@ export default function ModalTraiterAnomalie({
 
       const anomalieMAJ = await traiterAnomalie(anomalie.id, action, options);
       
-      console.log('✅ Anomalie traitée avec succès:', {
-        id: anomalieMAJ.id,
-        action,
-        nouveauStatut: anomalieMAJ.statut,
-        employé: `${anomalieMAJ.employe?.prenom} ${anomalieMAJ.employe?.nom}`,
-        date: new Date(anomalieMAJ.date).toLocaleDateString('fr-FR')
-      });
-      
       setShowConfirmation(false);
       
       // Afficher un message de succès détaillé
@@ -498,7 +450,6 @@ export default function ModalTraiterAnomalie({
         'refuser': 'refusée', 
         'corriger': 'corrigée',
         'payer_extra': 'traitée',
-        'reporter': 'reportée',
         'convertir_extra': 'convertie'
       };
       const actionLabel = actionLabels[action] || action;
@@ -512,14 +463,6 @@ export default function ModalTraiterAnomalie({
       if (action === 'payer_extra') {
         details.push({ text: `Paiement créé : ${heuresExtra}h` });
         details.push({ text: 'Retrouvez-le dans "Suivi Extras"' });
-      }
-
-      // Message spécifique pour report
-      if (action === 'reporter') {
-        details.push({ text: `Note: "${questionEmploye || 'Vérification nécessaire'}"` });
-        if (notifierEmploye) {
-          details.push({ text: 'Notification envoyée à l\'employé' });
-        }
       }
 
       // Message spécifique pour conversion en extra
@@ -559,7 +502,6 @@ export default function ModalTraiterAnomalie({
       case 'valider': return <CheckCircle className="h-4 w-4" />;
       case 'refuser': return <XCircle className="h-4 w-4" />;
       case 'corriger': return <AlertTriangle className="h-4 w-4" />;
-      case 'reporter': return <HelpCircle className="h-4 w-4" />;
       case 'payer_extra': return <Banknote className="h-4 w-4" />;
       case 'convertir_extra': return <TrendingUp className="h-4 w-4" />;
       default: return null;
@@ -571,7 +513,6 @@ export default function ModalTraiterAnomalie({
       case 'valider': return 'text-green-600 bg-green-50 border-green-200 hover:bg-green-100';
       case 'refuser': return 'text-red-600 bg-red-50 border-red-200 hover:bg-red-100';
       case 'corriger': return 'text-orange-600 bg-orange-50 border-orange-200 hover:bg-orange-100';
-      case 'reporter': return 'text-amber-600 bg-amber-50 border-amber-200 hover:bg-amber-100';
       case 'payer_extra': return 'text-purple-600 bg-purple-50 border-purple-200 hover:bg-purple-100';
       case 'convertir_extra': return 'text-emerald-600 bg-emerald-50 border-emerald-200 hover:bg-emerald-100';
       default: return 'text-gray-600 bg-gray-50 border-gray-200 hover:bg-gray-100';
@@ -612,7 +553,6 @@ export default function ModalTraiterAnomalie({
         { value: 'justifier', label: 'Justifier', description: 'Absence justifiée (maladie, CP, etc.)', icon: CheckCircle, color: 'emerald' },
         { value: 'refuser', label: 'Injustifiée', description: 'Absence non justifiée (avertissement)', icon: XCircle, color: 'red' },
         { value: 'corriger', label: 'Corriger', description: 'Erreur de planning', icon: AlertTriangle, color: 'orange' },
-        { value: 'reporter', label: 'Reporter', description: 'Demander explication à l\'employé', icon: HelpCircle, color: 'amber' },
       ];
     }
     
@@ -620,7 +560,6 @@ export default function ModalTraiterAnomalie({
       return [
         { value: 'corriger', label: 'Compléter', description: 'Ajouter l\'heure manquante', icon: CheckCircle, color: 'emerald' },
         { value: 'ignorer', label: 'Ignorer', description: 'Laisser tel quel', icon: XCircle, color: 'slate' },
-        { value: 'reporter', label: 'Reporter', description: 'Demander l\'heure à l\'employé', icon: HelpCircle, color: 'amber' },
       ];
     }
     
@@ -629,7 +568,6 @@ export default function ModalTraiterAnomalie({
         { value: 'valider', label: 'Régulariser', description: 'Créer le shift et comptabiliser les heures', icon: CheckCircle, color: 'emerald' },
         { value: 'payer_extra', label: 'Payer en Extra', description: 'Payer ces heures en espèces (hors bulletin)', icon: Banknote, color: 'purple' },
         { value: 'refuser', label: 'Rejeter', description: 'Ne pas comptabiliser (travail non autorisé)', icon: XCircle, color: 'red' },
-        { value: 'reporter', label: 'Vérifier', description: 'Demander justification à l\'employé', icon: HelpCircle, color: 'amber' },
       ];
     }
     
@@ -638,7 +576,6 @@ export default function ModalTraiterAnomalie({
       { value: 'valider', label: 'Valider', description: 'Accepter', icon: CheckCircle, color: 'emerald' },
       { value: 'refuser', label: 'Refuser', description: 'Rejeter', icon: XCircle, color: 'red' },
       { value: 'corriger', label: 'Corriger', description: 'Modifier', icon: AlertTriangle, color: 'orange' },
-      { value: 'reporter', label: 'Reporter', description: 'Vérifier plus tard', icon: HelpCircle, color: 'amber' },
     ];
   };
 
@@ -1264,75 +1201,6 @@ export default function ModalTraiterAnomalie({
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                       placeholder="Ex: Formation RH planifiée en retard, shift doit commencer à 10h au lieu de 8h"
                     />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 🆕 Formulaire "Reporter" - Demander vérification */}
-            {action === 'reporter' && (
-              <div className="mb-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
-                <div className="flex items-start gap-2 mb-4">
-                  <HelpCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-sm font-medium text-amber-900 mb-1">
-                      Reporter pour vérification
-                    </h4>
-                    <p className="text-xs text-amber-700">
-                      Vous n'êtes pas sûr si ces heures étaient vraiment un extra demandé ? 
-                      Mettez l'anomalie en attente et demandez clarification à l'employé.
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  {/* Question à l'employé */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Question / Note de vérification
-                    </label>
-                    <textarea
-                      value={questionEmploye}
-                      onChange={(e) => setQuestionEmploye(e.target.value)}
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      placeholder="Ex: Pouvez-vous confirmer si le dépassement du 23/11 était un extra demandé par le manager ?"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Suggestions : "Ces heures étaient-elles un extra validé ?", "Qui a demandé ce dépassement ?"
-                    </p>
-                  </div>
-
-                  {/* Option notifier l'employé */}
-                  <label className="flex items-center gap-3 p-3 bg-white rounded-lg border border-amber-200 cursor-pointer hover:bg-amber-25">
-                    <input
-                      type="checkbox"
-                      checked={notifierEmploye}
-                      onChange={(e) => setNotifierEmploye(e.target.checked)}
-                      className="h-4 w-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
-                    />
-                    <div>
-                      <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                        <Send className="h-3.5 w-3.5" />
-                        Notifier l'employé
-                      </span>
-                      <p className="text-xs text-gray-500">
-                        {anomalie?.employe?.prenom || 'L\'employé'} recevra une notification pour répondre
-                      </p>
-                    </div>
-                  </label>
-
-                  {/* Résumé de ce qui va se passer */}
-                  <div className="p-3 bg-white rounded-lg border border-gray-200">
-                    <div className="text-xs text-gray-600">
-                      <strong>Ce qui va se passer :</strong>
-                      <ul className="mt-1 space-y-1 list-disc list-inside">
-                        <li>L'anomalie passera en statut <span className="font-medium text-amber-600">"À vérifier"</span></li>
-                        <li>Votre note sera enregistrée dans l'historique</li>
-                        {notifierEmploye && <li>Une notification sera envoyée à l'employé</li>}
-                        <li>Vous pourrez y revenir plus tard pour statuer</li>
-                      </ul>
-                    </div>
                   </div>
                 </div>
               </div>

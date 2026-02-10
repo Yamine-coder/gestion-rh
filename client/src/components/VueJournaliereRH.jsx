@@ -5,9 +5,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import NavigationRestoreNotification from "./NavigationRestoreNotification";
 import { saveNavigation, restoreNavigation, getSessionDuration } from "../utils/navigationUtils";
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 function VueJournaliereRH() {
   // Helper pour obtenir la date locale au format YYYY-MM-DD
@@ -21,7 +19,7 @@ function VueJournaliereRH() {
   // Restaurer la date sauvegardée
   const getInitialDate = () => {
     const restored = restoreNavigation('vueJournaliereRH');
-    return restored.date;
+    return restored.date || getLocalDateString();
   };
 
   const [date, setDate] = useState(getInitialDate());

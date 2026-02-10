@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Train, Clock, Check, X, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { toLocalDateString } from '../utils/parisTimeUtils';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 /**
  * Widget Navigo pour le Dashboard

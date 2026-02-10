@@ -34,11 +34,7 @@ import MobileOnboarding from '../components/onboarding/MobileOnboarding';
 import { getToken, isTokenValid, setupTokenExpirationCheck, clearToken } from '../utils/tokenManager';
 import { getCategoriesEmploye } from '../utils/categoriesConfig';
 import { getImageUrl } from '../utils/imageUtils';
-
-// ============================================
-// CONFIGURATION API
-// ============================================
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 // ============================================
 // LISTE DES PAYS AVEC INDICATIFS (triés par usage fréquent)
@@ -1390,16 +1386,11 @@ const ProfilEmploye = React.memo(() => {
     setErreur('');
     
     try {
-      console.log('🔵 Token:', token ? 'Présent' : 'MANQUANT');
-      console.log('🔵 Téléphone à envoyer:', telephone);
-      
       const response = await axios.put(`${API_URL}/api/modifications/batch-update`, {
         modifications: { telephone }
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      console.log('✅ Réponse serveur:', response.data);
       
       const res = await axios.get(`${API_URL}/user/profil`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -1409,10 +1400,7 @@ const ProfilEmploye = React.memo(() => {
       setEditingField(null);
       
     } catch (err) {
-      console.error('❌ Erreur sauvegarde téléphone:', err);
-      console.error('❌ Statut:', err.response?.status);
-      console.error('❌ Message:', err.response?.data);
-      console.error('❌ URL:', err.config?.url);
+      console.error('Erreur sauvegarde téléphone:', err);
       setErreur(err.response?.data?.error || 'Erreur lors de la sauvegarde');
     } finally {
       setFieldLoading(null);
@@ -1427,30 +1415,22 @@ const ProfilEmploye = React.memo(() => {
     setErreur('');
     
     try {
-      console.log('🔵 Adresse à envoyer:', adresse);
-      
       const response = await axios.put(`${API_URL}/api/modifications/batch-update`, {
         modifications: { adresse }
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      console.log('✅ Réponse serveur:', response.data);
-      
       const res = await axios.get(`${API_URL}/user/profil`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      console.log('🔵 Profil rechargé:', res.data.adresse);
       
       setEmploye(res.data);
       setSucces('Adresse mise à jour');
       setEditingField(null);
       
     } catch (err) {
-      console.error('❌ Erreur sauvegarde adresse:', err);
-      console.error('❌ Statut:', err.response?.status);
-      console.error('❌ Message:', err.response?.data);
+      console.error('Erreur sauvegarde adresse:', err);
       setErreur(err.response?.data?.error || 'Erreur lors de la sauvegarde');
     } finally {
       setFieldLoading(null);

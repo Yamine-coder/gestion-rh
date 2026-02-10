@@ -1,7 +1,6 @@
 // client/src/hooks/useAnomalies.js
 import { useState, useEffect, useCallback } from 'react';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 /**
  * Hook principal pour la gestion des anomalies
@@ -208,10 +207,10 @@ export function useTraiterAnomalie() {
   const [error, setError] = useState(null);
 
   const traiterAnomalie = useCallback(async (anomalieId, action, options = {}) => {
-    const { commentaire, montantExtra, heuresExtra, shiftCorrection, tauxHoraire, methodePaiement, questionVerification, notifierEmploye } = options;
+    const { commentaire, montantExtra, heuresExtra, shiftCorrection, tauxHoraire, methodePaiement } = options;
 
     // Actions supportées
-    const actionsValides = ['valider', 'refuser', 'corriger', 'payer_extra', 'reporter', 'convertir_extra'];
+    const actionsValides = ['valider', 'refuser', 'corriger', 'payer_extra', 'convertir_extra'];
     if (!actionsValides.includes(action)) {
       throw new Error(`Action invalide: ${action}. Actions valides: ${actionsValides.join(', ')}`);
     }
@@ -239,12 +238,6 @@ export function useTraiterAnomalie() {
         body.shiftCorrection = shiftCorrection;
       }
 
-      // Ajouter les options pour l'action "reporter"
-      if (action === 'reporter') {
-        body.questionVerification = questionVerification;
-        body.notifierEmploye = notifierEmploye;
-      }
-
       const response = await fetch(`${API_BASE}/api/anomalies/${anomalieId}/traiter`, {
         method: 'PUT',
         headers: {
@@ -259,14 +252,6 @@ export function useTraiterAnomalie() {
       }
 
       const data = await response.json();
-      
-      console.log('📡 Réponse serveur traitement anomalie:', {
-        success: data.success,
-        statut: data.anomalie?.statut,
-        impactScore: data.impactScore,
-        shiftModifie: data.shiftModifie,
-        message: data.message
-      });
       
       if (!data.success) {
         throw new Error(data.error || 'Erreur inconnue');

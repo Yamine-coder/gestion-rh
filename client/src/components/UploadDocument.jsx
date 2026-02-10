@@ -8,9 +8,7 @@ import {
   DocumentIcon,
   TrashIcon 
 } from '@heroicons/react/24/outline';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 const UploadDocument = ({ 
   documentType, // 'domicile', 'rib', 'navigo'
@@ -98,8 +96,6 @@ const UploadDocument = ({
         }
       });
 
-      console.log('✅ Upload réussi:', response.data);
-
       // Attendre 1 seconde puis fermer
       setTimeout(() => {
         onUpdate(); // Rafraîchir les données du parent
@@ -126,7 +122,6 @@ const UploadDocument = ({
         }
       });
 
-      console.log('✅ Document supprimé');
       onUpdate(); // Rafraîchir les données du parent
       onClose(); // Fermer le modal
     } catch (error) {

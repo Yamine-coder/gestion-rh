@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 /**
  * Hook pour récupérer le nombre de justificatifs Navigo en attente de validation
@@ -24,8 +23,6 @@ export function useNavigoNotification() {
       
       setEnAttente(response.data?.length || 0);
     } catch (error) {
-      // Silencieux si l'API n'existe pas ou erreur
-      console.log('Navigo notification check:', error.message);
       setEnAttente(0);
     } finally {
       setLoading(false);

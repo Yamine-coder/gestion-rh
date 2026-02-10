@@ -5,9 +5,7 @@ import {
   CheckCircle, XCircle, Users, Calendar, DollarSign,
   BarChart3, PieChart, Activity
 } from 'lucide-react';
-
-// URL de l'API (utilise la variable d'environnement en production)
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../../config/api';
 
 /**
  * DASHBOARD ANALYTICS POUR LES ANOMALIES

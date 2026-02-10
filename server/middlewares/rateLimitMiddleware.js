@@ -6,18 +6,29 @@ const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS = 10; // 10 tentatives de login par fenêtre
 const MAX_RECOVERY_ATTEMPTS = 3; // 3 demandes de récupération par fenêtre
 
+// Nettoyage périodique des Maps (au lieu de nettoyer à chaque requête)
+function cleanupMap(map) {
+  const now = Date.now();
+  for (const [key, value] of map.entries()) {
+    if (now - value.lastAttempt > RATE_LIMIT_WINDOW) map.delete(key);
+  }
+}
+setInterval(() => {
+  cleanupMap(loginAttempts);
+  cleanupMap(recoveryAttempts);
+}, 60 * 1000); // Toutes les minutes
+
 const rateLimitLogin = (req, res, next) => {
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
   
-  // Nettoyer les anciennes entrées
-  for (const [key, value] of loginAttempts.entries()) {
-    if (now - value.lastAttempt > RATE_LIMIT_WINDOW) {
-      loginAttempts.delete(key);
-    }
-  }
-  
   const attempts = loginAttempts.get(ip);
+  
+  // Nettoyer si l'entrée est expirée
+  if (attempts && now - attempts.lastAttempt > RATE_LIMIT_WINDOW) {
+    loginAttempts.delete(ip);
+    return next();
+  }
   
   if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS) {
     const timeLeft = Math.ceil((RATE_LIMIT_WINDOW - (now - attempts.lastAttempt)) / 1000 / 60);
@@ -50,14 +61,12 @@ const rateLimitRecovery = (req, res, next) => {
   const ip = req.ip || req.connection.remoteAddress;
   const now = Date.now();
   
-  // Nettoyer les anciennes entrées
-  for (const [key, value] of recoveryAttempts.entries()) {
-    if (now - value.lastAttempt > RATE_LIMIT_WINDOW) {
-      recoveryAttempts.delete(key);
-    }
-  }
-  
   const attempts = recoveryAttempts.get(ip);
+  
+  // Nettoyer si l'entrée est expirée
+  if (attempts && now - attempts.lastAttempt > RATE_LIMIT_WINDOW) {
+    recoveryAttempts.delete(ip);
+  }
   
   if (attempts && attempts.count >= MAX_RECOVERY_ATTEMPTS) {
     const timeLeft = Math.ceil((RATE_LIMIT_WINDOW - (now - attempts.lastAttempt)) / 1000 / 60);

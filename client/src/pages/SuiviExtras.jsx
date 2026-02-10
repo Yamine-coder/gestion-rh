@@ -20,8 +20,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/ui/Toast';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_URL } from '../config/api';
 
 export default function SuiviExtras() {
   const [paiements, setPaiements] = useState([]);

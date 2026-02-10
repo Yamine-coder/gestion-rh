@@ -3,8 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 const { 
   uploadImage, 
@@ -93,7 +92,6 @@ router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req,
           }
         }
         
-        console.log(`☁️  Photo uploadée sur Cloudinary: ${photoUrl}`);
       } catch (cloudinaryError) {
         console.error('❌ Erreur Cloudinary:', cloudinaryError.message);
         return res.status(500).json({ error: 'Erreur lors de l\'upload vers le cloud' });
@@ -107,11 +105,9 @@ router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req,
         const oldPhotoPath = path.join(__dirname, '..', user.photoProfil);
         if (fs.existsSync(oldPhotoPath)) {
           fs.unlinkSync(oldPhotoPath);
-          console.log(`🗑️  Ancienne photo locale supprimée: ${user.photoProfil}`);
         }
       }
       
-      console.log(`📁 Photo stockée localement: ${photoUrl}`);
     }
 
     // Mettre à jour le chemin de la photo en BDD
@@ -120,8 +116,6 @@ router.post('/upload-photo', authMiddleware, upload.single('photo'), async (req,
       data: { photoProfil: photoUrl }
     });
 
-    console.log(`✅ Photo de profil mise à jour pour l'utilisateur ${userId}`);
-    
     res.json({
       message: 'Photo de profil mise à jour avec succès',
       photoUrl: photoUrl,
@@ -170,14 +164,12 @@ router.delete('/delete-photo', authMiddleware, async (req, res) => {
       const publicId = extractPublicIdFromUrl(user.photoProfil);
       if (publicId) {
         await deleteFile(publicId);
-        console.log(`☁️  Photo Cloudinary supprimée: ${publicId}`);
       }
     } else {
       // 📁 LOCAL : Supprimer le fichier local
       const photoPath = path.join(__dirname, '..', user.photoProfil);
       if (fs.existsSync(photoPath)) {
         fs.unlinkSync(photoPath);
-        console.log(`🗑️  Photo locale supprimée: ${user.photoProfil}`);
       }
     }
 
@@ -187,8 +179,6 @@ router.delete('/delete-photo', authMiddleware, async (req, res) => {
       data: { photoProfil: null }
     });
 
-    console.log(`✅ Photo de profil supprimée pour l'utilisateur ${userId}`);
-    
     res.json({ message: 'Photo de profil supprimée avec succès' });
 
   } catch (error) {

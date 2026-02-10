@@ -12,6 +12,7 @@ import {
 } from '../services/scoringService';
 import PeerFeedbackManager from './PeerFeedbackManager';
 import { useToast } from './ui/Toast';
+import { API_BASE } from '../config/api';
 
 // =====================================================
 // COMPOSANT PRINCIPAL - GESTION SCORING MANAGER
@@ -141,13 +142,6 @@ export default function ScoringManager({ embedded = false }) {
             Gérez les points bonus/malus de votre équipe
           </p>
         </div>
-        <button
-          onClick={loadData}
-          className="flex items-center gap-2 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Actualiser
-        </button>
       </div>
       )}
 
@@ -178,15 +172,17 @@ export default function ScoringManager({ embedded = false }) {
           })}
         </div>
         
-        {/* Bouton actualiser */}
-        <button
-          onClick={loadData}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-          title="Actualiser les données"
-        >
-          <RefreshCw className="w-4 h-4" />
-          <span className="hidden sm:inline">Actualiser</span>
-        </button>
+        {/* Bouton actualiser - masqué sur l'onglet feedbacks qui a le sien */}
+        {activeTab !== 'feedbacks' && (
+          <button
+            onClick={loadData}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Actualiser les données"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span className="hidden sm:inline">Actualiser</span>
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -241,11 +237,8 @@ export default function ScoringManager({ embedded = false }) {
 function DashboardView({ data, onEmployeClick }) {
   if (!data) return null;
 
-  // Top 3 pour affichage en vedette
-  const top3 = data.top5?.slice(0, 3) || [];
-
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Stats globales - Style Dashboard compact */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -289,145 +282,120 @@ function DashboardView({ data, onEmployeClick }) {
         </div>
       </div>
 
-      {/* Top 3 - Design compact */}
-      {top3.length >= 3 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Trophy className="w-4 h-4 text-amber-500" />
-            <span className="text-sm font-medium text-gray-700">Top 3 du mois</span>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {top3.map((emp, idx) => (
-              <div 
-                key={emp.id}
-                onClick={() => onEmployeClick(emp.id)}
-                className="relative p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors text-center"
-              >
-                <div className={`absolute -top-2 -left-2 w-6 h-6 rounded-full text-white text-xs font-bold flex items-center justify-center shadow-sm ${
-                  idx === 0 ? 'bg-[#cf292c]' : idx === 1 ? 'bg-gray-500' : 'bg-amber-500'
-                }`}>
-                  {idx + 1}
-                </div>
-                <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full font-semibold text-sm mb-2 ${emp.niveau?.bg || 'bg-gray-100'}`}>
-                  <span className={emp.niveau?.iconColor || 'text-gray-700'}>{emp.prenom?.[0]}{emp.nom?.[0]}</span>
-                </div>
-                <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom}</p>
-                <p className="text-lg font-bold text-gray-900">{emp.score_total}</p>
-                <p className="text-[10px] text-gray-500">{emp.niveau?.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Top 5 & À surveiller - Côte à côte */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        {/* Top 5 complet */}
-        <div className="bg-white rounded-xl border border-slate-200">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+      {/* Top 5 & À surveiller — côte à côte, style unifié */}
+      <div className="grid lg:grid-cols-2 gap-3">
+        {/* Meilleurs scores */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-amber-500" />
-              <span className="text-sm font-medium text-gray-700">Meilleurs scores</span>
+              <div className="w-5 h-5 rounded bg-emerald-50 flex items-center justify-center">
+                <TrendingUp className="w-3 h-3 text-emerald-600" />
+              </div>
+              <span className="text-xs font-semibold text-gray-700">Meilleurs scores</span>
             </div>
-            <span className="text-xs text-gray-400">3 mois</span>
+            <span className="text-[10px] text-gray-400">3 mois</span>
           </div>
-          <div className="divide-y divide-slate-50">
-            {data.top5?.map((emp, idx) => (
-              <div
-                key={emp.id}
-                onClick={() => onEmployeClick(emp.id)}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
-              >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  idx === 0 ? 'bg-amber-100 text-amber-700' :
-                  idx === 1 ? 'bg-gray-100 text-gray-600' :
-                  idx === 2 ? 'bg-orange-50 text-orange-600' :
-                  'bg-slate-50 text-gray-500'
-                }`}>
-                  {emp.rang}
+          <div>
+            {data.top5?.map((emp, idx) => {
+              const maxTop = data.top5?.[0]?.score_total || 1;
+              const barW = maxTop > 0 ? Math.max(6, (emp.score_total / maxTop) * 100) : 0;
+              return (
+                <div
+                  key={emp.id}
+                  onClick={() => onEmployeClick(emp.id)}
+                  className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50/60 cursor-pointer transition-colors border-b border-slate-50 last:border-0"
+                >
+                  <span className={`w-5 text-center font-bold text-xs ${
+                    idx === 0 ? 'text-[#cf292c]' : idx === 1 ? 'text-gray-500' : idx === 2 ? 'text-amber-500' : 'text-gray-400'
+                  }`}>
+                    {emp.rang}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-800 text-xs truncate">{emp.prenom} {emp.nom}</p>
+                    <div className="mt-0.5 bg-slate-100 rounded-full h-1 overflow-hidden">
+                      <div className="h-full rounded-full bg-emerald-400 transition-all duration-500" style={{ width: `${barW}%` }} />
+                    </div>
+                  </div>
+                  <span className="font-bold text-sm text-gray-900 tabular-nums">{emp.score_total}</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
-                </div>
-                <span className="font-bold text-gray-900 text-sm">{emp.score_total}</span>
-              </div>
-            ))}
+              );
+            })}
             {(!data.top5 || data.top5.length === 0) && (
-              <div className="p-4 text-center text-gray-500 text-xs">
-                Aucun classement disponible
-              </div>
+              <div className="p-6 text-center text-gray-400 text-xs">Aucun classement</div>
             )}
           </div>
         </div>
 
         {/* À surveiller */}
-        <div className="bg-white rounded-xl border border-slate-200">
-          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              <span className="text-sm font-medium text-gray-700">À surveiller</span>
+              <div className="w-5 h-5 rounded bg-red-50 flex items-center justify-center">
+                <AlertTriangle className="w-3 h-3 text-[#cf292c]" />
+              </div>
+              <span className="text-xs font-semibold text-gray-700">À surveiller</span>
             </div>
-            <span className="text-xs text-gray-400">Scores bas</span>
+            <span className="text-[10px] text-gray-400">Scores bas</span>
           </div>
-          <div className="divide-y divide-slate-50">
+          <div>
             {data.bottom5?.map((emp) => (
               <div
                 key={emp.id}
                 onClick={() => onEmployeClick(emp.id)}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
+                className="flex items-center gap-3 px-4 py-2 hover:bg-slate-50/60 cursor-pointer transition-colors border-b border-slate-50 last:border-0"
               >
-                <div className="w-6 h-6 rounded-full bg-red-50 flex items-center justify-center">
-                  <AlertCircle className="w-3 h-3 text-[#cf292c]" />
+                <div className="w-5 h-5 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="w-2.5 h-2.5 text-[#cf292c]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
+                  <p className="font-medium text-gray-800 text-xs truncate">{emp.prenom} {emp.nom}</p>
                 </div>
-                <span className={`font-bold text-sm ${emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'}`}>
+                <span className={`font-bold text-sm tabular-nums ${emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'}`}>
                   {emp.score_total}
                 </span>
               </div>
             ))}
             {(!data.bottom5 || data.bottom5.length === 0) && (
-              <div className="p-4 text-center">
+              <div className="p-6 text-center">
                 <Check className="w-4 h-4 mx-auto mb-1 text-emerald-500" />
-                <p className="text-gray-500 text-xs">Aucun employé à surveiller</p>
+                <p className="text-gray-400 text-xs">Aucun employé à surveiller</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Activité récente - Design compact */}
-      <div className="bg-white rounded-xl border border-slate-200">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-slate-400" />
-          <span className="text-sm font-medium text-gray-700">Activité récente</span>
+      {/* Activité récente — timeline */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded bg-slate-100 flex items-center justify-center">
+              <Clock className="w-3 h-3 text-slate-500" />
+            </div>
+            <span className="text-xs font-semibold text-gray-700">Activité récente</span>
+          </div>
+          <span className="text-[10px] text-gray-400">{data.recents?.length || 0} dernières</span>
         </div>
-        <div className="divide-y divide-slate-50 max-h-[250px] overflow-y-auto">
-          {data.recents?.slice(0, 6).map((point) => (
-            <div key={point.id} className="flex items-center gap-3 px-4 py-2.5">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-                point.points > 0 ? 'bg-emerald-50' : 'bg-red-50'
-              }`}>
-                {point.points > 0 ? (
-                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-                ) : (
-                  <TrendingDown className="w-3.5 h-3.5 text-[#cf292c]" />
-                )}
-              </div>
+        <div className="max-h-[220px] overflow-y-auto">
+          {data.recents?.slice(0, 8).map((point, idx) => (
+            <div key={point.id} className="flex items-center gap-3 px-4 py-2 border-b border-slate-50 last:border-0 hover:bg-slate-50/40 transition-colors">
+              <div className={`w-1 h-8 rounded-full flex-shrink-0 ${point.points > 0 ? 'bg-emerald-400' : 'bg-[#cf292c]'}`} />
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 text-sm truncate">{point.prenom} {point.nom}</p>
-                <p className="text-xs text-gray-500 truncate">{point.label || point.rule_code}</p>
+                <p className="text-xs text-gray-800 truncate">
+                  <span className="font-medium">{point.prenom} {point.nom}</span>
+                  <span className="text-gray-400 mx-1.5">—</span>
+                  <span className="text-gray-500">{point.label || point.rule_code}</span>
+                </p>
               </div>
-              <span className={`font-bold text-sm ${point.points > 0 ? 'text-emerald-600' : 'text-[#cf292c]'}`}>
+              <span className={`font-bold text-xs tabular-nums flex-shrink-0 px-1.5 py-0.5 rounded ${
+                point.points > 0 ? 'text-emerald-700 bg-emerald-50' : 'text-[#cf292c] bg-red-50'
+              }`}>
                 {point.points > 0 ? '+' : ''}{point.points}
               </span>
             </div>
           ))}
           {(!data.recents || data.recents.length === 0) && (
-            <div className="p-4 text-center text-gray-500 text-xs">
-              Aucune activité récente
-            </div>
+            <div className="p-6 text-center text-gray-400 text-xs">Aucune activité récente</div>
           )}
         </div>
       </div>
@@ -444,206 +412,219 @@ function ClassementView({ data, periode, setPeriode, searchTerm, setSearchTerm, 
     `${emp.prenom} ${emp.nom}`.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const maxScore = filteredData.length > 0 ? Math.max(...filteredData.map(e => e.score_total), 1) : 1;
+
   return (
-    <div className="space-y-4">
-      {/* Filtres - Style Dashboard compact */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3">
-        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Rechercher..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-colors text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-50 rounded-lg border border-slate-200">
-            <Calendar className="w-3.5 h-3.5 text-gray-400" />
-            <select
-              value={periode}
-              onChange={e => setPeriode(e.target.value)}
-              className="bg-transparent border-none text-xs font-medium text-gray-700 focus:ring-0 cursor-pointer pr-6"
-            >
-              <option value="1month">1 mois</option>
-              <option value="3months">3 mois</option>
-              <option value="6months">6 mois</option>
-              <option value="12months">12 mois</option>
-            </select>
-          </div>
-        </div>
-        
-        {/* Compteur */}
-        <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-xs">
-          <span className="text-gray-500 flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5" />
-            {filteredData.length} employé{filteredData.length > 1 ? 's' : ''}
-          </span>
+    <div className="space-y-3">
+      {/* Filtres */}
+      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Rechercher un employé..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-colors text-sm"
+          />
           {searchTerm && (
-            <button 
-              onClick={() => setSearchTerm('')}
-              className="text-[#cf292c] hover:underline flex items-center gap-1"
-            >
-              <X className="w-3 h-3" />
-              Effacer
+            <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className="w-3.5 h-3.5 text-gray-400 hover:text-[#cf292c]" />
             </button>
           )}
         </div>
+        <div className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 rounded-xl">
+          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+          <select
+            value={periode}
+            onChange={e => setPeriode(e.target.value)}
+            className="bg-transparent border-none text-xs font-medium text-gray-700 focus:ring-0 cursor-pointer pr-6"
+          >
+            <option value="1month">1 mois</option>
+            <option value="3months">3 mois</option>
+            <option value="6months">6 mois</option>
+            <option value="12months">12 mois</option>
+          </select>
+        </div>
       </div>
 
-      {/* Tableau Desktop - Style Dashboard */}
-      <div className="hidden md:block bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-3 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider w-14">Rang</th>
-              <th className="px-3 py-2.5 text-left text-[10px] font-medium text-gray-500 uppercase tracking-wider">Employé</th>
-              <th className="px-3 py-2.5 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider w-20">Niveau</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider w-16">Bonus</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider w-16">Malus</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-medium text-gray-500 uppercase tracking-wider w-20">Score</th>
-              <th className="px-3 py-2.5 text-center text-[10px] font-medium text-gray-500 uppercase tracking-wider w-12"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredData.map((emp) => {
-              const niveau = getNiveau(emp.score_total);
-              return (
-                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-3 py-2.5">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
+      {/* Top 3 */}
+      {filteredData.length >= 3 && !searchTerm && (
+        <div className="flex items-stretch gap-2">
+          {[1, 0, 2].map((pos) => {
+            const emp = filteredData[pos];
+            if (!emp) return null;
+            const niveau = getNiveau(emp.score_total);
+            const isFirst = pos === 0;
+            return (
+              <button
+                key={emp.id}
+                onClick={() => onEmployeClick(emp.id)}
+                className={`flex-1 flex items-center gap-2.5 bg-white rounded-xl border px-3 py-2.5 transition-all hover:shadow-sm group ${
+                  isFirst ? 'border-[#cf292c]/20' : 'border-slate-200'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] flex-shrink-0 ${
+                  pos === 0 ? 'bg-[#cf292c] text-white' :
+                  pos === 1 ? 'bg-gray-400 text-white' :
+                  'bg-amber-400 text-white'
+                }`}>{pos + 1}</div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${niveau.bg} ${niveau.iconColor}`}>
+                  {emp.prenom?.[0]}{emp.nom?.[0]}
+                </div>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="font-medium text-gray-900 text-xs truncate group-hover:text-[#cf292c] transition-colors">{emp.prenom} {emp.nom}</p>
+                  <p className={`text-[10px] ${niveau.iconColor}`}>{niveau.label}</p>
+                </div>
+                <span className={`font-bold text-sm tabular-nums flex-shrink-0 ${isFirst ? 'text-[#cf292c]' : 'text-gray-800'}`}>{emp.score_total}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tableau classement */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-500">{filteredData.length} employé{filteredData.length > 1 ? 's' : ''}</span>
+          <div className="flex items-center gap-3 text-[10px] text-gray-400">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span> Bonus</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#cf292c] inline-block"></span> Malus</span>
+          </div>
+        </div>
+
+        {/* Desktop */}
+        <div className="hidden md:block">
+          {filteredData.map((emp) => {
+            const niveau = getNiveau(emp.score_total);
+            const barWidth = maxScore > 0 ? Math.max(4, (Math.abs(emp.score_total) / maxScore) * 100) : 0;
+            return (
+              <div key={emp.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors group">
+                {/* Rang */}
+                <div className="w-7 flex-shrink-0">
+                  {emp.rang <= 3 ? (
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${
                       emp.rang === 1 ? 'bg-[#cf292c] text-white' :
-                      emp.rang === 2 ? 'bg-gray-500 text-white' :
-                      emp.rang === 3 ? 'bg-amber-500 text-white' :
-                      'bg-slate-100 text-gray-600'
+                      emp.rang === 2 ? 'bg-gray-400 text-white' :
+                      'bg-amber-400 text-white'
                     }`}>
                       {emp.rang}
                     </div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      onClick={() => onEmployeClick(emp.id)}
-                      className="text-left hover:text-[#cf292c] transition-colors"
-                    >
-                      <p className="font-medium text-gray-900 text-sm">{emp.prenom} {emp.nom}</p>
-                      <p className="text-[10px] text-gray-500">{emp.poste || 'Employé'}</p>
-                    </button>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex flex-col items-center">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${niveau.bg}`}>
-                        {niveau.label === 'À surveiller' 
-                          ? <AlertTriangle className={`w-3 h-3 ${niveau.iconColor}`} />
-                          : <Medal className={`w-3 h-3 ${niveau.iconColor}`} />
-                        }
-                      </div>
-                      <span className="text-[9px] text-gray-500 mt-0.5">{niveau.label}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <span className="text-xs font-medium text-emerald-600">+{emp.total_bonus || 0}</span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <span className="text-xs font-medium text-[#cf292c]">-{emp.total_malus || 0}</span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <span className={`font-bold text-base ${
-                      emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'
-                    }`}>
-                      {emp.score_total}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <button
-                      onClick={() => onAttribuer(emp)}
-                      className="p-1.5 text-gray-400 hover:text-[#cf292c] hover:bg-red-50 rounded-lg transition-colors"
-                      title="Attribuer des points"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {filteredData.length === 0 && (
-          <div className="p-8 text-center">
-            <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-            <p className="text-gray-500 text-sm">Aucun employé trouvé</p>
-          </div>
-        )}
-      </div>
-
-      {/* Version Mobile - Cards compactes */}
-      <div className="md:hidden space-y-2">
-        {filteredData.map((emp) => {
-          const niveau = getNiveau(emp.score_total);
-          return (
-            <div 
-              key={emp.id} 
-              className="bg-white rounded-xl border border-slate-200 p-3"
-            >
-              <div className="flex items-center gap-2.5">
-                {/* Rang */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                  emp.rang === 1 ? 'bg-[#cf292c] text-white' :
-                  emp.rang === 2 ? 'bg-gray-500 text-white' :
-                  emp.rang === 3 ? 'bg-amber-500 text-white' :
-                  'bg-slate-100 text-gray-600'
-                }`}>
-                  {emp.rang}
+                  ) : (
+                    <span className="text-xs text-gray-400 font-medium pl-1.5">{emp.rang}</span>
+                  )}
                 </div>
-                
-                {/* Infos */}
-                <div className="flex-1 min-w-0" onClick={() => onEmployeClick(emp.id)}>
-                  <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
-                  <p className="text-[10px] text-gray-500">{emp.poste || 'Employé'}</p>
-                </div>
-                
-                {/* Score */}
-                <div className="text-right flex items-center gap-1.5">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${niveau.bg}`}>
-                    {niveau.label === 'À surveiller' 
-                      ? <AlertTriangle className={`w-3 h-3 ${niveau.iconColor}`} />
-                      : <Medal className={`w-3 h-3 ${niveau.iconColor}`} />
-                    }
+
+                {/* Employé */}
+                <button onClick={() => onEmployeClick(emp.id)} className="flex items-center gap-2.5 min-w-0 w-[200px] flex-shrink-0 text-left group/btn">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${niveau.bg} ${niveau.iconColor}`}>
+                    {emp.prenom?.[0]}{emp.nom?.[0]}
                   </div>
-                  <span className={`font-bold text-base ${
-                    emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'
-                  }`}>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 text-sm group-hover/btn:text-[#cf292c] transition-colors truncate leading-tight">{emp.prenom} {emp.nom}</p>
+                    <p className="text-[10px] text-gray-400 truncate">{emp.poste || 'Employé'}</p>
+                  </div>
+                </button>
+
+                {/* Barre de progression */}
+                <div className="flex-1 flex items-center gap-2.5 min-w-0">
+                  <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        emp.score_total < 0 ? 'bg-[#cf292c]' : emp.rang <= 3 ? 'bg-[#cf292c]' : 'bg-slate-300'
+                      }`}
+                      style={{ width: `${barWidth}%` }}
+                    />
+                  </div>
+                  <span className={`font-bold text-sm tabular-nums min-w-[32px] text-right ${emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'}`}>
                     {emp.score_total}
                   </span>
                 </div>
-              </div>
-              
-              {/* Stats */}
-              <div className="flex items-center gap-2 mt-2.5 pt-2.5 border-t border-slate-100">
-                <div className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-50">
-                  <TrendingUp className="w-3 h-3 text-emerald-600" />
-                  <span className="text-xs font-medium text-emerald-700">+{emp.total_bonus || 0}</span>
+
+                {/* Bonus / Malus */}
+                <div className="flex items-center gap-3 flex-shrink-0 w-[100px] justify-end">
+                  <span className="text-xs font-medium text-emerald-600 tabular-nums">+{emp.total_bonus || 0}</span>
+                  <span className="text-xs font-medium text-[#cf292c]/60 tabular-nums">-{emp.total_malus || 0}</span>
                 </div>
-                <div className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-red-50">
-                  <TrendingDown className="w-3 h-3 text-[#cf292c]" />
-                  <span className="text-xs font-medium text-[#cf292c]">-{emp.total_malus || 0}</span>
+
+                {/* Niveau badge */}
+                <div className="flex-shrink-0 w-[60px] text-center">
+                  <span className={`text-[10px] font-medium ${niveau.iconColor}`}>{niveau.label}</span>
                 </div>
+
+                {/* Action */}
                 <button
                   onClick={() => onAttribuer(emp)}
-                  className="p-2 bg-[#cf292c] text-white rounded-lg hover:bg-[#b82329] transition-colors"
+                  className="p-1 text-gray-300 hover:text-[#cf292c] hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                  title="Attribuer des points"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        {/* Mobile */}
+        <div className="md:hidden divide-y divide-slate-50">
+          {filteredData.map((emp) => {
+            const niveau = getNiveau(emp.score_total);
+            const barWidth = maxScore > 0 ? Math.max(4, (Math.abs(emp.score_total) / maxScore) * 100) : 0;
+            return (
+              <div key={emp.id} className="p-3 hover:bg-slate-50/50 transition-colors">
+                <div className="flex items-center gap-2.5">
+                  {/* Rang */}
+                  {emp.rang <= 3 ? (
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] flex-shrink-0 ${
+                      emp.rang === 1 ? 'bg-[#cf292c] text-white' :
+                      emp.rang === 2 ? 'bg-gray-400 text-white' :
+                      'bg-amber-400 text-white'
+                    }`}>
+                      {emp.rang}
+                    </div>
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] text-gray-500 font-medium">{emp.rang}</span>
+                    </div>
+                  )}
+
+                  {/* Infos + barre */}
+                  <div className="flex-1 min-w-0" onClick={() => onEmployeClick(emp.id)}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-gray-900 text-sm truncate">{emp.prenom} {emp.nom}</p>
+                      <span className={`font-bold text-sm tabular-nums flex-shrink-0 ${emp.score_total < 0 ? 'text-[#cf292c]' : 'text-gray-900'}`}>
+                        {emp.score_total}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="flex-1 bg-slate-100 rounded-full h-1 overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full ${emp.rang <= 3 ? 'bg-[#cf292c]' : 'bg-slate-300'}`}
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
+                      <span className={`text-[9px] font-medium ${niveau.iconColor}`}>{niveau.label}</span>
+                    </div>
+                  </div>
+
+                  {/* Action */}
+                  <button
+                    onClick={() => onAttribuer(emp)}
+                    className="p-1.5 text-gray-300 hover:text-[#cf292c] hover:bg-red-50 rounded-lg flex-shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         {filteredData.length === 0 && (
-          <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
-            <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+          <div className="p-10 text-center">
+            <Search className="w-8 h-8 mx-auto mb-2 text-slate-200" />
             <p className="text-gray-500 text-sm">Aucun employé trouvé</p>
+            {searchTerm && <p className="text-gray-400 text-xs mt-1">Essayez un autre terme de recherche</p>}
           </div>
         )}
       </div>
@@ -673,8 +654,7 @@ function AttribuerView({ rules, onSuccess }) {
     const loadEmployes = async () => {
       try {
         const token = localStorage.getItem('token');
-        const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-        const adminUrl = baseUrl.replace('/api', '');
+        const adminUrl = API_BASE;
         
         // Charger les employés
         const res = await fetch(`${adminUrl}/admin/employes`, {

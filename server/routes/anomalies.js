@@ -10,7 +10,6 @@ const {
   getAnalytics,
   getEmployeScore,
   getEmployePatterns,
-  demanderJustification,
   invaliderAnomaliesPourShift,
   getAlertesNonTraitees
 } = require('../controllers/anomaliesController');
@@ -34,9 +33,7 @@ router.get('/patterns/:employeId', authMiddleware, getEmployePatterns);
 // Routes admin
 router.post('/sync-from-comparison', authMiddleware, adminMiddleware, syncAnomaliesFromComparison);
 router.put('/:id/traiter', authMiddleware, adminMiddleware, traiterAnomalie);
-router.post('/:id/demander-justification', authMiddleware, demanderJustification);
-
-// 🆕 Route invalidation anomalies (appelée après modif shift)
+// Route invalidation anomalies (appelée après modif shift)
 router.post('/invalider-pour-shift', authMiddleware, adminMiddleware, invaliderAnomaliesPourShift);
 
 module.exports = router;

@@ -1,18 +1,13 @@
 // controllers/emailController.js
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../prisma/client');
 const { envoyerIdentifiants } = require('../utils/emailService');
 const { parseCategories } = require('../utils/categoriesHelper');
-
-const prisma = new PrismaClient();
 
 /**
  * Envoie les identifiants à l'employé par email
  * @route POST /admin/employes/envoyer-identifiants
  */
 const envoyerIdentifiantsParEmail = async (req, res) => {
-  console.log("==== Requête d'envoi d'email reçue ====");
-  console.log("Body:", req.body);
-  console.log("Headers:", req.headers.authorization ? "Authorization: présent" : "Authorization: absent");
   
   const { employeId, email, motDePasseTemporaire } = req.body;
   
@@ -42,7 +37,6 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
 
   try {
     // Vérifier que l'employé existe
-    console.log("Recherche de l'employé avec ID:", employeId);
     let employe;
     
     try {
@@ -74,11 +68,8 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
       });
     }
 
-    console.log("Employé trouvé:", employe ? "Oui" : "Non");
-
     if (!employe) {
       // Si nous n'avons pas pu trouver l'employé, créons un objet avec les informations minimales
-      console.log("Création d'un objet employé simulé pour l'envoi d'email");
       employe = {
         email: email,
         nom: "Utilisateur",
@@ -90,10 +81,6 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
 
     // Vérifier que l'email fourni correspond à celui de l'employé
     if (employe.email && employe.email !== email) {
-      console.log("L'email fourni ne correspond pas à celui de l'employé:", {
-        emailFourni: email,
-        emailEmploye: employe.email
-      });
       return res.status(400).json({ 
         success: false, 
         message: "L'email fourni ne correspond pas à celui de l'employé" 
@@ -107,10 +94,8 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
     } else if (employe.categorie) {
       categoriesArray = [employe.categorie];
     }
-    console.log("Catégories de l'employé:", categoriesArray);
 
     // Envoyer l'email avec les identifiants
-    console.log("Envoi de l'email avec les identifiants...");
     const resultatEnvoi = await envoyerIdentifiants(
       email, 
       employe.nom || "Utilisateur", 
@@ -118,8 +103,6 @@ const envoyerIdentifiantsParEmail = async (req, res) => {
       motDePasseTemporaire,
       categoriesArray
     );
-
-    console.log("Résultat de l'envoi:", resultatEnvoi);
 
     if (!resultatEnvoi.success) {
       console.error("Échec de l'envoi d'email:", resultatEnvoi.error);

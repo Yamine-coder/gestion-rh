@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { QrReader } from 'react-qr-reader';
 import axios from 'axios';
-import { ScanLine, Check, X, Clock, Wifi, WifiOff, Camera, CameraOff, RefreshCw, Maximize2, Minimize2, CloudOff, Upload, UserCheck, AlertTriangle, WifiOff as WifiOffIcon, ShieldAlert } from 'lucide-react';
+import { ScanLine, Check, X, Clock, Wifi, WifiOff, Camera, CameraOff, RefreshCw, Maximize2, Minimize2, CloudOff, Upload, UserCheck, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { API_BASE } from '../config/api';
 
 const brand = '#cf292c';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════════════
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const API_TIMEOUT = 10000; // 10 secondes
 const BLOCK_DURATION_MS = 30000; // 30 secondes par QR code
 
@@ -196,7 +197,6 @@ const Badgeuse = () => {
     }
     
     setIsSyncing(true);
-    console.log(`🔄 Synchronisation de ${queue.length} pointage(s) en attente...`);
     
     let syncedCount = 0;
     
@@ -210,15 +210,12 @@ const Badgeuse = () => {
         
         removeFromOfflineQueue(item.id);
         syncedCount++;
-        console.log(`✅ Sync réussi pour pointage ${item.id}`);
         
       } catch (err) {
         // Si erreur "trop récent" ou déjà enregistré, on supprime quand même
         if (err.response?.status === 409) {
           removeFromOfflineQueue(item.id);
-          console.log(`⚠️ Pointage ${item.id} déjà enregistré, supprimé de la queue`);
         } else {
-          console.warn(`❌ Échec sync pointage ${item.id}:`, err.message);
         }
       }
     }
@@ -226,10 +223,6 @@ const Badgeuse = () => {
     const remainingQueue = getOfflineQueue();
     setPendingCount(remainingQueue.length);
     setIsSyncing(false);
-    
-    if (syncedCount > 0) {
-      console.log(`✅ ${syncedCount} pointage(s) synchronisé(s)`);
-    }
   }, [isSyncing]);
 
   // Charger le compteur au démarrage
@@ -394,7 +387,6 @@ const Badgeuse = () => {
     const blockedUntil = blockedQRCodes.current.get(result);
     if (blockedUntil && now < blockedUntil) {
       const remainingSeconds = Math.ceil((blockedUntil - now) / 1000);
-      console.log(`🚫 QR bloqué encore ${remainingSeconds}s`);
       
       // Extraire les infos pour afficher le nom
       let blockedEmployeInfo = { prenom: 'Employé', nom: '' };
@@ -812,7 +804,7 @@ const Badgeuse = () => {
                 ) : (
                   <div className="relative">
                     <div className="w-20 h-20 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full bg-white/30 flex items-center justify-center">
-                      <WifiOffIcon className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 text-white" strokeWidth={1.5} />
+                      <WifiOff className="w-12 h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 text-white" strokeWidth={1.5} />
                     </div>
                   </div>
                 )}

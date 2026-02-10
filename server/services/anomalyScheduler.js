@@ -15,23 +15,7 @@
 const prisma = require('../prisma/client');
 const congeReminderService = require('./congeReminderService');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties } = require('../utils/pointageTypeUtils');
-
-/**
- * Parse les segments d'un shift (gère les cas où c'est une string JSON)
- */
-function parseSegments(segments) {
-  if (!segments) return [];
-  if (Array.isArray(segments)) return segments;
-  if (typeof segments === 'string') {
-    try {
-      const parsed = JSON.parse(segments);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return [];
-    }
-  }
-  return [];
-}
+const { parseSegments } = require('../utils/segmentUtils');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🕐 UTILITAIRES TIMEZONE - Europe/Paris
@@ -79,27 +63,34 @@ function getParisTime() {
  * @returns {Object} { startUTC: Date, endUTC: Date }
  */
 function getParisDateBoundsUTC(dateStr) {
-  // Minuit Paris = 23:00 UTC (hiver) ou 22:00 UTC (été)
-  // On utilise une approche sûre: créer la date en Paris puis convertir
+  // Utilise Intl.DateTimeFormat pour déterminer correctement le décalage UTC de Paris
+  // Gère automatiquement les transitions CET/CEST (hiver/été)
   
-  // Début de journée Paris (00:00:00)
-  const startParis = new Date(`${dateStr}T00:00:00+01:00`); // +01:00 = Paris hiver
+  // Créer une date à midi Paris pour déterminer le décalage UTC fiable
+  const midday = new Date(`${dateStr}T12:00:00Z`);
+  const parisFormatter = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  });
   
-  // Fin de journée Paris (23:59:59)
-  const endParis = new Date(`${dateStr}T23:59:59+01:00`);
+  // Calculer le décalage UTC réel de Paris pour cette date
+  const parts = parisFormatter.formatToParts(midday);
+  const getPart = (type) => parts.find(p => p.type === type)?.value;
+  const parisDateStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}Z`;
+  const parisAsUTC = new Date(parisDateStr);
+  const offsetMs = midday.getTime() - parisAsUTC.getTime(); // Décalage Paris en ms
   
-  // Ajuster pour l'heure d'été (dernière dim mars -> dernier dim octobre)
-  const month = parseInt(dateStr.split('-')[1], 10);
-  if (month >= 4 && month <= 10) {
-    // Période été approximative - Paris = UTC+2
-    startParis.setTime(startParis.getTime() - 3600000); // -1h
-    endParis.setTime(endParis.getTime() - 3600000);
-  }
+  // Début de journée Paris (00:00:00) converti en UTC
+  const startUTC = new Date(`${dateStr}T00:00:00Z`);
+  startUTC.setTime(startUTC.getTime() - offsetMs);
   
-  return {
-    startUTC: startParis,
-    endUTC: endParis
-  };
+  // Fin de journée Paris (23:59:59) converti en UTC  
+  const endUTC = new Date(`${dateStr}T23:59:59Z`);
+  endUTC.setTime(endUTC.getTime() - offsetMs);
+  
+  return { startUTC, endUTC };
 }
 
 /**
@@ -128,11 +119,9 @@ class AnomalyScheduler {
    */
   start() {
     if (this.isRunning) {
-      console.log('⚠️ [SCHEDULER] Déjà en cours d\'exécution');
       return;
     }
 
-    console.log('🚀 [SCHEDULER] Démarrage du détecteur d\'anomalies temps réel');
     this.isRunning = true;
 
     // Rattrapage immédiat : vérifier TOUS les shifts terminés du jour
@@ -156,7 +145,6 @@ class AnomalyScheduler {
       this.intervalId = null;
     }
     this.isRunning = false;
-    console.log('🛑 [SCHEDULER] Arrêté');
   }
 
   /**
@@ -189,7 +177,6 @@ class AnomalyScheduler {
       // Ajuster currentMinutes : 00:30 = 24h30 = 1470 minutes depuis 00:00 de la veille
       currentMinutes = 24 * 60 + currentHour * 60 + currentMinute;
       
-      console.log(`🌙 [SCHEDULER] Avant 6h - Journée de travail de ${today} (${currentMinutes} min = ${(currentMinutes/60).toFixed(1)}h)`);
     }
 
     this.lastCheck = new Date();
@@ -276,10 +263,6 @@ class AnomalyScheduler {
         await this.clotureJourneeTravail();
       }
 
-      if (anomaliesCreees > 0) {
-        console.log(`📊 [SCHEDULER] ${currentTimeStr} - ${anomaliesCreees} shift(s) vérifié(s)`);
-      }
-
     } catch (error) {
       console.error('❌ [SCHEDULER] Erreur lors de la vérification:', error.message);
     }
@@ -340,7 +323,6 @@ class AnomalyScheduler {
       // 🆕 NE PAS créer d'anomalie absence si UNIQUEMENT des segments extra
       // L'employé n'est pas obligé de venir pour ses heures "au noir"
       if (hasOnlyExtras) {
-        console.log(`📋 [SCHEDULER] Shift extra non pointé pour employé ${employeId} - pas d'anomalie (heures optionnelles)`);
         return;
       }
       
@@ -582,7 +564,6 @@ class AnomalyScheduler {
                     type.includes('conge') ? '🏖️' :
                     type.includes('amplitude') || type.includes('depassement') ? '⚠️🔴' : '⚠️';
       
-      console.log(`${emoji} [SCHEDULER] ${type.toUpperCase()}: ${employe?.prenom} ${employe?.nom} - ${description}`);
     }
   }
 
@@ -595,8 +576,6 @@ class AnomalyScheduler {
     const paris = getParisTime();
     const today = paris.dateStr;
     const currentMinutes = paris.hour * 60 + paris.minute;
-
-    console.log('🔄 [SCHEDULER] Rattrapage des shifts terminés...');
 
     try {
       // 🕐 Bornes Paris
@@ -646,9 +625,7 @@ class AnomalyScheduler {
       await this.checkPointagesSansShift(today);
 
       if (rattrapages > 0) {
-        console.log(`✅ [SCHEDULER] Rattrapage terminé: ${rattrapages} shift(s) vérifiés`);
       } else {
-        console.log('✅ [SCHEDULER] Aucun rattrapage nécessaire');
       }
       
       // 🆕 Vérifier aussi les employés "en cours" après fin de shift
@@ -755,7 +732,6 @@ class AnomalyScheduler {
                     description: `⚠️ Sortie non pointée - "En cours" depuis ${(dureeEnCours / 60).toFixed(1)}h (fin prévue: ${shiftEnd}, ${heuresSupPotentielles}h sup potentielles)`
                   });
                   
-                  console.log(`⚠️ [SCHEDULER] MISSING_OUT: ${user?.prenom} ${user?.nom} - En cours depuis ${(dureeEnCours / 60).toFixed(1)}h, fin shift était ${shiftEnd}`);
                 }
               }
             }
@@ -778,8 +754,6 @@ class AnomalyScheduler {
     const hier = new Date();
     hier.setDate(hier.getDate() - 1);
     const dateHier = hier.toISOString().split('T')[0];
-    
-    console.log(`🔒 [SCHEDULER] Clôture de la journée de travail du ${dateHier}...`);
     
     try {
       const { startUTC, endUTC } = getParisDateBoundsUTC(dateHier);
@@ -876,15 +850,12 @@ class AnomalyScheduler {
             description: `🔒 Clôture automatique - Sortie jamais pointée (fin prévue: ${heureFin}, ${heuresSupp}h de travail non comptabilisées)`
           });
           
-          console.log(`🔒 [SCHEDULER] Clôture auto: ${user?.prenom} ${user?.nom} - Jamais pointé sortie, ${heuresSupp}h sup potentielles`);
           clotures++;
         }
       }
       
       if (clotures > 0) {
-        console.log(`✅ [SCHEDULER] Clôture terminée: ${clotures} employé(s) clôturé(s) automatiquement`);
       } else {
-        console.log('✅ [SCHEDULER] Clôture: Aucune clôture nécessaire');
       }
       
     } catch (error) {
@@ -1070,10 +1041,8 @@ class AnomalyScheduler {
                 }
               });
               
-              console.log(`⚡ [SCHEDULER-SIRH] POINTAGE HORS PLANNING: ${user?.prenom} ${user?.nom} - ${heuresTravaillees}h sans shift`);
             }
           } else {
-            console.log(`✅ [SCHEDULER-SIRH] ${user?.prenom} ${user?.nom}: Shift trouvé (${bestShift.shiftDate}, distance ${bestDistance}min)`);
           }
         }
       }
@@ -1086,7 +1055,6 @@ class AnomalyScheduler {
    * Force une vérification manuelle (utile pour les tests)
    */
   async forceCheck() {
-    console.log('🔄 [SCHEDULER] Vérification forcée...');
     await this.checkEndedShifts();
   }
 

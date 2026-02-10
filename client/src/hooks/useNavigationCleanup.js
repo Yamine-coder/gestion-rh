@@ -6,7 +6,6 @@ import { clearAllNavigation } from '../utils/navigationUtils';
 export const useNavigationCleanup = () => {
   const clearNavigation = () => {
     clearAllNavigation();
-    console.log('Navigation data cleared on logout');
   };
 
   return { clearNavigation };

@@ -24,7 +24,6 @@ let cronJobs = [];
  */
 async function checkNewReviews() {
   if (isRunning) {
-    console.log('⏳ Vérification déjà en cours, skip...');
     return;
   }
 
@@ -36,7 +35,6 @@ async function checkNewReviews() {
     const PLACE_ID = process.env.GOOGLE_PLACE_ID;
 
     if (!API_KEY || !PLACE_ID) {
-      console.log('⚠️ Google API non configurée, alertes désactivées');
       return;
     }
 
@@ -47,8 +45,6 @@ async function checkNewReviews() {
       // Erreur silencieuse - pas de connexion internet
       return;
     }
-
-    console.log(`🔍 [${lastCheck.toLocaleTimeString('fr-FR')}] Vérification des nouveaux avis...`);
 
     // Appel Google Places API
     const response = await axios.get('https://maps.googleapis.com/maps/api/place/details/json', {
@@ -87,9 +83,7 @@ async function checkNewReviews() {
     const alertsSent = await avisAlerts.checkAndAlertNegativeReviews(reviews, restaurant);
     
     if (alertsSent > 0) {
-      console.log(`📧 ${alertsSent} alerte(s) envoyée(s)`);
     } else {
-      console.log('✅ Pas de nouvel avis négatif');
     }
 
   } catch (error) {
@@ -113,8 +107,6 @@ async function sendDailyReviewReport() {
     const PLACE_ID = process.env.GOOGLE_PLACE_ID;
 
     if (!API_KEY || !PLACE_ID) return;
-
-    console.log('📊 Génération du rapport quotidien...');
 
     const response = await axios.get('https://maps.googleapis.com/maps/api/place/details/json', {
       params: {
@@ -147,7 +139,6 @@ async function sendDailyReviewReport() {
     const analysis = avisAnalysis.analyzeReviews(history.reviews);
 
     await avisAlerts.sendDailyReport(reviews, restaurant, analysis);
-    console.log('📊 Rapport quotidien envoyé');
 
   } catch (error) {
     console.error('❌ Erreur rapport quotidien:', error.message);
@@ -163,18 +154,15 @@ function startCronJobs() {
     timezone: 'Europe/Paris'
   });
   cronJobs.push(checkJob);
-  console.log('⏰ Cron avis: Vérification toutes les 15 minutes');
 
   // Rapport quotidien à 9h00
   const reportJob = cron.schedule('0 9 * * *', sendDailyReviewReport, {
     timezone: 'Europe/Paris'
   });
   cronJobs.push(reportJob);
-  console.log('📊 Cron avis: Rapport quotidien à 9h00');
 
   // Première vérification au démarrage (après 30 secondes)
   setTimeout(() => {
-    console.log('🚀 Première vérification des avis au démarrage...');
     checkNewReviews();
   }, 30000);
 }
@@ -185,7 +173,6 @@ function startCronJobs() {
 function stopCronJobs() {
   cronJobs.forEach(job => job.stop());
   cronJobs = [];
-  console.log('⏹️ Cron avis arrêté');
 }
 
 /**

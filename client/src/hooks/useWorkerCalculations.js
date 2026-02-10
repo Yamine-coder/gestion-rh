@@ -63,46 +63,38 @@ export function useWorkerCalculations() {
 
   // Méthodes spécialisées
   const calculateAnomaliesStats = useCallback(async (anomalies, comparaisons, shifts) => {
-    console.log('🔄 Calcul stats anomalies via Worker...');
     const result = await executeWorkerTask('CALCULATE_ANOMALIES_STATS', {
       anomalies,
       comparaisons,
       shifts
     });
-    console.log('✅ Stats anomalies calculées');
     return result;
   }, [executeWorkerTask]);
 
   const processPlanningData = useCallback(async (shifts, employes, dateDebut, dateFin) => {
-    console.log('🔄 Traitement données planning via Worker...');
     const result = await executeWorkerTask('PROCESS_PLANNING_DATA', {
       shifts,
       employes,
       dateDebut,
       dateFin
     });
-    console.log('✅ Données planning traitées');
     return result;
   }, [executeWorkerTask]);
 
   const generateRapportData = useCallback(async (shifts, anomalies, periode) => {
-    console.log('🔄 Génération rapport via Worker...');
     const result = await executeWorkerTask('GENERATE_RAPPORT_DATA', {
       shifts,
       anomalies,
       periode
     });
-    console.log('✅ Rapport généré');
     return result;
   }, [executeWorkerTask]);
 
   const calculateHeuresSupplementaires = useCallback(async (shifts, seuils) => {
-    console.log('🔄 Calcul heures supplémentaires via Worker...');
     const result = await executeWorkerTask('CALCULATE_HEURES_SUPPLEMENTAIRES', {
       shifts,
       seuils
     });
-    console.log('✅ Heures supplémentaires calculées');
     return result;
   }, [executeWorkerTask]);
 
@@ -138,12 +130,8 @@ export function useCachedWorkerCalculations() {
     
     // Vérifier le cache
     if (isCacheValid(cacheKey)) {
-      console.log(`🎯 Cache hit pour ${type}`);
       return cache.current.get(cacheKey);
     }
-
-    // Calcul via worker
-    console.log(`🔄 Cache miss pour ${type}, calcul via Worker...`);
     const result = await workerMethod(...params);
     
     // Mise en cache
@@ -169,7 +157,6 @@ export function useCachedWorkerCalculations() {
   const clearCache = useCallback(() => {
     cache.current.clear();
     cacheTimestamps.current.clear();
-    console.log('🗑️ Cache worker nettoyé');
   }, []);
 
   return {

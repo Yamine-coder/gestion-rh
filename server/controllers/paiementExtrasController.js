@@ -1,20 +1,7 @@
 // server/controllers/paiementExtrasController.js
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { toLocalDateString } = require('../utils/dateUtils');
-
-// Fonction helper pour parser les segments JSON
-function parseSegments(segments) {
-  if (!segments) return [];
-  if (Array.isArray(segments)) return segments;
-  if (typeof segments === 'string') {
-    try {
-      const parsed = JSON.parse(segments);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) { return []; }
-  }
-  return [];
-}
+const { parseSegments } = require('../utils/segmentUtils');
 
 /**
  * Récupérer tous les paiements extras avec filtres
@@ -208,7 +195,7 @@ const createPaiement = async (req, res) => {
     // Vérifier que l'employé existe
     const employe = await prisma.user.findUnique({
       where: { id: parseInt(employeId) },
-      select: { id: true, nom: true, prenom: true, tauxHoraireExtra: true }
+      select: { id: true, nom: true, prenom: true }
     });
     
     if (!employe) {
@@ -216,7 +203,7 @@ const createPaiement = async (req, res) => {
     }
     
     // Calculer le montant si pas fourni
-    const tauxEffectif = tauxHoraire || employe.tauxHoraireExtra || 10; // Défaut: 10€/h
+    const tauxEffectif = tauxHoraire || 10; // Défaut: 10€/h
     const montantCalcule = montant || (heures * tauxEffectif);
     
     // Créer le paiement
@@ -240,8 +227,6 @@ const createPaiement = async (req, res) => {
         }
       }
     });
-    
-    console.log(`💰 Paiement extra créé: ${heures}h pour ${employe.nom} ${employe.prenom} - ${montantCalcule}€`);
     
     res.status(201).json({
       success: true,
@@ -342,7 +327,6 @@ const marquerPaye = async (req, res) => {
               data: { segments }
             });
             
-            console.log(`🔄 Segment ${paiement.segmentIndex} du shift ${paiement.shiftId} mis à jour: paymentStatus = 'paye'`);
           }
         }
       } catch (syncError) {
@@ -350,8 +334,6 @@ const marquerPaye = async (req, res) => {
         // On ne bloque pas - le paiement est quand même marqué payé
       }
     }
-    
-    console.log(`✅ Paiement ${id} marqué payé: ${nouveauMontant.toFixed(2)}€ (${heures}h x ${nouveauTaux}€/h) à ${paiement.employe.prenom} ${paiement.employe.nom}`);
     
     res.json({
       success: true,
@@ -449,18 +431,10 @@ const annulerPaiement = async (req, res) => {
       isPointe = pointages.length > 0;
     }
     
-    console.log(`🔍 Annulation paiement ${id}:`);
-    console.log(`   - Date paiement: ${paiement.date}`);
-    console.log(`   - Source: ${paiement.source}`);
-    console.log(`   - Shift trouvé: ${shift ? shift.id : 'NON'}`);
-    console.log(`   - Segment extra: ${segmentExtra ? `${segmentExtra.start}-${segmentExtra.end}` : 'NON'}`);
-    console.log(`   - A des pointages: ${isPointe}`);
-    
     if (paiementDate > today) {
       // Shift FUTUR
       canRemoveSegment = true;
       reason = 'Shift futur - segment retiré du planning';
-      console.log(`   ✅ Shift FUTUR → retrait segment autorisé`);
     } else if (paiementDate.getTime() === today.getTime()) {
       // Shift JOUR MÊME - vérifier l'heure
       if (segmentExtra) {
@@ -472,17 +446,14 @@ const annulerPaiement = async (req, res) => {
           // L'heure actuelle est avant la fin du segment → traiter comme futur
           canRemoveSegment = true;
           reason = 'Segment pas encore terminé - retiré du planning';
-          console.log(`   ✅ Segment pas encore terminé (${segmentExtra.end}) → retrait autorisé`);
         } else if (!isPointe) {
           // Segment terminé mais pas pointé → on peut retirer
           canRemoveSegment = true;
           reason = 'Segment non pointé - retiré du planning';
-          console.log(`   ✅ Segment terminé mais non pointé → retrait autorisé`);
         } else {
           // Segment terminé ET pointé → garder le segment
           canRemoveSegment = false;
           reason = 'Segment déjà pointé - conservé dans le planning';
-          console.log(`   ❌ Segment terminé ET pointé → segment conservé`);
         }
       } else {
         canRemoveSegment = false;
@@ -493,11 +464,9 @@ const annulerPaiement = async (req, res) => {
       if (!isPointe) {
         canRemoveSegment = true;
         reason = 'Shift passé non pointé - retiré du planning';
-        console.log(`   ✅ Shift PASSÉ non pointé → retrait autorisé`);
       } else {
         canRemoveSegment = false;
         reason = 'Shift passé pointé - conservé dans le planning';
-        console.log(`   ❌ Shift PASSÉ mais pointé → segment conservé`);
       }
     }
     
@@ -505,7 +474,6 @@ const annulerPaiement = async (req, res) => {
     if (forcerAnnulation && !canRemoveSegment) {
       canRemoveSegment = true;
       reason = 'Annulation forcée - segment retiré du planning';
-      console.log(`   ⚡ FORÇAGE → retrait segment autorisé malgré pointage`);
     }
     
     // Retirer le segment si autorisé (pour toutes les sources qui créent un segment)
@@ -518,7 +486,6 @@ const annulerPaiement = async (req, res) => {
           where: { id: shift.id },
           data: { segments: segmentsSansExtra }
         });
-        console.log(`🗑️ Segment extra retiré du shift ${shift.id}`);
       }
     }
     
@@ -566,11 +533,8 @@ const annulerPaiement = async (req, res) => {
           }
         });
         anomalieReactivee = true;
-        console.log(`🔄 Anomalie #${paiement.anomalieId} remise en "en_attente"`);
       }
     }
-    
-    console.log(`❌ Paiement ${id} annulé. Segment retiré: ${canRemoveSegment}. Anomalie réactivée: ${anomalieReactivee}`);
     
     res.json({
       success: true,
@@ -876,7 +840,6 @@ const updatePaiement = async (req, res) => {
       }
     });
     
-    console.log(`✏️ Paiement #${id} mis à jour:`, updates);
     res.json({ success: true, paiement: updated });
     
   } catch (error) {

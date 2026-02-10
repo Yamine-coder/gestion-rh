@@ -1,8 +1,7 @@
 // server/controllers/alertesController.js
 // Système d'alertes temps réel pour retards et absences
 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, trouverDerniereSortie } = require('../utils/pointageTypeUtils');
 
@@ -36,6 +35,43 @@ const detecterRetardsAbsences = async (req, res) => {
     
     const alertes = [];
     
+    // ✅ PERF-01: Batch-load tous les pointages et anomalies du jour (évite N+1 queries)
+    const employeIds = [...new Set(shifts.filter(s => s.employe?.statut === 'actif').map(s => s.employeId))];
+    
+    const [allPointages, allAnomalies] = await Promise.all([
+      prisma.pointage.findMany({
+        where: {
+          userId: { in: employeIds },
+          horodatage: {
+            gte: new Date(`${today}T00:00:00.000Z`),
+            lte: new Date(`${today}T23:59:59.999Z`)
+          }
+        },
+        orderBy: { horodatage: 'asc' }
+      }),
+      prisma.anomalie.findMany({
+        where: {
+          employeId: { in: employeIds },
+          date: {
+            gte: new Date(`${today}T00:00:00.000Z`),
+            lte: new Date(`${today}T23:59:59.999Z`)
+          },
+          type: { in: ['absence_non_justifiee', 'retard_critique'] }
+        }
+      })
+    ]);
+    
+    // Indexer par employeId pour accès O(1)
+    const pointagesByEmploye = new Map();
+    for (const p of allPointages) {
+      if (!pointagesByEmploye.has(p.userId)) pointagesByEmploye.set(p.userId, []);
+      pointagesByEmploye.get(p.userId).push(p);
+    }
+    const anomaliesByEmploye = new Map();
+    for (const a of allAnomalies) {
+      anomaliesByEmploye.set(a.employeId, a);
+    }
+    
     for (const shift of shifts) {
       // Ignorer les employés inactifs (statut !== 'actif')
       if (shift.employe?.statut !== 'actif') continue;
@@ -55,45 +91,32 @@ const detecterRetardsAbsences = async (req, res) => {
           const [sh, sm] = start.split(':').map(Number);
           const [eh, em] = end.split(':').map(Number);
           const startMin = sh * 60 + sm;
-          const endMin = eh * 60 + em;
+          let endMin = eh * 60 + em;
+          
+          // Gérer le shift de nuit (ex: 22:00 → 02:00)
+          if (endMin <= startMin) endMin += 24 * 60;
           
           if (startMin < shiftStartMinutes) shiftStartMinutes = startMin;
           if (endMin > shiftEndMinutes) shiftEndMinutes = endMin;
           
           let duration = endMin - startMin;
-          if (duration < 0) duration += 24 * 60; // Shift de nuit
           totalMinutesPrevues += duration;
         }
       });
       
-      // Récupérer les pointages du jour pour cet employé
-      const pointages = await prisma.pointage.findMany({
-        where: {
-          userId: shift.employeId,
-          horodatage: {
-            gte: new Date(`${today}T00:00:00.000Z`),
-            lte: new Date(`${today}T23:59:59.999Z`)
-          }
-        },
-        orderBy: { horodatage: 'asc' }
-      });
+      // Utiliser les données pré-chargées
+      const pointages = pointagesByEmploye.get(shift.employeId) || [];
+      const anomalieExistante = anomaliesByEmploye.get(shift.employeId) || null;
       
-      // ✅ CORRIGÉ: Utiliser le helper centralisé pour vérifier toutes les variantes de types
+      // Vérifier les pointages d'arrivée
       const hasArrivee = filtrerEntrees(pointages).length > 0;
-      const minutesDepuisDebut = nowMinutes - shiftStartMinutes;
-      const isShiftFinished = nowMinutes > shiftEndMinutes;
-      
-      // Vérifier si une anomalie existe déjà pour aujourd'hui
-      const anomalieExistante = await prisma.anomalie.findFirst({
-        where: {
-          employeId: shift.employeId,
-          date: {
-            gte: new Date(`${today}T00:00:00.000Z`),
-            lte: new Date(`${today}T23:59:59.999Z`)
-          },
-          type: { in: ['absence_non_justifiee', 'retard_critique'] }
-        }
-      });
+      // Gérer le wrap-around pour les shifts de nuit
+      let adjustedNow = nowMinutes;
+      if (shiftEndMinutes > 24 * 60 && nowMinutes < shiftStartMinutes) {
+        adjustedNow = nowMinutes + 24 * 60;
+      }
+      const minutesDepuisDebut = adjustedNow - shiftStartMinutes;
+      const isShiftFinished = adjustedNow > shiftEndMinutes;
       
       // Générer les alertes selon la situation
       if (!hasArrivee && minutesDepuisDebut > 0) {
@@ -180,7 +203,7 @@ const detecterRetardsAbsences = async (req, res) => {
     
   } catch (error) {
     console.error('Erreur détection retards/absences:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: 'Erreur détection retards/absences' });
   }
 };
 

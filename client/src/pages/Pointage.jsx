@@ -7,9 +7,7 @@ import BottomNav from "../components/BottomNav";
 import { ThemeContext } from '../context/ThemeContext';
 import useNotificationHighlight from '../hooks/useNotificationHighlight';
 import { toLocalDateString, parseLocalDate } from '../utils/parisTimeUtils';
-
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 const Pointage = () => {
   const location = useLocation();
@@ -137,12 +135,9 @@ const Pointage = () => {
           return pointageDateStr === todayStr || pointageDateStr === yesterdayStr;
         });
         
-        console.log('📅 [SIRH] Pointages filtrés - workDay:', workDayFilter || 'auto', '- trouvés:', pointagesJournee.length);
         setHistorique(pointagesJournee);
       } catch (err) {
-        console.error('Erreur lors du chargement de l\'historique:', err);
-        console.error('Status:', err.response?.status);
-        console.error('Data:', err.response?.data);
+        console.error('Erreur chargement historique:', err);
         setHistorique([]);
       }
     };
@@ -155,9 +150,7 @@ const Pointage = () => {
   // console.log('Total heures (serveur):', res.data?.totalHeures);
         setTotalHeures(res.data.totalHeures || 0);
       } catch (err) {
-        console.error('Erreur lors du chargement du total heures:', err);
-        console.error('Status:', err.response?.status);
-        console.error('Data:', err.response?.data);
+        console.error('Erreur chargement total heures:', err);
         setTotalHeures(0);
       }
     };
@@ -181,8 +174,6 @@ const Pointage = () => {
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = toLocalDateString(yesterday);
         
-        console.log('🎯 [SIRH] Recherche shift - maintenant:', currentHour + 'h', '- aujourd\'hui:', today, '- hier:', yesterdayStr);
-        
         // Récupérer les shifts de J et J-1
         const [resToday, resYesterday] = await Promise.all([
           axios.get(`${API_BASE}/shifts/mes-shifts?start=${today}&end=${today}`, {
@@ -195,8 +186,6 @@ const Pointage = () => {
         
         const shiftsToday = resToday.data.filter(s => toLocalDateString(s.date) === today);
         const shiftsYesterday = resYesterday.data.filter(s => toLocalDateString(s.date) === yesterdayStr);
-        
-        console.log('🎯 [SIRH] Shifts aujourd\'hui:', shiftsToday.length, '- hier:', shiftsYesterday.length);
         
         // Fonction pour calculer l'écart en minutes entre l'heure actuelle et le début du shift
         const getShiftStartMinutes = (shift) => {
@@ -228,8 +217,6 @@ const Pointage = () => {
             distance = Math.abs(currentMinutes - (shiftStart + 1440)); // +24h
           }
           
-          console.log(`  📋 Shift ${shift.id} (${today}): début ${shiftStart}min, distance ${distance}min`);
-          
           if (distance < bestDistance) {
             bestDistance = distance;
             bestShift = shift;
@@ -256,8 +243,6 @@ const Pointage = () => {
             // Calculer distance depuis le début du shift (hier soir)
             const distance = currentMinutes + (1440 - (shiftStart || 0)); // distance depuis hier
             
-            console.log(`  📋 Shift ${shift.id} (${yesterdayStr}, nuit): fin ${endMinutes}min, distance ${distance}min`);
-            
             if (distance < bestDistance && distance < 600) { // Max 10h de distance
               bestDistance = distance;
               bestShift = shift;
@@ -268,11 +253,7 @@ const Pointage = () => {
         
         // Tolérance max : 4h (240 min) avant le début du shift
         if (bestShift && bestDistance > 240 && currentMinutes < getShiftStartMinutes(bestShift)) {
-          console.log('🎯 [SIRH] Shift trop loin dans le futur, pas encore de shift actif');
-          // Garder le shift pour l'affichage mais noter qu'il n'est pas encore actif
         }
-        
-        console.log('🎯 [SIRH] Meilleur shift:', bestShift?.id, '- Jour:', bestWorkDay, '- Distance:', bestDistance + 'min');
         
         setEffectiveWorkDay(bestWorkDay);
         setPlannedShift(bestShift);
@@ -297,8 +278,6 @@ const Pointage = () => {
           workDay = toLocalDateString(workDayDate);
         }
         
-        console.log('🔍 Fetch anomalies pour journée de travail:', workDay);
-        
         const response = await fetch(`${API_BASE}/api/anomalies?dateDebut=${workDay}&dateFin=${workDay}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -318,7 +297,6 @@ const Pointage = () => {
               const anomalieDate = new Date(a.date).toISOString().slice(0, 10);
               return anomalieDate === workDay;
             });
-            console.log(`📋 Anomalies filtrées pour ${workDay}:`, anomaliesActives.length);
             setMesAnomalies(anomaliesActives);
           }
         }
@@ -375,7 +353,6 @@ const Pointage = () => {
   // Re-fetch anomalies quand le jour de travail effectif est détecté
   useEffect(() => {
     if (effectiveWorkDay && token) {
-      console.log('🔄 Re-fetch anomalies pour jour effectif:', effectiveWorkDay);
       setAnomaliesLoading(true);
       
       const fetchAnomaliesForWorkDay = async () => {
@@ -395,7 +372,6 @@ const Pointage = () => {
               ['pending', 'validated'].includes(a.status) &&
               toLocalDateString(a.date_anomalie) === effectiveWorkDay
             );
-            console.log(`📋 Anomalies pour ${effectiveWorkDay}:`, anomaliesActives.length);
             setMesAnomalies(anomaliesActives);
           }
         } catch (err) {
@@ -412,8 +388,6 @@ const Pointage = () => {
   // 🎯 SIRH : Re-fetch des pointages quand le jour de travail effectif est détecté
   useEffect(() => {
     if (effectiveWorkDay && token) {
-      console.log('🔄 [SIRH] Re-fetch pointages pour jour effectif:', effectiveWorkDay);
-      
       const fetchPointagesForWorkDay = async () => {
         try {
           const res = await axios.get(`${API_BASE}/pointage/mes-pointages`, {
@@ -427,7 +401,6 @@ const Pointage = () => {
             return pointageDateStr === effectiveWorkDay;
           });
           
-          console.log('📅 [SIRH] Pointages pour', effectiveWorkDay, ':', pointagesJournee.length);
           setHistorique(pointagesJournee);
         } catch (err) {
           console.error('Erreur re-fetch pointages:', err);

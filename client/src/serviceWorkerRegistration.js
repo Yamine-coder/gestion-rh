@@ -25,11 +25,7 @@ export function register(config) {
         checkValidServiceWorker(swUrl, config);
         
         navigator.serviceWorker.ready.then(() => {
-          console.log(
-            '🔧 Cette application est servie en cache-first par un service worker. ' +
-            'Pour en savoir plus : https://cra.link/PWA'
-          );
-        });
+      });
       } else {
         // En production, enregistrer simplement le service worker
         registerValidSW(swUrl, config);
@@ -42,7 +38,6 @@ function registerValidSW(swUrl, config) {
   navigator.serviceWorker
     .register(swUrl)
     .then((registration) => {
-      console.log('✅ Service Worker enregistré avec succès');
       
       // Vérifier les mises à jour périodiquement
       setInterval(() => {
@@ -60,10 +55,6 @@ function registerValidSW(swUrl, config) {
           if (installingWorker.state === 'installed') {
             if (navigator.serviceWorker.controller) {
               // Nouveau contenu disponible, ancienne page encore ouverte
-              console.log(
-                '📦 Nouvelle version disponible ! ' +
-                'Fermez tous les onglets pour voir les mises à jour.'
-              );
 
               // Callback pour l'application
               if (config && config.onUpdate) {
@@ -71,7 +62,6 @@ function registerValidSW(swUrl, config) {
               }
             } else {
               // Contenu mis en cache pour utilisation hors-ligne
-              console.log('💾 Contenu mis en cache pour utilisation hors-ligne.');
 
               // Callback pour l'application
               if (config && config.onSuccess) {
@@ -112,7 +102,6 @@ function checkValidServiceWorker(swUrl, config) {
       }
     })
     .catch(() => {
-      console.log('⚠️ Pas de connexion internet. L\'application fonctionne en mode hors-ligne.');
     });
 }
 
@@ -121,7 +110,6 @@ export function unregister() {
     navigator.serviceWorker.ready
       .then((registration) => {
         registration.unregister();
-        console.log('🗑️ Service Worker désenregistré');
       })
       .catch((error) => {
         console.error('Erreur lors du désenregistrement:', error);
@@ -156,11 +144,9 @@ export function initInstallPrompt() {
     e.preventDefault();
     // Stocker l'événement pour utilisation ultérieure
     deferredPrompt = e;
-    console.log('📱 L\'application peut être installée');
   });
   
   window.addEventListener('appinstalled', () => {
-    console.log('✅ PWA installée avec succès');
     deferredPrompt = null;
   });
 }

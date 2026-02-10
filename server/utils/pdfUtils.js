@@ -355,7 +355,7 @@ async function generateRapportPDF(rapportsEmployes, periode, dateDebut, dateFin)
 }
 
 function formatPeriod(debut, fin) {
-  const options = { day: '2-digit', month: '2-digit', year: 'numeric' };
+  const options = { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' };
   return `${new Date(debut).toLocaleDateString('fr-FR', options)} au ${new Date(fin).toLocaleDateString('fr-FR', options)}`;
 }
 

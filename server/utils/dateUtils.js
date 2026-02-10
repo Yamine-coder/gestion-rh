@@ -59,10 +59,15 @@ function toLocalDateString(dateValue) {
   const date = parseLocalDate(dateValue);
   if (!date) return null;
   
-  // Utiliser les composants LOCAUX (pas UTC !)
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  // Utiliser Europe/Paris explicitement (fonctionne sur serveurs cloud en UTC)
+  const parts = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'Europe/Paris', 
+    year: 'numeric', month: '2-digit', day: '2-digit' 
+  }).formatToParts(date);
+  
+  const year = parts.find(p => p.type === 'year').value;
+  const month = parts.find(p => p.type === 'month').value;
+  const day = parts.find(p => p.type === 'day').value;
   
   return `${year}-${month}-${day}`;
 }

@@ -19,6 +19,39 @@ const CATEGORIES_VALIDES = [
 ];
 
 /**
+ * Normalise une catégorie en trouvant la correspondance exacte
+ * dans le référentiel (match case-insensitive)
+ * "pizzaiolo" → "Pizzaiolo", "CAISSE/SERVICE" → "Caisse/Service"
+ * @param {string} categorie 
+ * @returns {string|null} La catégorie normalisée ou null si invalide
+ */
+function normaliserCategorie(categorie) {
+  if (!categorie || typeof categorie !== 'string') return null;
+  const trimmed = categorie.trim();
+  const found = CATEGORIES_VALIDES.find(c => c.toLowerCase() === trimmed.toLowerCase());
+  return found || null;
+}
+
+/**
+ * Normalise un tableau de catégories
+ * @param {string[]} categories 
+ * @returns {{ valides: string[], invalides: string[] }}
+ */
+function normaliserCategories(categories) {
+  const valides = [];
+  const invalides = [];
+  for (const cat of categories) {
+    const norm = normaliserCategorie(cat);
+    if (norm) {
+      if (!valides.includes(norm)) valides.push(norm);
+    } else {
+      invalides.push(cat);
+    }
+  }
+  return { valides, invalides };
+}
+
+/**
  * Parse le champ categories (JSON string) en tableau
  * @param {string|null} categoriesJson - Le champ categories de la BDD
  * @param {string|null} categorieFallback - L'ancien champ categorie (rétrocompatibilité)
@@ -127,6 +160,8 @@ module.exports = {
   parseCategories,
   stringifyCategories,
   isValidCategorie,
+  normaliserCategorie,
+  normaliserCategories,
   enrichUserWithCategories,
   enrichUsersWithCategories,
   userHasAnyCategory,

@@ -1,8 +1,72 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
+const jwt = require('jsonwebtoken');
 const { authMiddleware } = require('../middlewares/authMiddleware');
+const { addClient } = require('../services/sseManager');
+
+/**
+ * POST /api/notifications/sse-token
+ * Génère un token SSE éphémère (2 min) pour éviter d'exposer le JWT principal en query string
+ */
+router.post('/sse-token', authMiddleware, (req, res) => {
+  const employeId = req.user.userId || req.user.id;
+  const sseToken = jwt.sign(
+    { userId: employeId, purpose: 'sse' },
+    process.env.JWT_SECRET,
+    { expiresIn: '2m' }
+  );
+  res.json({ token: sseToken });
+});
+
+/**
+ * GET /api/notifications/stream
+ * Endpoint SSE pour les notifications temps réel
+ * 🔒 Utilise un token SSE éphémère (2 min) au lieu du JWT principal
+ */
+router.get('/stream', (req, res) => {
+  // Auth via token SSE éphémère en query string (EventSource ne supporte pas les headers)
+  const token = req.query.token;
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Token manquant' });
+  }
+
+  let user;
+  try {
+    user = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    return res.status(403).json({ error: 'Token invalide ou expiré' });
+  }
+
+  const employeId = user.userId || user.id;
+
+  // Headers SSE
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no' // Désactive le buffering nginx/proxy
+  });
+
+  // Heartbeat pour maintenir la connexion
+  res.write(`event: connected\ndata: ${JSON.stringify({ employeId })}\n\n`);
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 30000);
+
+  // Enregistrer le client
+  addClient(employeId, res);
+
+  // Nettoyage à la déconnexion
+  req.on('close', () => {
+    clearInterval(heartbeat);
+  });
+});
 
 /**
  * GET /api/notifications

@@ -4,14 +4,18 @@ services:
     name: gestion-rh-api
     env: node
     rootDir: server
-    buildCommand: npm install && npx prisma generate
+    buildCommand: npm install && npx prisma generate && npx prisma db push
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        sync: false # À configurer manuellement
+        sync: false # À configurer manuellement (Neon PostgreSQL)
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        sync: false # À configurer après déploiement Vercel
+        sync: false # URL Vercel: https://chez-antoine.vercel.app
+      - key: EMAIL_USER
+        sync: false # Gmail pour envoi emails
+      - key: EMAIL_PASSWORD
+        sync: false # App Password Gmail (16 caractères)

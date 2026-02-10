@@ -7,9 +7,7 @@
   import ConflictAnalysisModal from "./ConflictAnalysisModal";
   import "../styles/menu-animations.css"; // Pour l'animation highlight
   import { getImageUrl } from '../utils/imageUtils';
-
-  // URL de l'API (utilise la variable d'environnement en production)
-  const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  import { API_BASE } from '../config/api';
 
   function CongesTable({ onViewCongés, onCongeUpdate, highlightCongeId, onHighlightComplete }) {
     const [conges, setConges] = useState([]);
@@ -128,37 +126,32 @@
     // Effet pour gérer le highlight d'une ligne depuis une notification
     useEffect(() => {
       if (highlightCongeId && conges.length > 0) {
-        console.log('🎯 Highlight demandé pour congé ID:', highlightCongeId);
         
         // Trouver l'index du congé dans la liste filtrée actuelle
         const congesList = conges.filter(c => 
+          c.user &&
           (filtre === "tous" ? true : c.statut === filtre) &&
-          c.user.email.toLowerCase().includes(search.toLowerCase())
+          (c.user.email || '').toLowerCase().includes(search.toLowerCase())
         );
         const congeIndex = congesList.findIndex(c => c.id === highlightCongeId);
-        console.log('🎯 Index trouvé:', congeIndex, 'sur', congesList.length, 'congés');
         
         if (congeIndex !== -1) {
           // Calculer la page où se trouve le congé
           const targetPage = Math.ceil((congeIndex + 1) / itemsPerPage);
-          console.log('🎯 Navigation vers page:', targetPage);
           setPage(targetPage);
           
           // Activer le highlight
           setHighlightedRow(highlightCongeId);
-          console.log('🎯 Highlight activé pour ID:', highlightCongeId);
           
           // Scroll vers la ligne après un court délai (pour laisser le temps au render)
           setTimeout(() => {
             if (highlightRef.current) {
-              console.log('🎯 Scroll vers la ligne');
               highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
           }, 150);
           
           // Désactiver le highlight après 3 secondes
           setTimeout(() => {
-            console.log('🎯 Highlight désactivé');
             setHighlightedRow(null);
             if (onHighlightComplete) {
               onHighlightComplete();
@@ -166,7 +159,6 @@
           }, 3500);
         } else {
           // Le congé n'est pas visible avec le filtre actuel, réinitialiser les filtres
-          console.log('🎯 Congé non trouvé, réinitialisation des filtres');
           setFiltre('tous');
           setSearch('');
         }
@@ -247,8 +239,9 @@
 
     // Filtrer les congés selon le statut sélectionné et la recherche
     const congesFiltres = trierCongesAdmin(conges.filter((c) =>
+      c.user &&
       (filtre === "tous" ? true : c.statut === filtre) &&
-      c.user.email.toLowerCase().includes(search.toLowerCase())
+      (c.user.email || '').toLowerCase().includes(search.toLowerCase())
     ));
 
     // Statistiques des congés
@@ -268,7 +261,7 @@
       const rows = congesFiltres.map(c => ({
         'Nom': c.user?.nom || '-',
         'Prénom': c.user?.prenom || '-',
-        'Email': c.user.email,
+        'Email': c.user?.email || '-',
         'Type': c.type,
         'Date début': new Date(c.dateDebut).toLocaleDateString('fr-FR'),
         'Date fin': new Date(c.dateFin).toLocaleDateString('fr-FR'),

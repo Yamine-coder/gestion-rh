@@ -571,12 +571,10 @@ router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
         where: { categorie },
         data: { ...data, updatedBy: req.userId }
       });
-      console.log(`📝 Fiche de poste mise à jour: ${categorie}`);
     } else {
       fiche = await prisma.fichePoste.create({
         data: { ...data, categorie, createdBy: req.userId }
       });
-      console.log(`📄 Fiche de poste créée: ${categorie}`);
     }
     
     res.json(fiche);
@@ -723,14 +721,11 @@ router.delete('/:categorie', authMiddleware, adminMiddleware, async (req, res) =
       where: { categorie }
     }).catch(() => {});
     
-    console.log(`🔄 Fiche de poste réinitialisée: ${categorie}`);
     res.json({ success: true, message: 'Fiche réinitialisée au template par défaut' });
   } catch (error) {
     console.error('Erreur réinitialisation fiche:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-
-console.log('🟢 [BOOT] fichesPosteRoutes loaded');
 
 module.exports = router;

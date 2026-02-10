@@ -1,8 +1,9 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const scoringService = require('../services/scoringService');
 const { envoyerEmailNouvelleDemandeConge } = require('../services/emailService');
 const notifConfig = require('../services/notificationConfigService');
+const { notifierNouvelleDemandeConde, notifierCongeApprouve, notifierCongeRejete, notifierAbsenceEquipe } = require('../services/notificationService');
+const { auditConge, getUserId, getIp } = require('../services/auditService');
 
 // @desc Créer une nouvelle demande de congé
 const demanderConge = async (req, res) => {
@@ -14,6 +15,15 @@ const demanderConge = async (req, res) => {
   }
 
   try {
+    // Vérifier que l'employé est actif
+    const employeActif = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { statut: true }
+    });
+    if (!employeActif || employeActif.statut !== 'actif') {
+      return res.status(403).json({ message: "Compte inactif — impossible de créer une demande de congé." });
+    }
+
     // Vérifier les chevauchements avec des congés existants (en attente ou approuvés)
     const chevauchement = await prisma.conge.findFirst({
       where: {
@@ -70,41 +80,26 @@ const demanderConge = async (req, res) => {
       },
     });
 
-    // 🔔 Notifier les managers/admins d'une nouvelle demande
+    // � AUDIT: création demande congé
+    await auditConge(req, {
+      congeId: nouveauConge.id,
+      action: 'creation',
+      after: { type, dateDebut: debut, dateFin: fin, motif, userId }
+    });
+
+    // �🔔 Notifier les managers/admins d'une nouvelle demande
     try {
       const employe = await prisma.user.findUnique({
         where: { id: userId },
         select: { nom: true, prenom: true, email: true }
       });
 
-      const managers = await prisma.user.findMany({
-        where: { role: { in: ['admin', 'manager'] } },
-        select: { id: true }
-      });
-
       const employeName = employe?.prenom && employe?.nom 
         ? `${employe.prenom} ${employe.nom}` 
         : employe?.email || 'Un employé';
 
-      const dateDebutStr = new Date(debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-      const dateFinStr = new Date(fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-      const nbJours = Math.ceil((new Date(fin) - new Date(debut)) / (1000 * 60 * 60 * 24) + 1);
-
-      if (managers.length > 0) {
-        await prisma.notifications.createMany({
-          data: managers.map(manager => ({
-            employe_id: manager.id,
-            type: 'nouvelle_demande_conge',
-            titre: 'Nouvelle demande de conge',
-            message: JSON.stringify({
-              text: `${employeName} demande un ${type} du ${dateDebutStr} au ${dateFinStr} (${nbJours} jour${nbJours > 1 ? 's' : ''})`,
-              congeId: nouveauConge.id,
-              employeNom: employeName
-            }),
-            lue: false
-          }))
-        });
-        console.log(`Notification envoyee aux ${managers.length} manager(s) pour nouvelle demande de ${employeName}`);
+      // Utiliser le service centralisé pour notifier les managers
+      await notifierNouvelleDemandeConde(nouveauConge, employe);
 
         // 📧 Envoyer email - utilise la config centralisée ou fallback sur admins
         let emailRecipients = notifConfig.getRecipients('conges');
@@ -118,22 +113,23 @@ const demanderConge = async (req, res) => {
           emailRecipients = admins.map(a => a.email).filter(Boolean);
         }
 
-        for (const email of emailRecipients) {
-          try {
-            await envoyerEmailNouvelleDemandeConge(email, {
-              employeNom: employeName,
-              type: type,
-              dateDebut: dateDebutStr,
-              dateFin: dateFinStr,
-              nbJours: nbJours,
-              motif: motif || null,
-              congeId: nouveauConge.id
-            });
-          } catch (emailError) {
+        const dateDebutStr = new Date(debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+        const dateFinStr = new Date(fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+        const nbJours = Math.ceil((new Date(fin) - new Date(debut)) / (1000 * 60 * 60 * 24) + 1);
+
+        await Promise.allSettled(emailRecipients.map(email =>
+          envoyerEmailNouvelleDemandeConge(email, {
+            employeNom: employeName,
+            type: type,
+            dateDebut: dateDebutStr,
+            dateFin: dateFinStr,
+            nbJours: nbJours,
+            motif: motif || null,
+            congeId: nouveauConge.id
+          }).catch(emailError => {
             console.error(`Erreur envoi email à ${email}:`, emailError.message);
-          }
-        }
-      }
+          })
+        ));
     } catch (notifError) {
       console.error('Erreur création notification nouvelle demande:', notifError);
     }
@@ -161,7 +157,6 @@ const demanderConge = async (req, res) => {
 const getTousLesConges = async (req, res) => {
   try {
     // Debug: afficher tous les paramètres de requête
-    console.log('🔍 Paramètres reçus dans getTousLesConges:', req.query);
     
     // Récupérer les filtres optionnels de la requête
     const { statut, nonVu } = req.query;
@@ -188,11 +183,10 @@ const getTousLesConges = async (req, res) => {
             prenom: true
           },
         },
-      }
-      // Commenté temporairement pour debugger
-      // orderBy: {
-      //   dateDebut: "desc",
-      // },
+      },
+      orderBy: {
+        dateDebut: "desc",
+      },
     });
     res.json(conges);
   } catch (error) {
@@ -225,20 +219,26 @@ const mettreAJourStatutConge = async (req, res) => {
       },
     });
 
-    // 🔔 CRÉATION DE NOTIFICATION SI APPROUVÉ
+    // � AUDIT: changement statut congé
+    const actionAudit = statut === 'approuvé' ? 'approbation' : statut === 'refusé' ? 'refus' : 'modification';
+    await auditConge(req, {
+      congeId: parseInt(id),
+      action: actionAudit,
+      before: { statut: congeAvant.statut, motifRefus: congeAvant.motifRefus },
+      after: { statut, motifRefus: statut === 'refusé' ? motifRefus : null },
+      metadata: { userId: congeAvant.userId, type: congeAvant.type, dateDebut: congeAvant.dateDebut, dateFin: congeAvant.dateFin }
+    });
+
+    // �🔔 CRÉATION DE NOTIFICATION SI APPROUVÉ (via service centralisé)
     if (statut === 'approuvé' && congeAvant.statut !== 'approuvé') {
       // Notification pour l'employé concerné
-      await prisma.notifications.create({
-        data: {
-          employe_id: conge.userId,
-          type: 'conge_approuve',
-          titre: 'Demande de congé approuvée',
-          message: `Votre demande de congé (${conge.type}) du ${new Date(conge.dateDebut).toLocaleDateString('fr-FR')} au ${new Date(conge.dateFin).toLocaleDateString('fr-FR')} a été approuvée.`
-        }
-      });
-      console.log(`🔔 Notification créée pour l'employé ${conge.userId} - congé approuvé`);
+      try {
+        await notifierCongeApprouve(conge);
+      } catch (notifError) {
+        console.error('Erreur notification congé approuvé:', notifError);
+      }
 
-      // 🆕 Notification pour l'équipe (collègues de la même catégorie)
+      // Notification pour l'équipe (collègues de la même catégorie)
       try {
         const employeAbsent = await prisma.user.findUnique({
           where: { id: conge.userId },
@@ -246,14 +246,11 @@ const mettreAJourStatutConge = async (req, res) => {
         });
 
         if (employeAbsent) {
-          // Récupérer les collègues de la même équipe (catégorie)
           const whereCollegues = {
             statut: 'actif',
             role: 'employee',
-            id: { not: conge.userId } // Exclure l'employé absent
+            id: { not: conge.userId }
           };
-          
-          // Filtrer par catégorie si l'employé en a une
           if (employeAbsent.categorie) {
             whereCollegues.categorie = employeAbsent.categorie;
           }
@@ -264,54 +261,29 @@ const mettreAJourStatutConge = async (req, res) => {
           });
 
           if (collegues.length > 0) {
-            const nomComplet = `${employeAbsent.prenom} ${employeAbsent.nom}`;
-            const dateDebut = new Date(conge.dateDebut).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-            const dateFin = new Date(conge.dateFin).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
-            const isSingleDay = conge.dateDebut.toDateString() === conge.dateFin.toDateString();
-            const periodeText = isSingleDay ? `le ${dateDebut}` : `du ${dateDebut} au ${dateFin}`;
-
-            await prisma.notifications.createMany({
-              data: collegues.map(collegue => ({
-                employe_id: collegue.id,
-                type: 'absence_equipe',
-                titre: 'Absence équipe',
-                message: JSON.stringify({
-                  text: `${nomComplet} sera absent(e) ${periodeText} (${conge.type})`,
-                  congeId: conge.id,
-                  employeNom: nomComplet,
-                  employeId: employeAbsent.id,
-                  type: conge.type,
-                  dateDebut: conge.dateDebut,
-                  dateFin: conge.dateFin
-                }),
-                lue: false
-              }))
-            });
-            console.log(`📅 Notification d'absence envoyée à ${collegues.length} collègue(s) de l'équipe ${employeAbsent.categorie || 'tous'}`);
+            await notifierAbsenceEquipe(
+              collegues.map(c => c.id),
+              conge,
+              employeAbsent
+            );
           }
         }
       } catch (notifEquipeError) {
         console.error('Erreur notification équipe:', notifEquipeError);
-        // Ne pas bloquer si la notif équipe échoue
       }
     }
 
-    // 🔔 CRÉATION DE NOTIFICATION SI REFUSÉ
+    // 🔔 CRÉATION DE NOTIFICATION SI REFUSÉ (via service centralisé)
     if (statut === 'refusé' && congeAvant.statut !== 'refusé') {
-      await prisma.notifications.create({
-        data: {
-          employe_id: conge.userId,
-          type: 'conge_rejete',
-          titre: 'Demande de congé refusée',
-          message: `Votre demande de congé (${conge.type}) du ${new Date(conge.dateDebut).toLocaleDateString('fr-FR')} au ${new Date(conge.dateFin).toLocaleDateString('fr-FR')} a été refusée${motifRefus ? '. Raison: ' + motifRefus : '.'}`
-        }
-      });
-      console.log(`🔔 Notification créée pour l'employé ${conge.userId} - congé refusé`);
+      try {
+        await notifierCongeRejete(conge, motifRefus);
+      } catch (notifError) {
+        console.error('Erreur notification congé refusé:', notifError);
+      }
     }
 
     // 🆕 CRÉATION AUTOMATIQUE DES SHIFTS SI APPROUVÉ
     if (statut === 'approuvé' && congeAvant.statut !== 'approuvé') {
-      console.log(`✅ Congé approuvé - Création des shifts pour l'employé ${conge.userId}`);
       
       // Créer un shift "absence" pour chaque jour du congé
       const dateDebut = new Date(conge.dateDebut);
@@ -346,19 +318,16 @@ const mettreAJourStatutConge = async (req, res) => {
           });
           shiftsCreated.push(shift);
         } else {
-          console.log(`⚠️  Shift existant pour ${currentDate.toLocaleDateString('fr-FR')} - non créé`);
         }
 
         // Passer au jour suivant
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
-      console.log(`✅ ${shiftsCreated.length} shifts "absence" créés pour le congé #${conge.id}`);
     }
 
     // 🆕 SUPPRESSION DES SHIFTS SI REFUSÉ, ANNULÉ OU REMIS EN ATTENTE
     if ((statut === 'refusé' || statut === 'annulé' || statut === 'en attente') && congeAvant.statut === 'approuvé') {
-      console.log(`❌ Congé ${statut} (était approuvé) - Suppression des shifts pour le congé #${conge.id}`);
       
       const dateDebut = new Date(conge.dateDebut);
       const dateFin = new Date(conge.dateFin);
@@ -376,7 +345,6 @@ const mettreAJourStatutConge = async (req, res) => {
         }
       });
 
-      console.log(`✅ ${shiftsSupprimes.count} shifts "absence" supprimés`);
     }
 
     res.json(conge);

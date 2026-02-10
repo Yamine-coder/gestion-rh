@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../prisma/client');
 const { notifierNouvelleConsigne, NOTIFICATION_TYPES, creerNotifications } = require('../services/notificationService');
 const { toLocalDateString } = require('../utils/dateUtils');
 
@@ -146,9 +145,7 @@ router.post('/', authMiddleware, isAdmin, async (req, res) => {
       
       if (employes.length > 0) {
         await notifierNouvelleConsigne(consigne, employes.map(e => e.id));
-        console.log(`🔔 ${employes.length} employés notifiés de la nouvelle consigne${cibleCategorie ? ` (catégorie: ${cibleCategorie})` : ' (tout le monde)'}`);
       } else {
-        console.log('⚠️ Aucun employé actif trouvé pour notifier');
       }
     } catch (notifError) {
       console.error('⚠️ Erreur notification consigne:', notifError);
@@ -169,8 +166,6 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
     const { id } = req.params;
     const { titre, contenu, type, dateDebut, dateFin, active, cibleCategorie } = req.body;
     
-    console.log('📝 Modification consigne:', { id, titre, contenu, type, active, cibleCategorie });
-    
     // Récupérer l'ancienne consigne AVANT la modification
     const ancienneConsigne = await prisma.consigne.findUnique({
       where: { id: parseInt(id) }
@@ -190,7 +185,6 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
     });
     
     // 🔔 Notifier les employés si la consigne est modifiée (et reste active)
-    console.log('🔔 Notification check:', { isActive: consigne.active, ancienTitre: ancienneConsigne?.titre });
     
     if (consigne.active && ancienneConsigne) {
       try {
@@ -209,8 +203,6 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
           select: { id: true }
         });
         
-        console.log(`👥 Employés trouvés: ${employes.length}`);
-        
         if (employes.length > 0) {
           const result = await creerNotifications({
             employeIds: employes.map(e => e.id),
@@ -223,7 +215,6 @@ router.put('/:id', authMiddleware, isAdmin, async (req, res) => {
               highlightConsigneId: consigne.id // Pour highlight la consigne spécifique
             }
           });
-          console.log(`🔔 ${result.count} notifications créées pour mise à jour consigne`);
         }
       } catch (notifError) {
         console.error('⚠️ Erreur notification modification consigne:', notifError);
@@ -354,8 +345,6 @@ router.get('/stats/evenements', authMiddleware, async (req, res) => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     
-    console.log('[Evenements] UserId:', userId, '- Date filtre:', now.toISOString());
-    
     const evenements = [];
     
     // 1. Prochains congés approuvés
@@ -443,8 +432,6 @@ router.get('/stats/evenements', authMiddleware, async (req, res) => {
     
     // Trier par date et limiter à 5
     evenements.sort((a, b) => new Date(a.date) - new Date(b.date));
-    
-    console.log('[Evenements] Trouvés:', evenements.length, evenements.map(e => e.label));
     
     res.json(evenements.slice(0, 5));
   } catch (error) {

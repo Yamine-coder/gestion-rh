@@ -53,13 +53,6 @@ function normaliserTypeAbsence(type) {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-// 🔍 Middleware de debug pour toutes les routes stats (uniquement en développement)
-router.use((req, res, next) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`🔍 [STATS DEBUG] ${req.method} ${req.path} - Query:`, req.query, '- Params:', req.params);
-  }
-  next();
-});
 
 // 📊 Stats globales pour la page Rapports d'heures
 router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
@@ -78,8 +71,6 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       dateDebut = new Date(now.getFullYear(), now.getMonth(), 1);
       dateFin = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     }
-
-    console.log(`📊 [STATS GLOBALES] Période: ${dateDebut.toISOString()} → ${dateFin.toISOString()}`);
 
     // Compter les employés actifs
     const employesActifs = await prisma.user.count({
@@ -186,8 +177,6 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       }
     });
 
-    console.log(`✅ [STATS GLOBALES] ${employesActifs} employés, ${totalHeuresTravaillees.toFixed(2)}h / ${totalHeuresPrevues.toFixed(2)}h`);
-
     res.json({
       employesActifs,
       heuresPrevues: Math.round(totalHeuresPrevues * 100) / 100,
@@ -205,11 +194,8 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
 router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { employeId } = req.params;
+    if (isNaN(parseInt(employeId))) return res.status(400).json({ error: 'ID employé invalide' });
     const { periode, mois } = req.query;
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`📊 [FICHE NAVETTE] Génération rapport détaillé pour employé ${employeId}, période: ${periode}, mois: ${mois}`);
-    }
 
     // Valider l'employé
     const employe = await prisma.user.findUnique({
@@ -259,8 +245,6 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
         return res.status(400).json({ message: 'Période invalide' });
     }
 
-    console.log(`📅 Période: ${dateDebut.toISOString()} → ${dateFin.toISOString()}`);
-
     // Récupérer tous les shifts (planning)
     const shifts = await prisma.shift.findMany({
       where: {
@@ -295,8 +279,6 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
         dateFin: true
       }
     });
-
-    console.log(`📋 Trouvé: ${shifts.length} shifts, ${pointages.length} pointages, ${conges.length} congés`);
 
     // Grouper les pointages par jour
     const pointagesParJour = new Map();
@@ -571,16 +553,13 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
       }))
     };
 
-    console.log(`✅ Rapport détaillé généré: ${rapport.totaux.heuresRealisees}h / ${rapport.totaux.heuresPrevues}h`);
-
     res.json(rapport);
 
   } catch (error) {
-    console.error('❌ Erreur génération rapport détaillé:', error);
+    console.error('Erreur génération rapport détaillé:', error);
     console.error('Stack:', error.stack);
     res.status(500).json({ 
-      message: 'Erreur lors de la génération du rapport détaillé',
-      error: error.message 
+      message: 'Erreur lors de la génération du rapport détaillé'
     });
   }
 });
@@ -618,12 +597,8 @@ function calculerSyntheseSemaine(jours) {
 router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { employeId } = req.params;
+    if (isNaN(parseInt(employeId))) return res.status(400).json({ error: 'ID employé invalide' });
     const { periode, mois } = req.query;
-
-    console.log(`📊 [STATS DEBUG] Génération rapport pour employé ${employeId}, période: ${periode}, mois: ${mois}`);
-    console.log(`🔍 [STATS DEBUG] User:`, req.user);
-    console.log(`🔍 [STATS DEBUG] Params:`, req.params);
-    console.log(`🔍 [STATS DEBUG] Query:`, req.query);
 
     // Valider l'employé
     const employe = await prisma.user.findUnique({
@@ -631,10 +606,7 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       select: { id: true, email: true, nom: true, prenom: true, role: true }
     });
 
-    console.log(`🔍 [STATS DEBUG] Employé trouvé:`, employe);
-
     if (!employe) {
-      console.log(`❌ [STATS DEBUG] Employé ${employeId} non trouvé`);
       return res.status(404).json({ message: 'Employé non trouvé' });
     }
 
@@ -676,8 +648,6 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       default:
         return res.status(400).json({ message: 'Période invalide' });
     }
-
-    console.log(`📅 Période calculée: ${dateDebut.toISOString()} → ${dateFin.toISOString()}`);
 
     // Récupérer les shifts (planning) de l'employé
     const shifts = await prisma.shift.findMany({
@@ -726,8 +696,6 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
         currentDate.setDate(currentDate.getDate() + 1);
       }
     });
-
-    console.log(`📋 Trouvé: ${shifts.length} shifts, ${pointages.length} pointages, ${congesParJour.size} jours de congé`);
 
     // Analyser les données jour par jour
     const heuresParJour = [];
@@ -874,7 +842,8 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       periode: { debut: dateDebut, fin: dateFin, type: periode },
       heuresPrevues: Math.round(heuresPrevues * 100) / 100,
       heuresTravaillees: Math.round(heuresTravaillees * 100) / 100,
-      heuresSupplementaires: Math.round(heuresSupplementaires * 100) / 100,
+      heuresSupplementaires: 0, // Vraies heures supp légales (non calculées pour l'instant)
+      heuresExtra: Math.round(heuresSupplementaires * 100) / 100, // Heures extra (shifts extra, payées en cash),
       absencesJustifiees,
       absencesInjustifiees,
       nombreRetards: joursAvecRetard, // Nombre de JOURS avec retard (pas nombre de retards)
@@ -888,16 +857,13 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       }
     };
 
-    console.log(`✅ Rapport généré: ${rapport.heuresTravaillees}h travaillées sur ${rapport.heuresPrevues}h prévues`);
-
     res.json(rapport);
 
   } catch (error) {
     console.error('❌ [STATS DEBUG] Erreur génération rapport employé:', error);
     console.error('❌ [STATS DEBUG] Stack:', error.stack);
     res.status(500).json({ 
-      message: 'Erreur lors de la génération du rapport',
-      error: error.message 
+      message: 'Erreur lors de la génération du rapport'
     });
   }
 });
@@ -917,7 +883,6 @@ function calculateSegmentHours(segment) {
   // 🌙 RESTAURANT : Gérer le passage à minuit (ex: 19:00 → 00:30 = 5.5h)
   if (diffMinutes < 0) {
     diffMinutes += 24 * 60;
-    console.log(`   🌙 Shift franchit minuit: ${segment.start}→${segment.end} = ${(diffMinutes/60).toFixed(1)}h`);
   }
   
   return Math.round((diffMinutes / 60) * 100) / 100;
@@ -978,9 +943,8 @@ router.get('/export/:type', authenticateToken, isAdmin, exportData);
 router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { employeId } = req.params;
+    if (isNaN(parseInt(employeId))) return res.status(400).json({ error: 'ID employé invalide' });
     const { periode, mois, format = 'csv' } = req.query;
-
-    console.log(`📊 Export rapport pour employé ${employeId}, période: ${periode}, mois: ${mois}, format: ${format}`);
 
     // Valider l'employé
     const employe = await prisma.user.findUnique({
@@ -1199,8 +1163,6 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       ? Math.round(((joursPresents - nombreRetards) / joursPresents) * 100)
       : 100;
 
-    console.log(`📊 PDF Export - Jours présents: ${joursPresents}, Retards: ${nombreRetards}, Taux: ${tauxPonctualite}%`);
-
     // Préparer les données complètes du rapport
     // Construire heuresParJour pour TOUS les jours de la période (pas seulement les shifts)
     const heuresParJourData = [];
@@ -1314,8 +1276,7 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       } catch (pdfError) {
         console.error('❌ Erreur génération PDF:', pdfError);
         return res.status(500).json({ 
-          message: 'Erreur lors de la génération du PDF',
-          error: pdfError.message 
+          message: 'Erreur lors de la génération du PDF'
         });
       }
     } else if (format === 'json') {
@@ -1398,8 +1359,7 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
   } catch (error) {
     console.error('❌ Erreur export rapport employé:', error);
     res.status(500).json({ 
-      message: 'Erreur lors de l\'export du rapport',
-      error: error.message 
+      message: 'Erreur lors de l\'export du rapport'
     });
   }
 });
@@ -1408,8 +1368,6 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
 router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { periode, mois, format = 'csv' } = req.query;
-
-    console.log(`📊 Export global de tous les rapports - Format: ${format}, Période: ${periode}, Mois: ${mois}`);
 
     // Calculer les dates de la période
     let dateDebut, dateFin;
@@ -1449,6 +1407,10 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         return res.status(400).json({ message: 'Période invalide' });
     }
 
+    // Calculer le mois et l'année pour récupérer les justificatifs Navigo
+    const moisPeriode = dateDebut.getMonth() + 1; // 1-12
+    const anneePeriode = dateDebut.getFullYear();
+
     // Récupérer tous les employés actifs (en service)
     const employes = await prisma.user.findMany({
       where: {
@@ -1467,16 +1429,27 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         role: true,
         statut: true,
         dateSortie: true,
-        justificatifNavigo: true,
-        eligibleNavigo: true
+        justificatifNavigo: true, // Ancien système (pour compatibilité)
+        eligibleNavigo: true,
+        justificatifsNavigo: {
+          where: {
+            mois: moisPeriode,
+            annee: anneePeriode,
+            statut: 'valide' // Uniquement les justificatifs validés
+          },
+          select: {
+            id: true,
+            fichier: true,
+            dateUpload: true,
+            dateValidation: true
+          }
+        }
       },
       orderBy: [
         { nom: 'asc' },
         { prenom: 'asc' }
       ]
     });
-
-    console.log(`👥 ${employes.length} employés à traiter`);
 
     // Récupérer tous les shifts de la période
     const shifts = await prisma.shift.findMany({
@@ -1510,8 +1483,6 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         type: true
       }
     });
-
-    console.log(`📋 ${shifts.length} shifts, ${pointages.length} pointages et ${conges.length} congés trouvés`);
 
     // Grouper par employé
     const shiftsParEmploye = new Map();
@@ -1695,7 +1666,8 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         role: employe.role,
         heuresPrevues: Math.round(heuresPrevues * 100) / 100,
         heuresTravaillees: Math.round(heuresTravaillees * 100) / 100,
-        heuresSupplementaires: Math.round(heuresSupplementaires * 100) / 100,
+        heuresSupplementaires: 0, // Vraies heures supp légales (non calculées)
+        heuresExtra: Math.round(heuresSupplementaires * 100) / 100, // Heures extra (shifts extra, cash),
         heuresManquantes: Math.max(0, Math.round((heuresPrevues - heuresTravaillees) * 100) / 100),
         absencesJustifiees,
         absencesInjustifiees,
@@ -1705,30 +1677,40 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         tauxPresence: Math.min(100, joursTravailles > 0 ? Math.round((joursPresents / joursTravailles) * 100) : 0),
         tauxPonctualite: joursPresents > 0 ? Math.round(((joursPresents - nombreJoursAvecRetard) / joursPresents) * 100) : 100,
         moyenneHeuresJour: joursPresents > 0 ? Math.round((heuresTravaillees / joursPresents) * 100) / 100 : 0,
-        heuresParJour: heuresParJour // Ajouter le détail jour par jour avec types de congé
+        heuresParJour: heuresParJour, // Ajouter le détail jour par jour avec types de congé
+        // Données Navigo pour l'export Excel
+        eligibleNavigo: employe.eligibleNavigo,
+        justificatifNavigo: employe.justificatifNavigo, // Ancien système
+        justificatifsNavigo: employe.justificatifsNavigo // Nouveau système (validés ce mois)
       });
     }
 
     // Générer le fichier selon le format
     if (format === 'excel') {
       try {
-        console.log(`📊 Génération Excel pour ${rapportsEmployes.length} employés...`);
         const excelBuffer = await generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin);
         
-        console.log(`✅ Excel généré: ${excelBuffer.length} bytes (template: ${excelBuffer.usedTemplate ? 'oui' : 'non'})`);
         const fileName = `rapport_heures_tous_employes_${periode}_${getCurrentDateString()}.${excelBuffer.extension}`;
         res.setHeader('Content-Type', excelBuffer.mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         return res.send(excelBuffer);
       } catch (excelError) {
         console.error('❌ Erreur génération Excel:', excelError);
-        console.error('Stack:', excelError.stack);
         return res.status(500).json({ 
-          message: 'Erreur lors de la génération du fichier Excel',
-          error: excelError.message,
-          stack: excelError.stack
+          message: 'Erreur lors de la génération du fichier Excel'
         });
       }
+    } else if (format === 'excel' || format === 'xlsx') {
+      // Format Excel avec images Navigo intégrées
+      const excelBuffer = await generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin);
+      
+      const dateDebutStr = dateDebut.toLocaleDateString('fr-FR').replace(/\//g, '-');
+      const dateFinStr = dateFin.toLocaleDateString('fr-FR').replace(/\//g, '-');
+      const fileName = `Rapport_Heures_Navigo_${periode}_du_${dateDebutStr}_au_${dateFinStr}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.send(excelBuffer);
     } else if (format === 'csv') {
       const csvLines = [];
       
@@ -1746,7 +1728,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         'Rôle',
         'Heures Prévues',
         'Heures Travaillées',
-        'Heures Supplémentaires',
+        'Heures Extra',
         'Heures Manquantes',
         'Absences Justifiées',
         'Absences Injustifiées',
@@ -1767,7 +1749,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
           emp.role,
           emp.heuresPrevues,
           emp.heuresTravaillees,
-          emp.heuresSupplementaires,
+          emp.heuresExtra || 0,
           emp.heuresManquantes,
           emp.absencesJustifiees,
           emp.absencesInjustifiees,
@@ -1787,7 +1769,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
       const totaux = {
         heuresPrevues: rapportsEmployes.reduce((sum, e) => sum + e.heuresPrevues, 0),
         heuresTravaillees: rapportsEmployes.reduce((sum, e) => sum + e.heuresTravaillees, 0),
-        heuresSupplementaires: rapportsEmployes.reduce((sum, e) => sum + e.heuresSupplementaires, 0),
+        heuresExtra: rapportsEmployes.reduce((sum, e) => sum + (e.heuresExtra || 0), 0),
         heuresManquantes: rapportsEmployes.reduce((sum, e) => sum + e.heuresManquantes, 0),
         absencesJustifiees: rapportsEmployes.reduce((sum, e) => sum + e.absencesJustifiees, 0),
         absencesInjustifiees: rapportsEmployes.reduce((sum, e) => sum + e.absencesInjustifiees, 0),
@@ -1798,7 +1780,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
       csvLines.push(`Employés,,${employes.length}`);
       csvLines.push(`Heures Prévues,,${totaux.heuresPrevues.toFixed(2)}`);
       csvLines.push(`Heures Travaillées,,${totaux.heuresTravaillees.toFixed(2)}`);
-      csvLines.push(`Heures Supplémentaires,,${totaux.heuresSupplementaires.toFixed(2)}`);
+      csvLines.push(`Heures Extra,,${totaux.heuresExtra.toFixed(2)}`);
       csvLines.push(`Heures Manquantes,,${totaux.heuresManquantes.toFixed(2)}`);
       csvLines.push(`Absences Justifiées,,${totaux.absencesJustifiees}`);
       csvLines.push(`Absences Injustifiées,,${totaux.absencesInjustifiees}`);
@@ -1815,8 +1797,6 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
       res.send('\ufeff' + csvContent); // UTF-8 BOM pour Excel
-
-      console.log(`✅ Export CSV généré: ${fileName}`);
     } else {
       // Format JSON pour usage API
       res.json({
@@ -1831,8 +1811,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
     console.error('❌ Erreur export global rapports:', error);
     console.error('❌ Stack:', error.stack);
     res.status(500).json({ 
-      message: 'Erreur lors de l\'export global des rapports',
-      error: error.message 
+      message: 'Erreur lors de l\'export global des rapports'
     });
   }
 });
@@ -1842,8 +1821,6 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
   try {
     const { periode, mois } = req.query;
     const { generateRapportExcelZIP } = require('../utils/excelZipUtils');
-
-    console.log(`📦 Export ZIP (Excel + justificatifs) - Période: ${periode}, Mois: ${mois}`);
 
     // [Même logique de calcul des dates et récupération des données que export-all]
     let dateDebut, dateFin;
@@ -1956,20 +1933,48 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
         }
       });
 
-      const joursCP = conges.filter(c => c.type === 'CP').length;
-      const joursRTT = conges.filter(c => c.type === 'RTT').length;
-      const joursMaladie = conges.filter(c => c.type === 'maladie').length;
+      // Fonction helper pour extraire les dates d'un congé
+      const extraireDates = (conge) => {
+        const dates = [];
+        const debut = new Date(conge.dateDebut);
+        const fin = new Date(conge.dateFin);
+        for (let d = new Date(debut); d <= fin; d.setDate(d.getDate() + 1)) {
+          dates.push(d.toLocaleDateString('fr-FR'));
+        }
+        return dates;
+      };
+
+      // Calculer tous les types d'absences avec dates
+      const congesCP = conges.filter(c => c.type === 'CP' || c.type === 'conge_paye');
+      const congesRTT = conges.filter(c => c.type === 'RTT');
+      const congesMaladie = conges.filter(c => c.type === 'maladie' || c.type === 'arret_maladie');
+      const congesSansSolde = conges.filter(c => c.type?.toLowerCase().includes('sans solde'));
+      const congesExceptionnel = conges.filter(c => c.type?.toLowerCase().includes('exceptionnel') || c.type?.toLowerCase().includes('familial'));
+      const congesFormation = conges.filter(c => c.type?.toLowerCase().includes('formation'));
+
+      const datesCP = congesCP.flatMap(extraireDates);
+      const datesRTT = congesRTT.flatMap(extraireDates);
+      const datesMaladie = congesMaladie.flatMap(extraireDates);
+      const datesSansSolde = congesSansSolde.flatMap(extraireDates);
+      const datesExceptionnel = congesExceptionnel.flatMap(extraireDates);
+      const datesFormation = congesFormation.flatMap(extraireDates);
 
       return {
         ...employe,
         heuresTravaillees,
-        joursCP,
-        joursRTT,
-        joursMaladie,
+        joursCP: datesCP.length,
+        joursRTT: datesRTT.length,
+        joursMaladie: datesMaladie.length,
+        joursSansSolde: datesSansSolde.length,
+        joursExceptionnel: datesExceptionnel.length,
+        joursFormation: datesFormation.length,
         absencesInjustifiees: 0,
-        datesCP: [],
-        datesRTT: [],
-        datesMaladie: [],
+        datesCP,
+        datesRTT,
+        datesMaladie,
+        datesSansSolde,
+        datesExceptionnel,
+        datesFormation,
         datesInjustifiees: []
       };
     }));
@@ -1989,11 +1994,9 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.send(zipBuffer);
 
-    console.log(`✅ ZIP généré: ${fileName}`);
-
   } catch (error) {
     console.error('❌ Erreur export ZIP:', error);
-    res.status(500).json({ message: 'Erreur génération ZIP', error: error.message });
+    res.status(500).json({ message: 'Erreur génération ZIP' });
   }
 });
 

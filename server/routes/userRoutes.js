@@ -3,14 +3,12 @@ const express = require('express');
 const router = express.Router();
 const { authMiddleware: authenticateToken } = require('../middlewares/authMiddleware');
 const prisma = require('../prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { validerMotDePasse } = require('../utils/passwordUtils');
 const { parseCategories, enrichUserWithCategories } = require('../utils/categoriesHelper');
 
 // ✅ Route : GET /user/profile
 router.get('/profile', authenticateToken, async (req, res) => {
-  console.log("DEBUG JWT req.user =", req.user); // Log pour vérifier
-
   if (!req.user?.userId) {
     return res.status(400).json({ error: "ID utilisateur manquant dans le token" });
   }
@@ -51,56 +49,16 @@ router.get('/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// ✅ Route : GET /user/profil (alternative française)
-router.get('/profil', authenticateToken, async (req, res) => {
-  if (!req.user?.userId) {
-    return res.status(400).json({ error: "ID utilisateur manquant dans le token" });
-  }
-
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.userId },
-      select: { 
-        id: true, 
-        email: true, 
-        role: true, 
-        nom: true, 
-        prenom: true, 
-        telephone: true, 
-        adresse: true,
-        iban: true,
-        categorie: true,
-        categories: true,
-        dateEmbauche: true,
-        photoProfil: true,
-        justificatifDomicile: true,
-        justificatifRIB: true,
-        justificatifNavigo: true,
-        createdAt: true 
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({ error: 'Utilisateur non trouvé' });
-    }
-
-    // Enrichir avec categoriesArray
-    const enrichedUser = enrichUserWithCategories(user);
-    res.status(200).json(enrichedUser);
-  } catch (error) {
-    console.error('Erreur serveur /user/profil :', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
+// Alias français → délègue au handler /profile
+router.get('/profil', authenticateToken, (req, res, next) => {
+  req.url = '/profile';
+  router.handle(req, res, next);
 });
 
 // ✅ Route : PUT /user/change-password
 router.put('/change-password', authenticateToken, async (req, res) => {
   const { ancienMotDePasse, nouveauMotDePasse } = req.body;
   const userId = req.user.userId;
-
-  console.log('🔄 CHANGEMENT PASSWORD DEBUG:');
-  console.log('- userId:', userId);
-  console.log('- nouveauMotDePasse length:', nouveauMotDePasse?.length);
 
   try {
     // Validation du nouveau mot de passe
@@ -137,7 +95,6 @@ router.put('/change-password', authenticateToken, async (req, res) => {
       }
     });
 
-    console.log(`✅ Mot de passe changé pour ${user.email}`);
     res.json({ success: true, message: 'Mot de passe modifié avec succès' });
 
   } catch (error) {

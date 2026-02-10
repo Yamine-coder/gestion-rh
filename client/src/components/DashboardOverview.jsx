@@ -19,8 +19,7 @@ import {
 import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
 import DatePickerCustom from './DatePickerCustom';
 import TimePickerCustom from './TimePickerCustom';
-
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 // Couleurs de la charte graphique
 const BRAND_COLORS = {
@@ -664,21 +663,18 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     try {
       setLoadingShifts(true);
-      console.log('🔍 [DASHBOARD] Appel API shifts pour date:', date, '(heure locale:', now.toLocaleTimeString('fr-FR'), ')');
       // Try common endpoint patterns
       let res;
       try { 
         res = await axios.get(`${API_BASE}/admin/shifts?start=${date}&end=${date}`, { 
           headers:{Authorization:`Bearer ${token}`}
         }); 
-        console.log('✅ [DASHBOARD] API /admin/shifts réponse:', res.data?.length || 0, 'shifts');
       }
       catch { 
         try { 
           res = await axios.get(`${API_BASE}/admin/planning/jour?date=${date}`, { 
             headers:{Authorization:`Bearer ${token}`}
           }); 
-          console.log('✅ [DASHBOARD] API /admin/planning/jour réponse:', res.data?.length || 0, 'plannings');
         } catch(e2){ throw e2; } 
       }
       const rawData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.shifts) ? res.data.shifts : []);
@@ -701,14 +697,12 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
     
     try {
       setLoadingComparaisons(true);
-      console.log('🔍 [DASHBOARD] Appel API comparaisons pour date:', date);
       
       // Récupérer la liste des employés
       const employesRes = await axios.get(`${API_BASE}/admin/employes`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const employes = Array.isArray(employesRes.data) ? employesRes.data : [];
-      console.log('✅ [DASHBOARD] API /admin/employes:', employes.length, 'employés');
       
       // Récupérer les comparaisons pour chaque employé
       const allComparaisons = [];
@@ -740,7 +734,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
       }
       
       setComparaisons(allComparaisons);
-      console.log(`✅ [DASHBOARD] ${allComparaisons.length} comparaisons chargées`);
     } catch (error) {
       console.error('❌ [DASHBOARD] Erreur chargement comparaisons:', error.response?.status, error.response?.data || error.message);
     } finally {
@@ -752,9 +745,7 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
     if(!token) return;
     try { 
       setLoading(true); 
-      console.log('🔍 [DASHBOARD] Appel API /admin/stats...');
       const res = await axios.get(`${API_BASE}/admin/stats`,{ headers:{Authorization:`Bearer ${token}`}}); 
-      console.log('✅ [DASHBOARD] API /admin/stats réponse:', res.data);
       setStats(res.data||{}); 
       setLastUpdated(Date.now()); 
     }
@@ -770,7 +761,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
   const fetchEmployesList = useCallback(async ()=>{
     if(!token) return;
     try {
-      console.log('🔍 [DASHBOARD] Appel API /admin/employes...');
       const empRes = await axios.get(`${API_BASE}/admin/employes`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -815,8 +805,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
         });
       
       setEmployesList(employesEnrichis);
-      console.log(`✅ [DASHBOARD] ${employesEnrichis.length} employés chargés, ${employesEnrichis.filter(e => e.aPointe).length} ont pointé`);
-      console.log('📋 [DASHBOARD] Liste détaillée:', employesEnrichis.map(e => `${e.nomComplet} (${e.aPointe ? '✅' : '❌'})`).join(', '));
     } catch(e) {
       console.error('❌ [DASHBOARD] Erreur chargement employés:', e);
       setEmployesList([]);
@@ -826,14 +814,12 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
   const fetchPendingLeaves = useCallback( async ()=>{
     if(!token) return;
     try { 
-      console.log('🔍 [DASHBOARD] Appel API /admin/conges...');
       
       // Récupérer les demandes en attente
       const resEnAttente = await axios.get(`${API_BASE}/admin/conges?statut=en%20attente`,{ headers:{Authorization:`Bearer ${token}`}}); 
       let list=[]; 
       if(Array.isArray(resEnAttente.data)) list=resEnAttente.data; 
       else if(Array.isArray(resEnAttente.data?.conges)) list=resEnAttente.data.conges; 
-      console.log('✅ [DASHBOARD] API /admin/conges en attente:', list.length);
       setPendingLeavesList(list); 
       setPendingConges(list.length);
       
@@ -850,7 +836,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
         const debut = new Date(c.dateDebut);
         return debut >= now && debut <= dans14Jours;
       }).sort((a, b) => new Date(a.dateDebut) - new Date(b.dateDebut));
-      console.log('✅ [DASHBOARD] Congés à venir (14j):', congesProchains.length);
       setCongesAVenir(congesProchains.length);
       setCongesAVenirList(congesProchains);
       
@@ -1136,9 +1121,8 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
                 category: category?.label || pendingReminder.category
               }
             });
-            console.log('✅ Email de rappel envoyé à', emailTo);
           } catch (err) {
-            console.error('❌ Erreur envoi email rappel:', err);
+            console.error('Erreur envoi email rappel:', err);
           }
         }
         
@@ -1222,8 +1206,8 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
       try {
         // Récupérer les matchs et événements Vincennes en parallèle
         const [matchRes, vincennesRes] = await Promise.all([
-          axios.get(`${API_BASE}/api/events/matches`),
-          axios.get(`${API_BASE}/api/events/evenements-vincennes`)
+          axios.get(`${API_BASE}/api/events/matches`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`${API_BASE}/api/events/evenements-vincennes`, { headers: { Authorization: `Bearer ${token}` } })
         ]);
         const matches = matchRes.data?.matches || [];
         const vincennesEvents = vincennesRes.data?.events || [];
@@ -1483,8 +1467,8 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
       });
     }
     // Aussi prendre en compte les heures totales si disponibles
-    if (comp.heuresSupplementaires) {
-      heuresSupTotal += comp.heuresSupplementaires;
+    if (comp.heuresExtra || comp.heuresSupplementaires) {
+      heuresSupTotal += (comp.heuresExtra || comp.heuresSupplementaires);
     }
   });
   const heuresSupAffichage = Math.round((heuresSupTotal / 60) * 10) / 10; // Arrondi à 1 décimale
