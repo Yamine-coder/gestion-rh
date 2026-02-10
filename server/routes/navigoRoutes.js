@@ -556,6 +556,76 @@ router.get('/mensuel/admin/en-attente', authMiddleware, async (req, res) => {
   }
 });
 
+// Justificatifs en attente de mois PRÉCÉDENTS (retards Navigo)
+router.get('/mensuel/admin/retards', authMiddleware, async (req, res) => {
+  try {
+    if (req.user?.role !== 'admin' && req.role !== 'admin') {
+      return res.status(403).json({ message: 'Accès réservé aux administrateurs' });
+    }
+
+    const now = new Date();
+    const moisCourant = now.getMonth() + 1;
+    const anneeCourante = now.getFullYear();
+
+    // Trouver tous les justificatifs en_attente de mois antérieurs au mois courant
+    const retards = await prisma.justificatifNavigo.findMany({
+      where: {
+        statut: 'en_attente',
+        OR: [
+          { annee: { lt: anneeCourante } },
+          { annee: anneeCourante, mois: { lt: moisCourant } }
+        ]
+      },
+      select: {
+        userId: true,
+        mois: true,
+        annee: true
+      }
+    });
+
+    // Map userId → { mois, annee } du retard le plus ancien
+    const retardsMap = {};
+    retards.forEach(r => {
+      if (!retardsMap[r.userId]) {
+        retardsMap[r.userId] = { mois: r.mois, annee: r.annee };
+      }
+    });
+
+    res.json({ retards: retardsMap, total: Object.keys(retardsMap).length });
+  } catch (error) {
+    console.error('Erreur retards Navigo:', error);
+    res.status(500).json({ message: 'Erreur', error: error.message });
+  }
+});
+
+// Statuts Navigo de tous les employés pour le mois en cours (endpoint léger pour la liste employés)
+router.get('/mensuel/admin/statuts', authMiddleware, async (req, res) => {
+  try {
+    if (req.user?.role !== 'admin' && req.role !== 'admin') {
+      return res.status(403).json({ message: 'Accès réservé aux administrateurs' });
+    }
+
+    const now = new Date();
+    const moisInt = parseInt(req.query.mois) || now.getMonth() + 1;
+    const anneeInt = parseInt(req.query.annee) || now.getFullYear();
+
+    // Tous les justificatifs du mois
+    const justificatifs = await prisma.justificatifNavigo.findMany({
+      where: { mois: moisInt, annee: anneeInt },
+      select: { userId: true, statut: true }
+    });
+
+    // Map userId → statut
+    const statuts = {};
+    justificatifs.forEach(j => { statuts[j.userId] = j.statut; });
+
+    res.json({ mois: moisInt, annee: anneeInt, statuts });
+  } catch (error) {
+    console.error('Erreur statuts Navigo:', error);
+    res.status(500).json({ message: 'Erreur', error: error.message });
+  }
+});
+
 // Récupérer le tableau de bord admin (statistiques par mois)
 router.get('/mensuel/admin/dashboard', authMiddleware, async (req, res) => {
   try {

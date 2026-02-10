@@ -1824,7 +1824,7 @@ const ProfilEmploye = React.memo(() => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-900 pb-navbar lg:pb-8 lg:pt-16 relative pt-header">
+    <div className="min-h-screen bg-white dark:bg-slate-900 pb-navbar lg:pb-8 lg:pt-16 relative pt-header">
 
       {/* Main container */}
       <div className="relative max-w-6xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4 lg:py-6">

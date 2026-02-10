@@ -225,7 +225,7 @@ async function generateEmployeePDF(employe, rapportData, periode, dateDebut, dat
   });
 }
 
-async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin) {
+async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin, token) {
   const TEMPLATE_DIR = path.join(__dirname, '..', 'templates');
   const TEMPLATE_FILENAME = 'rapport-heures-template.xlsm';
   const templatePath = path.join(TEMPLATE_DIR, TEMPLATE_FILENAME);
@@ -479,14 +479,12 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   const navigoLinks = [];
   
   computedEmployes.forEach((emp, index) => {
-    // Préparer le justificatif Navigo (lien téléchargeable)
-    const navigoValue = emp.eligibleNavigo ? 'Oui' : '';
-    
-    // Vérifier si l'employé a un justificatif Navigo
+    // Vérifier si l'employé a un justificatif Navigo VALIDÉ pour CE MOIS
     const justifMensuel = emp.justificatifsNavigo?.[0];
-    const fichierNavigo = justifMensuel?.fichier || emp.justificatifNavigo;
+    const fichierNavigo = justifMensuel?.fichier;
+    const navigoValue = fichierNavigo ? 'Oui' : '';
     
-    if (fichierNavigo && emp.eligibleNavigo) {
+    if (fichierNavigo) {
       const filePath = path.join(__dirname, '..', fichierNavigo);
       
       if (fs.existsSync(filePath)) {
@@ -599,7 +597,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       const cell = hrSheet.getCell(`K${excelRow}`); // Colonne K = Justificatif
       
       // Créer un lien cliquable vers le fichier
-      const fileUrl = `${BASE_URL}/${filePath.replace(/\\/g, '/')}`;
+      const fileUrl = `${BASE_URL}/${filePath.replace(/\\/g, '/')}${token ? '?token=' + token : ''}`;
       
       // Déterminer l'icône selon le type de fichier
       let iconText = '📄';

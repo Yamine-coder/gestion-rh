@@ -1,17 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Train, Eye, Check, X, Clock, FileText, AlertCircle, AlertTriangle, MessageSquare } from 'lucide-react';
+import { Eye, Check, X, Clock, FileText, AlertCircle, Info, CheckCircle2, XCircle, RefreshCw, ShieldCheck, ShieldX, CalendarDays } from 'lucide-react';
 import { API_URL } from '../config/api';
 import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 /**
  * Composant onglet Navigo pour la fiche employé (Vue Admin)
- * L'admin peut :
- * - Voir les justificatifs envoyés par l'employé
- * - Valider/refuser les justificatifs mensuels
- * 
- * Tous les employés peuvent envoyer leurs justificatifs (pas de toggle d'éligibilité)
- * L'admin valide ou refuse avec motif si non éligible
+ * Design aligné avec la charte de l'app (#cf292c)
  */
 export default function NavigoEmployeTab({ employe, onUpdate }) {
   const [loading, setLoading] = useState(true);
@@ -19,7 +14,6 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
   const [justificatifsMensuels, setJustificatifsMensuels] = useState([]);
   const [loadingMensuels, setLoadingMensuels] = useState(false);
   
-  // États des modals
   const [showValidateModal, setShowValidateModal] = useState(false);
   const [showRefuseModal, setShowRefuseModal] = useState(false);
   const [selectedJustificatif, setSelectedJustificatif] = useState(null);
@@ -28,7 +22,6 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
 
   const token = localStorage.getItem('token');
 
-  // Charger les justificatifs mensuels
   const fetchJustificatifsMensuels = useCallback(async () => {
     if (!employe?.id) return;
     
@@ -50,7 +43,6 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
     fetchJustificatifsMensuels();
   }, [fetchJustificatifsMensuels]);
 
-  // Valider un justificatif mensuel
   const confirmValidate = async () => {
     if (!selectedJustificatif) return;
     
@@ -64,6 +56,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
 
       setMessage({ type: 'success', text: 'Justificatif validé avec succès' });
       fetchJustificatifsMensuels();
+      if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Erreur validation:', error);
       setMessage({ type: 'error', text: 'Erreur lors de la validation' });
@@ -75,7 +68,6 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
     }
   };
 
-  // Refuser un justificatif mensuel
   const confirmRefuse = async () => {
     if (!selectedJustificatif) return;
     
@@ -90,6 +82,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
 
       setMessage({ type: 'success', text: 'Justificatif refusé' });
       fetchJustificatifsMensuels();
+      if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Erreur refus:', error);
       setMessage({ type: 'error', text: 'Erreur lors du refus' });
@@ -102,236 +95,291 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
     }
   };
 
-  // Ouvrir modal de validation
   const openValidateModal = (justif) => {
     setSelectedJustificatif(justif);
     setShowValidateModal(true);
   };
 
-  // Ouvrir modal de refus
   const openRefuseModal = (justif) => {
     setSelectedJustificatif(justif);
     setMotifRefus('');
     setShowRefuseModal(true);
   };
 
-  // Formater le mois
   const formatMois = (mois, annee) => {
     const date = new Date(annee, mois - 1);
     return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
   };
 
-  // Badge de statut
   const getStatutBadge = (statut) => {
     switch (statut) {
       case 'valide':
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><Check className="w-3 h-3" /> Validé</span>;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Validé
+          </span>
+        );
       case 'refuse':
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><X className="w-3 h-3" /> Refusé</span>;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-[#cf292c] border border-red-200">
+            <XCircle className="w-3.5 h-3.5" /> Refusé
+          </span>
+        );
       case 'en_attente':
       default:
-        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800"><Clock className="w-3 h-3" /> En attente</span>;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <Clock className="w-3.5 h-3.5 animate-pulse" /> En attente
+          </span>
+        );
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#cf292c]"></div>
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200 border-t-[#cf292c]"></div>
       </div>
     );
   }
 
+  const enAttenteCount = justificatifsMensuels.filter(j => j.statut === 'en_attente').length;
+  const validesCount = justificatifsMensuels.filter(j => j.statut === 'valide').length;
+  const refusesCount = justificatifsMensuels.filter(j => j.statut === 'refuse').length;
+
   return (
-    <div className="space-y-6">
-      {/* Message */}
+    <div className="space-y-5">
+      {/* Toast message */}
       {message && (
         <div className={`p-3 rounded-xl text-sm flex items-center gap-2 ${
           message.type === 'success' 
-            ? 'bg-green-50 text-green-800 border border-green-200' 
-            : 'bg-red-50 text-red-800 border border-red-200'
+            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+            : 'bg-red-50 text-[#cf292c] border border-red-200'
         }`}>
-          {message.type === 'success' ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
           {message.text}
-          <button onClick={() => setMessage(null)} className="ml-auto text-lg leading-none">&times;</button>
+          <button onClick={() => setMessage(null)} className="ml-auto opacity-60 hover:opacity-100 transition-opacity">
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-blue-100">
-          <Train className="w-5 h-5 text-blue-600" />
+      {/* KPI cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className={`rounded-xl p-3 text-center border transition-all ${
+          enAttenteCount > 0 ? 'bg-amber-50 border-amber-200 shadow-sm shadow-amber-100' : 'bg-gray-50 border-gray-100'
+        }`}>
+          <div className={`text-xl font-bold ${enAttenteCount > 0 ? 'text-amber-600' : 'text-gray-300'}`}>
+            {enAttenteCount}
+          </div>
+          <div className="flex items-center justify-center gap-1 mt-0.5">
+            <Clock className={`w-3 h-3 ${enAttenteCount > 0 ? 'text-amber-500' : 'text-gray-300'}`} />
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${enAttenteCount > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+              En attente
+            </span>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-medium text-gray-900">Justificatifs Navigo</p>
-          <p className="text-xs text-gray-500">Validez ou refusez les justificatifs envoyés par l'employé</p>
+        <div className={`rounded-xl p-3 text-center border transition-all ${
+          validesCount > 0 ? 'bg-emerald-50 border-emerald-200 shadow-sm shadow-emerald-100' : 'bg-gray-50 border-gray-100'
+        }`}>
+          <div className={`text-xl font-bold ${validesCount > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>
+            {validesCount}
+          </div>
+          <div className="flex items-center justify-center gap-1 mt-0.5">
+            <CheckCircle2 className={`w-3 h-3 ${validesCount > 0 ? 'text-emerald-500' : 'text-gray-300'}`} />
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${validesCount > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+              Validés
+            </span>
+          </div>
+        </div>
+        <div className={`rounded-xl p-3 text-center border transition-all ${
+          refusesCount > 0 ? 'bg-red-50 border-red-200 shadow-sm shadow-red-100' : 'bg-gray-50 border-gray-100'
+        }`}>
+          <div className={`text-xl font-bold ${refusesCount > 0 ? 'text-[#cf292c]' : 'text-gray-300'}`}>
+            {refusesCount}
+          </div>
+          <div className="flex items-center justify-center gap-1 mt-0.5">
+            <XCircle className={`w-3 h-3 ${refusesCount > 0 ? 'text-red-500' : 'text-gray-300'}`} />
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${refusesCount > 0 ? 'text-[#cf292c]' : 'text-gray-400'}`}>
+              Refusés
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Section Justificatifs Mensuels */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-gray-700">Historique des justificatifs</h4>
-          {justificatifsMensuels.filter(j => j.statut === 'en_attente').length > 0 && (
-            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-              {justificatifsMensuels.filter(j => j.statut === 'en_attente').length} en attente
-            </span>
-          )}
+      {/* Historique des justificatifs */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-gray-400" />
+            <h4 className="text-sm font-semibold text-gray-800">Historique</h4>
+          </div>
+          <button
+            onClick={fetchJustificatifsMensuels}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-[#cf292c] hover:bg-red-50 transition-all"
+            title="Rafraîchir"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingMensuels ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
         {loadingMensuels ? (
-          <div className="flex items-center justify-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#cf292c]"></div>
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-200 border-t-[#cf292c]"></div>
           </div>
         ) : justificatifsMensuels.length === 0 ? (
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
-            <Clock className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-            <p className="text-sm text-gray-500">Aucun justificatif mensuel soumis par l'employé</p>
-            <p className="text-xs text-gray-400 mt-1">Les justificatifs apparaîtront ici une fois envoyés</p>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+            <div className="w-14 h-14 mx-auto rounded-full bg-gray-100 flex items-center justify-center mb-3">
+              <FileText className="w-6 h-6 text-gray-300" />
+            </div>
+            <p className="text-sm font-medium text-gray-500">Aucun justificatif</p>
+            <p className="text-xs text-gray-400 mt-1">Les justificatifs apparaitront ici une fois envoyés par l'employé</p>
           </div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Période</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date envoi</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Statut</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {justificatifsMensuels.map((justif) => (
-                  <tr key={justif.id} className={`hover:bg-gray-50 ${justif.statut === 'en_attente' ? 'bg-amber-50/50' : ''}`}>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium text-gray-900 capitalize">
-                        {formatMois(justif.mois, justif.annee)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {new Date(justif.dateUpload).toLocaleDateString('fr-FR', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
+          <div className="space-y-2.5">
+            {justificatifsMensuels.map((justif) => (
+              <div 
+                key={justif.id} 
+                className={`rounded-xl border transition-all ${
+                  justif.statut === 'en_attente' 
+                    ? 'bg-white border-amber-200 shadow-sm' 
+                    : 'bg-white border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {/* Ligne principale */}
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    justif.statut === 'en_attente' ? 'bg-amber-50 border border-amber-100' :
+                    justif.statut === 'valide' ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'
+                  }`}>
+                    <FileText className={`w-5 h-5 ${
+                      justif.statut === 'en_attente' ? 'text-amber-500' :
+                      justif.statut === 'valide' ? 'text-emerald-500' : 'text-red-500'
+                    }`} />
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 capitalize">
+                      {formatMois(justif.mois, justif.annee)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Envoyé le {new Date(justif.dateUpload).toLocaleDateString('fr-FR', {
+                        day: '2-digit', month: 'short', year: 'numeric'
                       })}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        {getStatutBadge(justif.statut)}
-                        {justif.motifRefus && (
-                          <span className="text-[10px] text-red-600 max-w-[150px] truncate" title={justif.motifRefus}>
-                            {justif.motifRefus}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <a
-                          href={getAuthenticatedFileUrl(justif.fichier)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-all"
-                          title="Voir le justificatif"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </a>
-                        {justif.statut === 'en_attente' && (
-                          <>
-                            <button
-                              onClick={() => openValidateModal(justif)}
-                              className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-all"
-                              title="Valider"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => openRefuseModal(justif)}
-                              className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-all"
-                              title="Refuser"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                  </div>
+                  
+                  <div className="flex-shrink-0">
+                    {getStatutBadge(justif.statut)}
+                  </div>
+                </div>
+
+                {/* Motif refus */}
+                {justif.motifRefus && (
+                  <div className="mx-4 mb-3 px-3 py-2 bg-red-50/60 rounded-lg border border-red-100">
+                    <p className="text-xs text-red-600 flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <span><strong>Motif :</strong> {justif.motifRefus}</span>
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="px-4 pb-3 flex items-center gap-2">
+                  <a
+                    href={getAuthenticatedFileUrl(justif.fichier)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-all"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    Voir
+                  </a>
+                  {justif.statut === 'en_attente' && (
+                    <>
+                      <button
+                        onClick={() => openValidateModal(justif)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-all"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Valider
+                      </button>
+                      <button
+                        onClick={() => openRefuseModal(justif)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#cf292c] bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-all"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Refuser
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-        <p className="text-xs text-blue-800">
-          <strong>ℹ️ Fonctionnement :</strong> L'employé soumet ses justificatifs Navigo depuis son espace personnel. 
-          Validez pour confirmer le remboursement, ou refusez avec un motif (document non conforme, employé non éligible, etc.).
+      {/* Info footer */}
+      <div className="flex items-start gap-2.5 p-3 bg-gray-50 rounded-xl border border-gray-200">
+        <Info className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          <span className="font-semibold text-gray-600">Fonctionnement :</span> L'employé soumet ses justificatifs depuis son espace. 
+          Validez pour confirmer le remboursement, ou refusez avec un motif.
         </p>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
-      {/* MODALS */}
-      {/* ═══════════════════════════════════════════════════════════════════════════ */}
-
       {/* Modal Confirmation Validation */}
       {showValidateModal && selectedJustificatif && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            {/* Header */}
-            <div className="px-6 py-4 bg-green-50">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-emerald-50 to-white border-b border-emerald-100">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-green-100">
-                  <Check className="w-5 h-5 text-green-600" />
+                <div className="p-2.5 rounded-xl bg-emerald-100">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Valider ce justificatif ?</h3>
-                  <p className="text-sm text-gray-500 capitalize">
+                  <h3 className="text-base font-bold text-gray-900">Valider ce justificatif</h3>
+                  <p className="text-xs text-gray-500 capitalize">
                     {formatMois(selectedJustificatif.mois, selectedJustificatif.annee)}
                   </p>
                 </div>
               </div>
             </div>
             
-            {/* Body */}
-            <div className="px-6 py-4">
+            <div className="px-6 py-5 space-y-4">
               <p className="text-sm text-gray-600">
-                Vous êtes sur le point de valider le justificatif Navigo de <strong>{employe?.prenom} {employe?.nom}</strong> pour le mois de <strong className="capitalize">{formatMois(selectedJustificatif.mois, selectedJustificatif.annee)}</strong>.
+                Vous confirmez le justificatif Navigo de <strong>{employe?.prenom} {employe?.nom}</strong> pour <strong className="capitalize">{formatMois(selectedJustificatif.mois, selectedJustificatif.annee)}</strong>.
               </p>
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <a
-                  href={getAuthenticatedFileUrl(selectedJustificatif.fichier)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-600 hover:underline flex items-center gap-2"
-                >
-                  <Eye className="w-4 h-4" />
-                  Voir le justificatif avant validation
-                </a>
-              </div>
+              <a
+                href={getAuthenticatedFileUrl(selectedJustificatif.fichier)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-xl text-sm text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
+              >
+                <Eye className="w-4 h-4 text-gray-400" />
+                Voir le justificatif avant validation
+              </a>
             </div>
             
-            {/* Footer */}
-            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
               <button
-                onClick={() => {
-                  setShowValidateModal(false);
-                  setSelectedJustificatif(null);
-                }}
+                onClick={() => { setShowValidateModal(false); setSelectedJustificatif(null); }}
                 disabled={actionLoading}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Annuler
               </button>
               <button
                 onClick={confirmValidate}
                 disabled={actionLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2 text-sm font-medium text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
               >
-                {actionLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                <Check className="w-4 h-4" />
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
                 Valider
               </button>
             </div>
@@ -341,87 +389,73 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
 
       {/* Modal Refus avec Motif */}
       {showRefuseModal && selectedJustificatif && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            {/* Header */}
-            <div className="px-6 py-4 bg-red-50">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-red-50 to-white border-b border-red-100">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-red-100">
-                  <X className="w-5 h-5 text-red-600" />
+                <div className="p-2.5 rounded-xl bg-red-100">
+                  <ShieldX className="w-5 h-5 text-[#cf292c]" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Refuser ce justificatif ?</h3>
-                  <p className="text-sm text-gray-500 capitalize">
+                  <h3 className="text-base font-bold text-gray-900">Refuser ce justificatif</h3>
+                  <p className="text-xs text-gray-500 capitalize">
                     {formatMois(selectedJustificatif.mois, selectedJustificatif.annee)}
                   </p>
                 </div>
               </div>
             </div>
             
-            {/* Body */}
-            <div className="px-6 py-4 space-y-4">
-              <p className="text-sm text-gray-600">
-                Vous êtes sur le point de refuser le justificatif Navigo de <strong>{employe?.prenom} {employe?.nom}</strong>.
-              </p>
-              
+            <div className="px-6 py-5 space-y-4">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  <MessageSquare className="w-4 h-4 inline mr-1" />
                   Motif du refus
                 </label>
                 <textarea
                   value={motifRefus}
                   onChange={(e) => setMotifRefus(e.target.value)}
-                  placeholder="Ex: Document illisible, mauvaise période, justificatif non conforme..."
+                  placeholder="Ex: Document illisible, mauvaise période..."
                   rows={3}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] resize-none outline-none transition-all"
+                  autoFocus
                 />
-                <p className="text-xs text-gray-400">
-                  Ce motif sera visible par l'employé
-                </p>
+                <p className="text-[11px] text-gray-400">Ce motif sera visible par l'employé</p>
               </div>
 
-              {/* Motifs rapides */}
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-gray-500 uppercase">Motifs rapides :</p>
-                <div className="flex flex-wrap gap-2">
-                  {['Document illisible', 'Mauvaise période', 'Justificatif incomplet', 'Document non conforme'].map((motif) => (
-                    <button
-                      key={motif}
-                      onClick={() => setMotifRefus(motif)}
-                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                        motifRefus === motif 
-                          ? 'bg-red-100 border-red-300 text-red-700' 
-                          : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {motif}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-1.5">
+                {['Document illisible', 'Mauvaise période', 'Justificatif incomplet', 'Non conforme', 'Non éligible'].map((motif) => (
+                  <button
+                    key={motif}
+                    onClick={() => setMotifRefus(motif)}
+                    className={`px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all ${
+                      motifRefus === motif 
+                        ? 'bg-red-50 border-red-300 text-[#cf292c]' 
+                        : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >
+                    {motif}
+                  </button>
+                ))}
               </div>
             </div>
             
-            {/* Footer */}
-            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+            <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
               <button
-                onClick={() => {
-                  setShowRefuseModal(false);
-                  setSelectedJustificatif(null);
-                  setMotifRefus('');
-                }}
+                onClick={() => { setShowRefuseModal(false); setSelectedJustificatif(null); setMotifRefus(''); }}
                 disabled={actionLoading}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 Annuler
               </button>
               <button
                 onClick={confirmRefuse}
                 disabled={actionLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-5 py-2 text-sm font-medium text-white bg-[#cf292c] rounded-xl hover:bg-[#b82325] transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
               >
-                {actionLoading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                <X className="w-4 h-4" />
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <X className="w-4 h-4" />
+                )}
                 Refuser
               </button>
             </div>

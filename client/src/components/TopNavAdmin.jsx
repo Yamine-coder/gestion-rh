@@ -115,9 +115,9 @@ export default function TopNavAdmin({
       icon: Users, 
       short: "Employés",
       badge: navigoEnAttente > 0 ? navigoEnAttente : null,
-      badgeColor: "amber", // Badge orange pour Navigo
+      badgeColor: "amber",
       priority: "high",
-      description: navigoEnAttente > 0 ? `${navigoEnAttente} justificatif(s) Navigo en attente` : "Gérer les employés"
+      description: navigoEnAttente > 0 ? `${navigoEnAttente} Navigo en attente` : "Gérer les employés"
     },
     { 
       key: "vuejour", 

@@ -5,9 +5,9 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, type = "warn
   if (!isOpen) return null;
 
   const icons = {
-    warning: <LogOut className="w-12 h-12 text-[#cf292c]" />,
-    success: <CheckCircle className="w-12 h-12 text-green-500" />,
-    info: <Info className="w-12 h-12 text-blue-500" />
+    warning: <LogOut className="w-6 h-6 text-[#cf292c]" />,
+    success: <CheckCircle className="w-6 h-6 text-green-500" />,
+    info: <Info className="w-6 h-6 text-blue-500" />
   };
 
   const colors = {
@@ -39,7 +39,7 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, type = "warn
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-slideUp"
+        className="bg-white rounded-xl shadow-2xl max-w-sm w-full animate-slideUp"
         onClick={(e) => e.stopPropagation()}
         style={{ zIndex: 10000 }}
       >
@@ -53,18 +53,18 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, type = "warn
           </button>
           
           <div className="flex flex-col items-center text-center">
-            <div className={`${colors[type].bg} p-4 rounded-full mb-4`}>
+            <div className={`${colors[type].bg} w-12 h-12 rounded-full flex items-center justify-center mb-4`}>
               {icons[type]}
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {title}
             </h3>
           </div>
         </div>
 
         {/* Content */}
-        <div className="px-6 pb-6">
-          <p className="text-gray-600 text-center whitespace-pre-line leading-relaxed">
+        <div className="px-6 pb-4">
+          <p className="text-gray-600 text-center text-sm whitespace-pre-line leading-relaxed">
             {message}
           </p>
         </div>
@@ -73,13 +73,13 @@ function ConfirmModal({ isOpen, onClose, onConfirm, title, message, type = "warn
         <div className="flex gap-3 px-6 pb-6">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-3 rounded-lg border-2 border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            className="flex-1 px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
           >
             {cancelText}
           </button>
           <button
             onClick={handleConfirm}
-            className={`flex-1 px-4 py-3 rounded-lg text-white font-medium ${colors[type].button} transition-colors shadow-lg`}
+            className={`flex-1 px-4 py-2 text-sm rounded-lg text-white font-medium ${colors[type].button} transition-colors`}
           >
             {confirmText}
           </button>

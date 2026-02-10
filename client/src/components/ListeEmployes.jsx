@@ -46,6 +46,11 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   // Modal Navigo dédiée
   const [navigoEmploye, setNavigoEmploye] = useState(null);
   
+  // 🆕 Statuts Navigo pour indicateurs dans la liste
+  const [navigoStatuts, setNavigoStatuts] = useState({});
+  const [showNavigoNonEnvoye, setShowNavigoNonEnvoye] = useState(false);
+  const [navigoRetards, setNavigoRetards] = useState({}); // Justificatifs mois précédents en attente
+  
   // Modal d'édition
   const [editingEmploye, setEditingEmploye] = useState(null);
   const [editForm, setEditForm] = useState({});
@@ -135,6 +140,24 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
       console.error("Erreur récupération demandes:", err);
     } finally {
       setLoadingDemandes(false);
+    }
+  };
+
+  // 🆕 Récupérer les statuts Navigo du mois en cours (bulk)
+  const fetchNavigoStatuts = async () => {
+    try {
+      const [statutsRes, retardsRes] = await Promise.all([
+        axios.get(`${API_BASE}/api/navigo/mensuel/admin/statuts`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`${API_BASE}/api/navigo/mensuel/admin/retards`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ]);
+      setNavigoStatuts(statutsRes.data.statuts || {});
+      setNavigoRetards(retardsRes.data.retards || {});
+    } catch (err) {
+      console.error("Erreur récupération statuts Navigo:", err);
     }
   };
 
@@ -449,6 +472,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   useEffect(() => {
     fetchEmployes();
     fetchDemandesModification(); // 🆕 Charger aussi les demandes de modification
+    fetchNavigoStatuts(); // 🆕 Charger les statuts Navigo du mois
     
     // Enregistrer la fonction de rafraîchissement pour qu'elle soit accessible par le parent
     if (onRegisterRefresh && typeof onRegisterRefresh === 'function') {
@@ -1268,6 +1292,120 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
           </div>
         )}
 
+        {/* 🆕 Bannière Navigo - Justificatifs en attente */}
+        {filtreStatut === 'actifs' && (() => {
+          const ucFirst = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+          const enAttenteList = employes.filter(e => e.role === 'employee' && !e.dateSortie && navigoStatuts[e.id] === 'en_attente');
+          const nonEnvoyeList = employes.filter(e => e.role === 'employee' && !e.dateSortie && !navigoStatuts[e.id]);
+          const valideCount = employes.filter(e => e.role === 'employee' && !e.dateSortie && navigoStatuts[e.id] === 'valide').length;
+          const totalEmployes = employes.filter(e => e.role === 'employee' && !e.dateSortie).length;
+          
+          if (enAttenteList.length === 0 && nonEnvoyeList.length === 0) return null;
+          
+          return (
+            <div className="mb-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden animate-fadeIn">
+              {/* Header compact */}
+              <div className="px-4 py-3 bg-gradient-to-r from-[#cf292c]/5 to-amber-50/50 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[#cf292c]/10 flex items-center justify-center">
+                      <Train className="w-4 h-4 text-[#cf292c]" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900">
+                        Navigo — {new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        {valideCount}/{totalEmployes} validés
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {/* Mini stats */}
+                    {enAttenteList.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        {enAttenteList.length} à valider
+                      </span>
+                    )}
+                    {Object.keys(navigoRetards).length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                        <Clock className="w-3 h-3" />
+                        {Object.keys(navigoRetards).length} retard{Object.keys(navigoRetards).length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {nonEnvoyeList.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                        {nonEnvoyeList.length} manquant{nonEnvoyeList.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <button
+                      onClick={fetchNavigoStatuts}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                      title="Rafraîchir"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Contenu */}
+              <div className="px-4 py-3">
+                {/* En attente de validation */}
+                {enAttenteList.length > 0 && (
+                  <div className={nonEnvoyeList.length > 0 ? 'mb-3' : ''}>
+                    <div className="flex flex-wrap gap-1.5">
+                      {enAttenteList.map(e => (
+                        <button
+                          key={e.id}
+                          onClick={() => setNavigoEmploye(e)}
+                          className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 hover:border-amber-300 hover:shadow-sm transition-all"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                          {ucFirst(e.prenom)} {e.nom?.[0]?.toUpperCase()}.
+                          <span className="text-amber-500 group-hover:text-amber-700 transition-colors">→</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Non envoyés - repliable */}
+                {nonEnvoyeList.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setShowNavigoNonEnvoye(!showNavigoNonEnvoye)}
+                      className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors mb-1.5"
+                    >
+                      <svg className={`w-3 h-3 transition-transform ${showNavigoNonEnvoye ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+                      </svg>
+                      {nonEnvoyeList.length} employé{nonEnvoyeList.length > 1 ? 's' : ''} n'ont pas encore envoyé
+                    </button>
+                    
+                    {showNavigoNonEnvoye && (
+                      <div className="flex flex-wrap gap-1 animate-fadeIn">
+                        {nonEnvoyeList.map(e => (
+                          <button
+                            key={e.id}
+                            onClick={() => setNavigoEmploye(e)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                            {ucFirst(e.prenom)} {e.nom?.[0]?.toUpperCase()}.
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Tableau avec design sobre et moderne */}
         {filtreStatut === 'demandes' ? (
           /* ═══════════════════════════════════════════════════════════════════════════
@@ -1515,6 +1653,28 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                           </svg>
                         </button>
+                        
+                        {/* 🚇 Navigo - Vue grille */}
+                        {e.role === 'employee' && (
+                          <div className="relative">
+                            <button
+                              onClick={() => setNavigoEmploye(e)}
+                              className={`p-2 rounded-lg text-xs font-medium transition-all ${
+                                navigoStatuts[e.id] === 'en_attente'
+                                  ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-300'
+                                  : navigoStatuts[e.id] === 'valide'
+                                    ? 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
+                                    : 'bg-gray-50 text-gray-400 hover:bg-gray-100 border border-gray-200'
+                              }`}
+                              title={navigoStatuts[e.id] === 'en_attente' ? 'Navigo — En attente' : navigoStatuts[e.id] === 'valide' ? 'Navigo — Validé' : 'Navigo'}
+                            >
+                              <Train className="h-4 w-4" />
+                            </button>
+                            {navigoStatuts[e.id] === 'en_attente' && (
+                              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
+                            )}
+                          </div>
+                        )}
                       </>
                     ) : (
                       // 🔴 EMPLOYÉ PARTI - Vue grille
@@ -1736,18 +1896,51 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                               </svg>
                             </button>
                             
-                            {/* 🚇 Bouton Navigo */}
+                            {/* 🚇 Bouton Navigo avec indicateur de statut */}
                             {e.role === 'employee' && (
-                              <button
-                                onClick={() => setNavigoEmploye(e)}
-                                className="p-2 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-all"
-                                title="Gestion Navigo"
-                              >
-                                <Train className="h-4 w-4" />
-                              </button>
+                              <div className="relative">
+                                <button
+                                  onClick={() => setNavigoEmploye(e)}
+                                  className={`p-2 rounded-lg text-xs font-medium transition-all ${
+                                    navigoStatuts[e.id] === 'en_attente'
+                                      ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-300 ring-1 ring-amber-200'
+                                      : navigoStatuts[e.id] === 'valide'
+                                        ? 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
+                                        : navigoStatuts[e.id] === 'refuse'
+                                          ? 'bg-red-50 text-[#cf292c] hover:bg-red-100 border border-red-300'
+                                          : 'bg-gray-50 text-gray-400 hover:bg-gray-100 border border-gray-200'
+                                  }`}
+                                  title={
+                                    navigoRetards[e.id]
+                                      ? `Navigo — Justificatif ${new Date(navigoRetards[e.id].annee, navigoRetards[e.id].mois - 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })} en attente`
+                                    : navigoStatuts[e.id] === 'en_attente' ? 'Navigo — Justificatif en attente de validation'
+                                    : navigoStatuts[e.id] === 'valide' ? 'Navigo — Justificatif validé ce mois'
+                                    : navigoStatuts[e.id] === 'refuse' ? 'Navigo — Justificatif refusé'
+                                    : 'Navigo — Pas de justificatif ce mois'
+                                  }
+                                >
+                                  <Train className="h-4 w-4" />
+                                </button>
+                                {/* Pastille de statut */}
+                                {navigoStatuts[e.id] === 'en_attente' && (
+                                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
+                                )}
+                                {navigoStatuts[e.id] === 'valide' && (
+                                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500 border-2 border-white"></span>
+                                )}
+                                {navigoStatuts[e.id] === 'refuse' && (
+                                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500 border-2 border-white"></span>
+                                )}
+                                {/* Pastille retard mois précédent */}
+                                {navigoRetards[e.id] && (
+                                  <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-orange-500 border-2 border-white flex items-center justify-center" title={`Retard: ${new Date(navigoRetards[e.id].annee, navigoRetards[e.id].mois - 1).toLocaleDateString('fr-FR', { month: 'short' })}`}>
+                                    <Clock className="w-2.5 h-2.5 text-white" />
+                                  </span>
+                                )}
+                              </div>
                             )}
-                            
-                            {/* Bouton Marquer le départ - Seulement pour les employés */}
+
+                            {/* Bouton Marquer le départ */}
                             {e.role === 'employee' && (
                               <button
                                 onClick={() => handleOpenDepart(e)}
@@ -1759,17 +1952,6 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                                 </svg>
                               </button>
                             )}
-                            
-                            {/* Suppression bloquée pour actifs et en préavis */}
-                            <button
-                              onClick={() => toast.error("Impossible de supprimer un employé actif")}
-                              className="p-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
-                              title="Suppression bloquée"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                              </svg>
-                            </button>
                           </>
                         ) : (
                           // 🔴 EMPLOYÉ PARTI - Actions limitées
@@ -1892,29 +2074,56 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                         </svg>
                       </button>
                       
-                      {/* 🚇 Bouton Navigo - Version mobile */}
+                      {/* 🚇 Bouton Navigo - Version mobile avec indicateur */}
+                      {e.role === 'employee' && (
+                        <div className="relative flex-1">
+                          <button
+                            onClick={() => setNavigoEmploye(e)}
+                            className={`w-full px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              navigoStatuts[e.id] === 'en_attente'
+                                ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-300'
+                                : navigoStatuts[e.id] === 'valide'
+                                  ? 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
+                                  : navigoStatuts[e.id] === 'refuse'
+                                    ? 'bg-red-50 text-[#cf292c] hover:bg-red-100 border border-red-300'
+                                    : 'bg-gray-50 text-gray-400 hover:bg-gray-100 border border-gray-200'
+                            }`}
+                            title={
+                              navigoStatuts[e.id] === 'en_attente' ? 'Navigo — En attente'
+                              : navigoStatuts[e.id] === 'valide' ? 'Navigo — Validé'
+                              : navigoStatuts[e.id] === 'refuse' ? 'Navigo — Refusé'
+                              : 'Navigo — Non envoyé'
+                            }
+                          >
+                            <Train className="h-4 w-4 mx-auto" />
+                          </button>
+                          {navigoStatuts[e.id] === 'en_attente' && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white animate-pulse"></span>
+                          )}
+                          {navigoStatuts[e.id] === 'valide' && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white"></span>
+                          )}
+                          {navigoStatuts[e.id] === 'refuse' && (
+                            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white"></span>
+                          )}
+                          {navigoRetards[e.id] && (
+                            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-orange-500 border-2 border-white flex items-center justify-center">
+                              <Clock className="w-2 h-2 text-white" />
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {e.role === 'employee' && (
                         <button
-                          onClick={() => setNavigoEmploye(e)}
-                          className="flex-1 px-3 py-2 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-all"
-                          title="Navigo"
+                          onClick={() => handleOpenDepart(e)}
+                          className="flex-1 px-3 py-2 rounded-lg text-xs font-medium bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 transition-all"
+                          title="Marquer le départ"
                         >
-                          <Train className="h-4 w-4 mx-auto" />
+                          <svg className="h-4 w-4 mx-auto" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                          </svg>
                         </button>
-                      )}
-                      
-                      {e.role === 'employee' && (
-                        <>
-                          <button
-                            onClick={() => handleOpenDepart(e)}
-                            className="flex-1 px-3 py-2 rounded-lg text-xs font-medium bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 transition-all"
-                            title="Marquer le départ"
-                          >
-                            <svg className="h-4 w-4 mx-auto" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                            </svg>
-                          </button>
-                        </>
                       )}
                     </>
                   ) : (
@@ -2702,8 +2911,8 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4 flex items-center gap-4">
-              <div className="p-2 bg-white/20 rounded-lg">
+            <div className="bg-gradient-to-r from-[#cf292c] to-[#e84447] text-white px-6 py-4 flex items-center gap-4">
+              <div className="p-2 bg-white/20 rounded-xl">
                 <Train className="w-6 h-6" />
               </div>
               <div className="flex-1">
@@ -2711,7 +2920,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                 <p className="text-sm text-white/80">{navigoEmploye.prenom} {navigoEmploye.nom}</p>
               </div>
               <button
-                onClick={() => setNavigoEmploye(null)}
+                onClick={() => { setNavigoEmploye(null); fetchNavigoStatuts(); }}
                 className="p-2 rounded-lg hover:bg-white/20 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -2722,7 +2931,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
             <div className="flex-1 overflow-y-auto p-6">
               <NavigoEmployeTab 
                 employe={navigoEmploye}
-                onUpdate={fetchEmployes}
+                onUpdate={() => { fetchEmployes(); fetchNavigoStatuts(); }}
               />
             </div>
           </div>

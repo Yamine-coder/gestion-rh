@@ -1368,6 +1368,7 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
 router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { periode, mois, format = 'csv' } = req.query;
+    const token = req.headers.authorization?.replace('Bearer ', '');
 
     // Calculer les dates de la période
     let dateDebut, dateFin;
@@ -1688,7 +1689,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
     // Générer le fichier selon le format
     if (format === 'excel') {
       try {
-        const excelBuffer = await generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin);
+        const excelBuffer = await generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin, token);
         
         const fileName = `rapport_heures_tous_employes_${periode}_${getCurrentDateString()}.${excelBuffer.extension}`;
         res.setHeader('Content-Type', excelBuffer.mimeType);
@@ -1702,7 +1703,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
       }
     } else if (format === 'excel' || format === 'xlsx') {
       // Format Excel avec images Navigo intégrées
-      const excelBuffer = await generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin);
+      const excelBuffer = await generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, dateFin, token);
       
       const dateDebutStr = dateDebut.toLocaleDateString('fr-FR').replace(/\//g, '-');
       const dateFinStr = dateFin.toLocaleDateString('fr-FR').replace(/\//g, '-');
