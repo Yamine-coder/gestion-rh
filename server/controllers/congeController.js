@@ -111,6 +111,9 @@ const demanderConge = async (req, res) => {
             select: { email: true }
           });
           emailRecipients = admins.map(a => a.email).filter(Boolean);
+        } else {
+          // getRecipients retourne des objets {email, name, active} — extraire les emails
+          emailRecipients = emailRecipients.map(r => typeof r === 'string' ? r : r.email).filter(Boolean);
         }
 
         const dateDebutStr = new Date(debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });

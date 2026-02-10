@@ -77,6 +77,9 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 
+// Trust proxy (Render utilise un reverse proxy)
+app.set('trust proxy', 1);
+
 // Middlewares globaux
 app.use(helmet());
 app.use(compression());

@@ -3,83 +3,13 @@
  * Gère les emails de: remplacements, anomalies, etc.
  */
 
-const nodemailer = require('nodemailer');
 const notifConfig = require('./notificationConfigService');
 const prisma = require('../prisma/client');
 const { parseSegments } = require('../utils/segmentUtils');
+const { sendMailWithRetry } = require('../utils/emailService');
 
 const RESTAURANT_NAME = 'Chez Antoine';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-// Configuration retry
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [1000, 3000, 8000];
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
-
-// Créer le transporteur Gmail
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    }
-  });
-};
-
-/**
- * Envoi d'email avec retry automatique et alerting admin
- */
-async function sendMailWithRetry(mailOptions) {
-  let lastError = null;
-  
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const transporter = createTransporter();
-      const info = await transporter.sendMail(mailOptions);
-      if (attempt > 1) {
-        console.log(`✅ Email envoyé à ${mailOptions.to} après ${attempt} tentative(s)`);
-      }
-      return info;
-    } catch (err) {
-      lastError = err;
-      console.error(`⚠️ Tentative ${attempt}/${MAX_RETRIES} échouée pour ${mailOptions.to}: ${err.message}`);
-      if (attempt < MAX_RETRIES) {
-        await delay(RETRY_DELAYS[attempt - 1]);
-      }
-    }
-  }
-  
-  // Alerter les admins via notification
-  console.error(`❌ ALERTE: Email échoué vers ${mailOptions.to} après ${MAX_RETRIES} tentatives`);
-  try {
-    const admins = await prisma.user.findMany({
-      where: { role: 'admin', statut: 'actif' },
-      select: { id: true }
-    });
-    if (admins.length > 0) {
-      await prisma.notifications.createMany({
-        data: admins.map(admin => ({
-          employe_id: admin.id,
-          type: 'erreur_email',
-          titre: '⚠️ Échec envoi email',
-          message: JSON.stringify({
-            text: `Email échoué vers ${mailOptions.to} après ${MAX_RETRIES} tentatives. Sujet: "${mailOptions.subject}"`,
-            destinataire: mailOptions.to,
-            sujet: mailOptions.subject,
-            erreur: lastError?.message,
-            date: new Date().toISOString()
-          }),
-          lue: false
-        }))
-      });
-    }
-  } catch (notifErr) {
-    console.error('❌ Impossible de notifier les admins:', notifErr.message);
-  }
-  
-  throw lastError;
-}
 
 // Template de base pour tous les emails
 const getEmailTemplate = (title, content, ctaText = null, ctaUrl = null) => {
