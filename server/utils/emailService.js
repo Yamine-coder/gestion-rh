@@ -1,6 +1,5 @@
 // utils/emailService.js
 const nodemailer = require('nodemailer');
-const SibApiV3Sdk = require('sib-api-v3-sdk');
 
 // Cache pour limiter les envois d'emails répétés
 const emailSendCache = new Map();
@@ -46,11 +45,16 @@ const createTransporter = () => {
   // Option 1: Gmail (nécessite App Password)
   if (process.env.EMAIL_SERVICE === 'gmail') {
     return nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD // App Password, pas le mot de passe normal
-      }
+      },
+      connectionTimeout: 10000, // 10s
+      greetingTimeout: 10000,   // 10s
+      socketTimeout: 15000      // 15s
     });
   }
   
