@@ -363,42 +363,11 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
 
     
     console.log(`📬 Envoi de l'email...`);
-    console.log(`🔑 BREVO_API_KEY présente: ${!!process.env.BREVO_API_KEY}`);
     
-    // Priorité 1: Brevo (API HTTP - fonctionne sur Render, pas besoin de domaine)
-    if (process.env.BREVO_API_KEY) {
-      console.log('📧 Envoi via Brevo...');
-      try {
-        // Configurer le client Brevo
-        const defaultClient = SibApiV3Sdk.ApiClient.instance;
-        const apiKey = defaultClient.authentications['api-key'];
-        apiKey.apiKey = process.env.BREVO_API_KEY;
-        
-        const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-        const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-        
-        sendSmtpEmail.subject = mailOptions.subject;
-        sendSmtpEmail.htmlContent = mailOptions.html;
-        sendSmtpEmail.sender = { 
-          name: restaurantName, 
-          email: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'noreply@lefournilchezantoine.fr' 
-        };
-        sendSmtpEmail.to = [{ email: email, name: `${prenom} ${nom}` }];
-        
-        const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-        
-        console.log(`✅ Email envoyé via Brevo à ${email}, ID: ${result.messageId}`);
-        recordEmailSent(email, 'identifiants');
-        return { success: true, messageId: result.messageId, provider: 'brevo' };
-      } catch (brevoError) {
-        console.error('❌ Erreur Brevo, fallback vers Gmail:', brevoError.message || brevoError);
-        // Ne pas retourner — continuer vers Gmail en fallback
-      }
-    }
-    
-    // Priorité 2: Gmail/SMTP (fallback si pas de Brevo ou si Brevo a échoué)
-    console.log('📧 Envoi via Gmail/SMTP (pas de BREVO_API_KEY)...');
-    const info = await transporter.sendMail(mailOptions);
+    // Priorité 1: Gmail/SMTP (rapide et fiable)
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+      console.log('📧 Envoi via Gmail/SMTP...');
+      const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email d'identifiants envoyé à ${email}, Message ID: ${info.messageId}`);
     
     // Enregistrer l'envoi dans le cache pour la limitation
