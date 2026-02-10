@@ -1018,7 +1018,7 @@ function buildNegativeResponse(firstName, context, dishRef, phone, signature) {
 // =====================================================
 
 function isAIConfigured() {
-  return !!process.env.OPENROUTER_API_KEY;
+  return !!(process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY);
 }
 
 function getRestaurantContext() {
