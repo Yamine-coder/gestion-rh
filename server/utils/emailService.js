@@ -28,7 +28,48 @@ const recordEmailSent = (email, type) => {
 };
 
 // ============================================================
-// METHODE 1: Resend (HTTP API - fonctionne sur Render/Vercel)
+// METHODE 1: Brevo (HTTP API - fonctionne sur Render/Vercel)
+// ============================================================
+const sendViaBrevo = async (mailOptions) => {
+  if (!process.env.BREVO_API_KEY) {
+    throw new Error('BREVO_API_KEY non configurée');
+  }
+  
+  const fromEmail = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'moussaouiyamine1@gmail.com';
+  const fromName = 'Chez Antoine';
+  
+  console.log(`📧 Envoi via Brevo (HTTP API)...`);
+  console.log(`📧 From: ${fromName} <${fromEmail}>`);
+  console.log(`📧 To: ${mailOptions.to}`);
+  
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: mailOptions.to }],
+      subject: mailOptions.subject,
+      htmlContent: mailOptions.html,
+    }),
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    console.error('❌ Brevo erreur:', JSON.stringify(data));
+    throw new Error(`Brevo: ${data.message || JSON.stringify(data)}`);
+  }
+  
+  console.log(`✅ Email envoyé via Brevo, ID: ${data.messageId}`);
+  return { messageId: data.messageId };
+};
+
+// ============================================================
+// METHODE 2: Resend (HTTP API - si domaine vérifié)
 // ============================================================
 const sendViaResend = async (mailOptions) => {
   if (!process.env.RESEND_API_KEY) {
@@ -36,8 +77,6 @@ const sendViaResend = async (mailOptions) => {
   }
   
   const resend = new Resend(process.env.RESEND_API_KEY);
-  
-  // Resend gratuit: envoi depuis onboarding@resend.dev ou domaine vérifié
   const fromEmail = process.env.RESEND_FROM || 'Chez Antoine <onboarding@resend.dev>';
   
   console.log(`📧 Envoi via Resend (HTTP API)...`);
@@ -61,7 +100,7 @@ const sendViaResend = async (mailOptions) => {
 };
 
 // ============================================================
-// METHODE 2: Gmail SMTP (fallback pour dev local)
+// METHODE 3: Gmail SMTP (dev local uniquement)
 // ============================================================
 const createTransporter = (forcePort = null) => {
   const port = forcePort || 587;
@@ -82,7 +121,6 @@ const createTransporter = (forcePort = null) => {
 };
 
 const sendViaSMTP = async (mailOptions) => {
-  // Port 587 d'abord, puis 465
   for (const port of [587, 465]) {
     try {
       console.log(`📧 SMTP tentative port ${port}...`);
@@ -98,20 +136,28 @@ const sendViaSMTP = async (mailOptions) => {
 };
 
 // ============================================================
-// ENVOI UNIFIÉ: Resend (priorité) → SMTP (fallback)
+// ENVOI UNIFIÉ: Brevo → Resend → SMTP
 // ============================================================
 const sendMailWithRetry = async (mailOptions) => {
-  // Priorité 1: Resend (HTTP - fonctionne partout)
+  // Priorité 1: Brevo (HTTP API - pas de domaine requis)
+  if (process.env.BREVO_API_KEY) {
+    try {
+      return await sendViaBrevo(mailOptions);
+    } catch (brevoErr) {
+      console.error(`❌ Brevo échoué: ${brevoErr.message}`);
+    }
+  }
+  
+  // Priorité 2: Resend (HTTP API - nécessite domaine vérifié pour destinataires externes)
   if (process.env.RESEND_API_KEY) {
     try {
       return await sendViaResend(mailOptions);
     } catch (resendErr) {
       console.error(`❌ Resend échoué: ${resendErr.message}`);
-      console.log('🔄 Fallback vers SMTP...');
     }
   }
   
-  // Priorité 2: Gmail SMTP (dev local)
+  // Priorité 3: Gmail SMTP (dev local)
   if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
     try {
       return await sendViaSMTP(mailOptions);
@@ -120,7 +166,7 @@ const sendMailWithRetry = async (mailOptions) => {
     }
   }
   
-  throw new Error('Aucun service email disponible. Configurez RESEND_API_KEY (recommandé) ou EMAIL_USER/EMAIL_PASSWORD.');
+  throw new Error('Aucun service email disponible. Configurez BREVO_API_KEY (recommandé) ou RESEND_API_KEY ou EMAIL_USER/EMAIL_PASSWORD.');
 };
 
 // Envoi email de récupération de mot de passe
@@ -438,12 +484,14 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
 
 // Test de la configuration email
 const testerConfigurationEmail = async () => {
-  // Test Resend
+  if (process.env.BREVO_API_KEY) {
+    console.log('✅ Configuration Brevo (HTTP API) détectée');
+    return true;
+  }
   if (process.env.RESEND_API_KEY) {
     console.log('✅ Configuration Resend (HTTP API) détectée');
     return true;
   }
-  // Test SMTP
   try {
     const transporter = createTransporter();
     await transporter.verify();
