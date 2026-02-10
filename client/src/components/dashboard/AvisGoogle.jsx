@@ -2303,7 +2303,7 @@ const AvisGoogle = ({ compact = false, onViewAll }) => {
                 {/* Footer avec lien Google */}
                 <div className="px-4 py-3 bg-slate-50 border-t border-slate-100">
                   <a
-                    href={data?.restaurant?.googleUrl || `https://www.google.com/maps/place/?q=place_id:${process.env.REACT_APP_GOOGLE_PLACE_ID || ''}`}
+                    href={data?.restaurant?.googleUrl || 'https://www.google.com/maps/place/?q=place_id:ChIJnYLnmZly5kcRgpLV4MN4Rus'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors"

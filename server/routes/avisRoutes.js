@@ -613,7 +613,7 @@ function getDemoData() {
   const now = Date.now();
   return {
     isDemo: true,
-    restaurant: { name: 'Restaurant (Demo)', rating: 4.2, totalReviews: 847, googleUrl: '#' },
+    restaurant: { name: 'Le Fournil A Pizzas - Chez Antoine (Demo)', rating: 4.2, totalReviews: 847, googleUrl: 'https://www.google.com/maps/place/?q=place_id:ChIJnYLnmZly5kcRgpLV4MN4Rus' },
     reviews: [
       { author: 'Jean D.', rating: 2, text: 'Service très lent, 45 minutes d\'attente. Le tartare était bon mais l\'attente gâche tout.', time: now - 2*3600000, relativeTime: 'il y a 2h', isNegative: true },
       { author: 'Marie M.', rating: 5, text: 'Excellent ! Terrasse magnifique, accueil chaleureux, tartare parfait.', time: now - 5*3600000, relativeTime: 'il y a 5h', isNegative: false },
