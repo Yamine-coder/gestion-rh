@@ -115,6 +115,11 @@ app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 // Servir les fichiers statiques (uploads) - protégé par auth
 const path = require('path');
 const { authMiddleware } = require('./middlewares/authMiddleware');
+
+// Justificatifs Navigo mensuels : accès public (URLs dans exports Excel, noms uniques non devinables)
+app.use('/uploads/justificatifs-navigo-mensuel', express.static(path.join(__dirname, 'uploads', 'justificatifs-navigo-mensuel')));
+
+// Tous les autres uploads : protégés par auth
 app.use('/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
 
 // Routes principales

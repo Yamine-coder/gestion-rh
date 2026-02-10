@@ -590,9 +590,9 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       // Récupérer la cellule
       const cell = hrSheet.getCell(`K${excelRow}`); // Colonne K = Justificatif
       
-      // Créer un lien cliquable vers le fichier (filePath commence par / donc pas besoin d'en ajouter)
+      // Créer un lien cliquable vers le fichier (justificatifs Navigo mensuels servis en public)
       const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
-      const fileUrl = `${BASE_URL}${cleanPath.replace(/\\/g, '/')}${token ? '?token=' + token : ''}`;
+      const fileUrl = `${BASE_URL}${cleanPath.replace(/\\/g, '/')}`;
       
       // Déterminer l'icône selon le type de fichier
       let iconText = '📄';
