@@ -162,17 +162,16 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur backend lancé sur port ${PORT} (${process.env.NODE_ENV || 'development'})`);
   
-  // Démarrage du scheduler d'anomalies temps réel
-  anomalyScheduler.start();
-  
-  // Démarrage des alertes email pour les avis négatifs
-  avisAlertCron.startCronJobs();
-  
-  // Démarrage du cron pour le récap anomalies
-  startAnomaliesCron();
-
-  // Démarrage du cron scoring (bonus hebdo + malus 48h)
-  startScoringCron();
+  // Démarrage des tâches de fond (protégé contre les crashs)
+  try {
+    anomalyScheduler.start();
+    avisAlertCron.startCronJobs();
+    startAnomaliesCron();
+    startScoringCron();
+    console.log('✅ Tous les crons démarrés avec succès');
+  } catch (cronError) {
+    console.error('⚠️ Erreur démarrage crons (non bloquant):', cronError.message);
+  }
 });
 
 // Process-level crash diagnostics

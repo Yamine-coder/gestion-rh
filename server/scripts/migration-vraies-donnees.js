@@ -2,7 +2,7 @@
 // Utiliser ce script pour préparer la migration demain
 
 const prisma = require('../prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 // =============================================
 // 1. NETTOYAGE DES DONNÉES FACTICES
