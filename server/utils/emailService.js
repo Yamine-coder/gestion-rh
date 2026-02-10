@@ -1,5 +1,6 @@
 // utils/emailService.js
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 // Cache pour limiter les envois d'emails répétés
 const emailSendCache = new Map();
@@ -9,119 +10,117 @@ const EMAIL_THROTTLE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Vérifie si un email peut être envoyé (pas de limitation en cours)
- * @param {string} email - Adresse email du destinataire
- * @param {string} type - Type d'email (identifiants, recuperation, etc.)
- * @returns {boolean} True si l'email peut être envoyé, false sinon
  */
 const canSendEmail = (email, type) => {
   const key = `${email}:${type}`;
   const lastSentTime = emailSendCache.get(key);
-  
   if (!lastSentTime) return true;
-  
-  const timeSinceLastEmail = Date.now() - lastSentTime;
-  return timeSinceLastEmail > EMAIL_THROTTLE_DURATION;
+  return (Date.now() - lastSentTime) > EMAIL_THROTTLE_DURATION;
 };
 
 /**
  * Enregistre l'envoi d'un email dans le cache
- * @param {string} email - Adresse email du destinataire
- * @param {string} type - Type d'email (identifiants, recuperation, etc.)
  */
 const recordEmailSent = (email, type) => {
   const key = `${email}:${type}`;
   emailSendCache.set(key, Date.now());
-  
-  // Nettoyage des entrées anciennes (plus de 1 heure)
-  setTimeout(() => {
-    if (emailSendCache.has(key)) {
-      emailSendCache.delete(key);
-    }
-  }, 60 * 60 * 1000); // 1 heure
+  setTimeout(() => emailSendCache.delete(key), 60 * 60 * 1000);
 };
 
-// Configuration email - essaie port 587 (STARTTLS) d'abord, puis 465 (SSL)
+// ============================================================
+// METHODE 1: Resend (HTTP API - fonctionne sur Render/Vercel)
+// ============================================================
+const sendViaResend = async (mailOptions) => {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY non configurée');
+  }
+  
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  
+  // Resend gratuit: envoi depuis onboarding@resend.dev ou domaine vérifié
+  const fromEmail = process.env.RESEND_FROM || 'Chez Antoine <onboarding@resend.dev>';
+  
+  console.log(`📧 Envoi via Resend (HTTP API)...`);
+  console.log(`📧 From: ${fromEmail}`);
+  console.log(`📧 To: ${mailOptions.to}`);
+  
+  const { data, error } = await resend.emails.send({
+    from: fromEmail,
+    to: [mailOptions.to],
+    subject: mailOptions.subject,
+    html: mailOptions.html,
+  });
+  
+  if (error) {
+    console.error('❌ Resend erreur:', JSON.stringify(error));
+    throw new Error(`Resend: ${error.message || JSON.stringify(error)}`);
+  }
+  
+  console.log(`✅ Email envoyé via Resend, ID: ${data.id}`);
+  return { messageId: data.id };
+};
+
+// ============================================================
+// METHODE 2: Gmail SMTP (fallback pour dev local)
+// ============================================================
 const createTransporter = (forcePort = null) => {
-  const port = forcePort || parseInt(process.env.SMTP_PORT || '587');
+  const port = forcePort || 587;
   const isSecure = port === 465;
   
-  console.log(`🔧 Création transporteur SMTP: host=smtp.gmail.com, port=${port}, secure=${isSecure}`);
-  console.log(`🔧 EMAIL_USER=${process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 5) + '***' : 'NON DÉFINI'}`);
-  console.log(`🔧 EMAIL_PASSWORD=${process.env.EMAIL_PASSWORD ? '***' + process.env.EMAIL_PASSWORD.substring(process.env.EMAIL_PASSWORD.length - 4) : 'NON DÉFINI'}`);
-  console.log(`🔧 EMAIL_SERVICE=${process.env.EMAIL_SERVICE || 'NON DÉFINI'}`);
-  
-  if (process.env.EMAIL_SERVICE === 'gmail' || process.env.EMAIL_USER?.includes('gmail')) {
-    return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: port,
-      secure: isSecure,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-      logger: true,
-      debug: process.env.NODE_ENV !== 'production'
-    });
-  }
-  
-  // SMTP personnalisé
-  if (process.env.SMTP_HOST) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000
-    });
-  }
-  
-  console.warn('⚠️ Aucune configuration email trouvée, utilisation Ethereal (test uniquement)');
   return nodemailer.createTransport({
-    host: 'smtp.ethereal.email',
-    port: 587,
+    host: 'smtp.gmail.com',
+    port,
+    secure: isSecure,
     auth: {
-      user: 'ethereal.user@ethereal.email',
-      pass: 'ethereal.pass'
-    }
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   });
 };
 
-// Envoi email avec retry automatique (port 587 → 465)
-const sendMailWithRetry = async (mailOptions) => {
-  // Tentative 1: Port 587 (STARTTLS) - plus compatible avec les hébergeurs cloud
-  console.log('📧 Tentative 1: Port 587 (STARTTLS)...');
-  try {
-    const transporter587 = createTransporter(587);
-    const info = await transporter587.sendMail(mailOptions);
-    console.log(`✅ Email envoyé via port 587, Message ID: ${info.messageId}`);
-    return info;
-  } catch (err587) {
-    console.error(`❌ Port 587 échoué: ${err587.code} - ${err587.message}`);
-    
-    // Tentative 2: Port 465 (SSL direct)
-    console.log('📧 Tentative 2: Port 465 (SSL)...');
+const sendViaSMTP = async (mailOptions) => {
+  // Port 587 d'abord, puis 465
+  for (const port of [587, 465]) {
     try {
-      const transporter465 = createTransporter(465);
-      const info = await transporter465.sendMail(mailOptions);
-      console.log(`✅ Email envoyé via port 465, Message ID: ${info.messageId}`);
+      console.log(`📧 SMTP tentative port ${port}...`);
+      const transporter = createTransporter(port);
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`✅ Email envoyé via SMTP port ${port}, ID: ${info.messageId}`);
       return info;
-    } catch (err465) {
-      console.error(`❌ Port 465 échoué: ${err465.code} - ${err465.message}`);
-      
-      // Les deux ont échoué — erreur détaillée
-      const finalError = new Error(`SMTP impossible: Port 587 (${err587.code}: ${err587.message}), Port 465 (${err465.code}: ${err465.message})`);
-      finalError.code = 'SMTP_ALL_FAILED';
-      throw finalError;
+    } catch (err) {
+      console.error(`❌ SMTP port ${port} échoué: ${err.code} - ${err.message}`);
     }
   }
+  throw new Error('SMTP: ports 587 et 465 bloqués (ETIMEDOUT)');
+};
+
+// ============================================================
+// ENVOI UNIFIÉ: Resend (priorité) → SMTP (fallback)
+// ============================================================
+const sendMailWithRetry = async (mailOptions) => {
+  // Priorité 1: Resend (HTTP - fonctionne partout)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      return await sendViaResend(mailOptions);
+    } catch (resendErr) {
+      console.error(`❌ Resend échoué: ${resendErr.message}`);
+      console.log('🔄 Fallback vers SMTP...');
+    }
+  }
+  
+  // Priorité 2: Gmail SMTP (dev local)
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+    try {
+      return await sendViaSMTP(mailOptions);
+    } catch (smtpErr) {
+      console.error(`❌ SMTP échoué: ${smtpErr.message}`);
+    }
+  }
+  
+  throw new Error('Aucun service email disponible. Configurez RESEND_API_KEY (recommandé) ou EMAIL_USER/EMAIL_PASSWORD.');
 };
 
 // Envoi email de récupération de mot de passe
@@ -439,13 +438,19 @@ const envoyerIdentifiants = async (email, nom, prenom, motDePasse, categories = 
 
 // Test de la configuration email
 const testerConfigurationEmail = async () => {
+  // Test Resend
+  if (process.env.RESEND_API_KEY) {
+    console.log('✅ Configuration Resend (HTTP API) détectée');
+    return true;
+  }
+  // Test SMTP
   try {
     const transporter = createTransporter();
     await transporter.verify();
-    console.log('✅ Configuration email valide');
+    console.log('✅ Configuration SMTP valide');
     return true;
   } catch (error) {
-    console.error('❌ Configuration email invalide:', error);
+    console.error('❌ Configuration email invalide:', error.message);
     return false;
   }
 };
