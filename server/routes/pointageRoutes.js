@@ -105,12 +105,19 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     }
     
     // Vérifier si l'employé est en congé
+    // IMPORTANT: Pour les pointages avant 6h (fin de shift nocturne), on vérifie
+    // le congé sur la date de la VEILLE (date réelle de travail), pas la date calendaire.
+    // Ex: Sortie à 00:16 le 11/02 = fin du shift du 10/02, pas un pointage le 11.
+    const dateCongeVerif = (heurePointage < 6) 
+      ? toLocalDateString(new Date(horodatage.getTime() - 24 * 60 * 60 * 1000))
+      : dateJour;
+    
     const conge = await prisma.conge.findFirst({
       where: {
         userId,
         statut: 'approuvé',
-        dateDebut: { lte: new Date(dateJour) },
-        dateFin: { gte: new Date(dateJour) }
+        dateDebut: { lte: new Date(dateCongeVerif) },
+        dateFin: { gte: new Date(dateCongeVerif) }
       }
     });
     

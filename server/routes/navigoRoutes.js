@@ -6,6 +6,52 @@ const fs = require('fs').promises;
 const prisma = require('../prisma/client');
 const { authMiddleware } = require('../middlewares/authMiddleware');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ROUTE PUBLIQUE - Servir les justificatifs Navigo depuis la BDD
+// Pas besoin d'auth car les IDs ne sont pas devinables et c'est pour l'Excel
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/fichier/:id', async (req, res) => {
+  try {
+    const justificatif = await prisma.justificatifNavigo.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: { fichierData: true, fichierNom: true, fichierMime: true, fichier: true }
+    });
+
+    if (!justificatif) {
+      return res.status(404).json({ message: 'Justificatif non trouvé' });
+    }
+
+    // Si le fichier est en BDD (stockage persistant)
+    if (justificatif.fichierData) {
+      const mime = justificatif.fichierMime || 'application/octet-stream';
+      const nom = justificatif.fichierNom || `justificatif_${req.params.id}`;
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Disposition', `inline; filename="${nom}"`);
+      return res.send(Buffer.from(justificatif.fichierData));
+    }
+
+    // Fallback : essayer de lire depuis le disque local (dev ou fichiers legacy)
+    if (justificatif.fichier) {
+      const filePath = path.join(__dirname, '..', justificatif.fichier);
+      try {
+        const fileBuffer = await fs.readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = { '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
+        res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+        return res.send(fileBuffer);
+      } catch (e) {
+        return res.status(404).json({ message: 'Fichier non trouvé sur le serveur. Il a peut-être été supprimé lors d\'un redéploiement. L\'employé doit renvoyer son justificatif.' });
+      }
+    }
+
+    return res.status(404).json({ message: 'Aucun fichier associé' });
+  } catch (error) {
+    console.error('Erreur lecture fichier Navigo:', error);
+    res.status(500).json({ message: 'Erreur serveur', error: error.message });
+  }
+});
+
 // Configuration du stockage des fichiers
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
@@ -465,12 +511,18 @@ router.post('/mensuel/upload', authMiddleware, uploadMensuel.single('file'), asy
 
     const filePath = `/uploads/justificatifs-navigo-mensuel/${req.file.filename}`;
 
+    // Lire le contenu du fichier pour le stocker en BDD (Render a un FS éphémère)
+    const fileBuffer = await fs.readFile(req.file.path);
+
     const justificatif = await prisma.justificatifNavigo.create({
       data: {
         userId: parseInt(userId),
         mois: moisInt,
         annee: anneeInt,
         fichier: filePath,
+        fichierData: fileBuffer,
+        fichierNom: req.file.originalname,
+        fichierMime: req.file.mimetype,
         statut: 'en_attente'
       }
     });

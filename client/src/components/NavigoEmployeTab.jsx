@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Eye, Check, X, Clock, FileText, AlertCircle, Info, CheckCircle2, XCircle, RefreshCw, ShieldCheck, ShieldX, CalendarDays } from 'lucide-react';
 import { API_URL } from '../config/api';
-import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 /**
  * Composant onglet Navigo pour la fiche employé (Vue Admin)
@@ -287,7 +286,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
                 {/* Actions */}
                 <div className="px-4 pb-3 flex items-center gap-2">
                   <a
-                    href={getAuthenticatedFileUrl(justif.fichier)}
+                    href={`${API_URL}/api/navigo/fichier/${justif.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-all"
@@ -352,7 +351,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
                 Vous confirmez le justificatif Navigo de <strong>{employe?.prenom} {employe?.nom}</strong> pour <strong className="capitalize">{formatMois(selectedJustificatif.mois, selectedJustificatif.annee)}</strong>.
               </p>
               <a
-                href={getAuthenticatedFileUrl(selectedJustificatif.fichier)}
+                href={`${API_URL}/api/navigo/fichier/${selectedJustificatif.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-xl text-sm text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"

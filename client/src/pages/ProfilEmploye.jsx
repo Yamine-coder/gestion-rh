@@ -35,7 +35,6 @@ import { getToken, isTokenValid, setupTokenExpirationCheck, clearToken } from '.
 import { getCategoriesEmploye } from '../utils/categoriesConfig';
 import { getImageUrl } from '../utils/imageUtils';
 import { API_URL } from '../config/api';
-import { getAuthenticatedFileUrl } from '../utils/fileUrl';
 
 // ============================================
 // LISTE DES PAYS AVEC INDICATIFS (triés par usage fréquent)
@@ -2388,7 +2387,7 @@ const ProfilEmploye = React.memo(() => {
                               {/* Actions */}
                               <div className="flex gap-2">
                                 <a
-                                  href={getAuthenticatedFileUrl(justifMoisActuel.fichier)}
+                                  href={`${API_URL}/api/navigo/fichier/${justifMoisActuel.id}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium text-primary-700 dark:text-primary-300 bg-white dark:bg-slate-800 rounded-lg border border-primary-200 dark:border-primary-700/50 hover:bg-primary-50 dark:hover:bg-primary-900/30 transition-colors"
@@ -2544,7 +2543,7 @@ const ProfilEmploye = React.memo(() => {
                                         </div>
                                         <div className="flex items-center gap-1 flex-shrink-0">
                                           <a
-                                            href={getAuthenticatedFileUrl(justif.fichier)}
+                                            href={`${API_URL}/api/navigo/fichier/${justif.id}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="p-1.5 rounded-md hover:bg-white dark:hover:bg-slate-700 transition-colors flex items-center justify-center"

@@ -1441,6 +1441,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
           select: {
             id: true,
             fichier: true,
+            fichierNom: true,
             dateUpload: true,
             dateValidation: true
           }

@@ -484,14 +484,13 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     const fichierNavigo = justifMensuel?.fichier;
     const navigoValue = fichierNavigo ? 'Oui' : '';
     
-    if (fichierNavigo) {
-      const extension = path.extname(fichierNavigo).toLowerCase();
-      const fileName = path.basename(fichierNavigo);
+    if (justifMensuel?.id) {
+      const extension = path.extname(fichierNavigo || '').toLowerCase();
+      const fileName = justifMensuel.fichierNom || path.basename(fichierNavigo || 'justificatif');
       
-      // Toujours créer le lien URL (pas de check fs.existsSync car fichier sur serveur distant en prod)
       navigoLinks.push({
         rowIndex: index,
-        filePath: fichierNavigo,
+        justificatifId: justifMensuel.id, // ID en BDD pour la route /api/navigo/fichier/:id
         fileName: fileName,
         extension: extension
       });
@@ -582,7 +581,7 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   
   const BASE_URL = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://gestion-rh-vqof.onrender.com' : 'http://localhost:5000');
   
-  navigoLinks.forEach(({ rowIndex, filePath, fileName, extension }) => {
+  navigoLinks.forEach(({ rowIndex, justificatifId, fileName, extension }) => {
     try {
       // Calculer la position de la ligne (row 5 = header, donc données commencent à row 6)
       const excelRow = 6 + rowIndex;
@@ -590,9 +589,8 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       // Récupérer la cellule
       const cell = hrSheet.getCell(`K${excelRow}`); // Colonne K = Justificatif
       
-      // Créer un lien cliquable vers le fichier (justificatifs Navigo mensuels servis en public)
-      const cleanPath = filePath.startsWith('/') ? filePath : `/${filePath}`;
-      const fileUrl = `${BASE_URL}${cleanPath.replace(/\\/g, '/')}`;
+      // Lien vers la route API publique qui sert le fichier depuis la BDD (persistant)
+      const fileUrl = `${BASE_URL}/api/navigo/fichier/${justificatifId}`;
       
       // Déterminer l'icône selon le type de fichier
       let iconText = '📄';

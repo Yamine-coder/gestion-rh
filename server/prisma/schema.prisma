@@ -438,7 +438,10 @@ model JustificatifNavigo {
   userId        Int
   mois          Int       // 1-12
   annee         Int       // ex: 2025
-  fichier       String    // chemin du fichier uploadé
+  fichier       String    // chemin du fichier uploadé (legacy, compatibilité)
+  fichierData   Bytes?    // contenu binaire du fichier (stockage persistant en BDD)
+  fichierNom    String?   // nom original du fichier
+  fichierMime   String?   // type MIME (application/pdf, image/jpeg, etc.)
   statut        String    @default("en_attente") // en_attente, valide, refuse
   motifRefus    String?   // motif si refusé
   dateUpload    DateTime  @default(now())
