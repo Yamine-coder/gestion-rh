@@ -552,20 +552,52 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
           } else if (pointagesJour.length === 0 && estFutur) {
             statut = 'Planifié';
             statutDetail = `${segments[0]?.start || '?'}-${segments[segments.length-1]?.end || '?'}`;
+            // Ne pas comptabiliser les heures prévues pour les jours futurs
+            heuresPrevues = 0;
+            ecart = 0;
           } else if (pointagesJour.length % 2 !== 0) {
             statut = 'Pointage incomplet';
             statutDetail = `${pointagesJour.length} pointage(s) - manque ${pointagesJour.length % 2 === 1 ? 'sortie' : 'entrée'}`;
-          } else if (retard > 0) {
-            statut = `Retard (${retard} min)`;
+          } else {
+            // Analyser retard/avance avec les détails complets
             const premierPointage = pointagesJour.find(p => isEntree(p));
             const heureArrivee = premierPointage ? toParisTimeString(premierPointage.horodatage) : '?';
             const heurePrevue = segments[0]?.start || '?';
-            statutDetail = `Arrivée ${heureArrivee} au lieu de ${heurePrevue}`;
-          } else {
-            statut = 'Présent';
-            const premierPointage = pointagesJour.find(p => isEntree(p));
-            const heureArrivee = premierPointage ? toParisTimeString(premierPointage.horodatage) : '?';
-            statutDetail = `Arrivée ${heureArrivee}`;
+            
+            // Recalculer avec la version enrichie (retard ET avance)
+            const retardInfo = segments.length > 0 ? analyserRetard(segments[0], pointagesJour, shift.date) : null;
+            const avanceMinutes = retardInfo?.avance || 0;
+            
+            if (retard > 0) {
+              statut = `Retard (+${retard} min)`;
+              statutDetail = `Arrivée ${heureArrivee} au lieu de ${heurePrevue}`;
+            } else if (avanceMinutes >= 2) {
+              statut = `Présent (avance ${avanceMinutes} min)`;
+              statutDetail = `Arrivée ${heureArrivee} (prévu ${heurePrevue})`;
+            } else {
+              statut = 'Présent - À l\'heure';
+              statutDetail = `Arrivée ${heureArrivee}`;
+            }
+            
+            // Ajouter info départ si disponible
+            const dernierSortie = [...pointagesJour].reverse().find(p => isSortie(p.type));
+            if (dernierSortie) {
+              const heureDepart = toParisTimeString(dernierSortie.horodatage);
+              const heurePrevueFin = segments[segments.length-1]?.end || '?';
+              statutDetail += ` → Départ ${heureDepart}`;
+              if (heurePrevueFin !== '?') {
+                const [fh, fm] = heurePrevueFin.split(':').map(Number);
+                const [dh, dm] = heureDepart.split(':').map(Number);
+                let ecartDepart = (dh * 60 + dm) - (fh * 60 + fm);
+                if (ecartDepart < -12 * 60) ecartDepart += 24 * 60;
+                if (ecartDepart > 12 * 60) ecartDepart -= 24 * 60;
+                if (ecartDepart < -5) {
+                  statutDetail += ` (anticipé ${Math.abs(ecartDepart)} min)`;
+                } else if (ecartDepart > 5) {
+                  statutDetail += ` (prolongé +${ecartDepart} min)`;
+                }
+              }
+            }
           }
 
           // Calculer les heures par segment (travail vs pause)
@@ -1067,26 +1099,30 @@ function analyserRetard(segment, pointagesJour, dateShift) {
   const [prevuH, prevuM] = segment.start.split(':').map(Number);
   const minutesPrevues = prevuH * 60 + prevuM;
 
-  // Convertir l'heure réelle en minutes - Utiliser l'heure locale
+  // Convertir l'heure réelle en minutes - TIMEZONE PARIS (pas UTC!)
   const heureArrivee = new Date(premiereArrivee.horodatage);
-  // Utiliser getHours/getMinutes pour l'heure locale (pas UTC)
-  const minutesReelles = heureArrivee.getHours() * 60 + heureArrivee.getMinutes();
+  const heureArriveeStr = toParisTimeString(heureArrivee); // Format HH:MM Paris
+  const [arriveeH, arriveeM] = heureArriveeStr.split(':').map(Number);
+  const minutesReelles = arriveeH * 60 + arriveeM;
 
-  // Calculer le retard (en minutes)
+  // Calculer le retard (en minutes) - positif = retard, négatif = avance
   let retardMinutes = minutesReelles - minutesPrevues;
 
   // Gérer le passage à minuit (travail de nuit)
   if (retardMinutes < -12 * 60) {
     retardMinutes += 24 * 60;
   }
-
-  const heureArriveeStr = toParisTimeString(heureArrivee); // Format HH:MM Paris
+  if (retardMinutes > 12 * 60) {
+    retardMinutes -= 24 * 60;
+  }
 
   return {
     retard: Math.max(0, retardMinutes),
+    avance: Math.max(0, -retardMinutes),
+    ecartMinutes: retardMinutes,
     heureArrivee: heureArriveeStr,
     heurePrevue: segment.start,
-    detail: retardMinutes > 0 ? `Arrivée ${heureArriveeStr} au lieu de ${segment.start} (+${retardMinutes} min)` : `À l'heure (${heureArriveeStr})`
+    detail: retardMinutes > 0 ? `Arrivée ${heureArriveeStr} au lieu de ${segment.start} (+${retardMinutes} min)` : retardMinutes < 0 ? `Avance ${Math.abs(retardMinutes)} min (${heureArriveeStr} au lieu de ${segment.start})` : `À l'heure (${heureArriveeStr})`
   };
 }
 
