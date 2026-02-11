@@ -118,15 +118,19 @@ const getPlanningVsRealite = async (req, res) => {
             
             // Shift de nuit : fin < début (ex: 19:00 → 00:30)
             const spansMultipleDays = endMinutes < startMinutes;
+            // 🌙 Shift tardif : fin >= 20:00 — l'employé peut rester après minuit
+            const endsLate = endMinutes >= 20 * 60;
             
-            if (spansMultipleDays) {
+            if (spansMultipleDays || endsLate) {
               const shiftKey = `${shift.id}_seg${idx}`;
               
               const nextDay = new Date(shift.date);
               nextDay.setDate(nextDay.getDate() + 1);
               const nextDayParis = nextDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
               
-              const durationHours = ((24 * 60) - startMinutes + endMinutes) / 60;
+              const durationHours = spansMultipleDays
+                ? ((24 * 60) - startMinutes + endMinutes) / 60
+                : (endMinutes - startMinutes) / 60;
               
               shiftNightMapping.set(shiftKey, {
                 shiftId: shift.id,
@@ -174,15 +178,18 @@ const getPlanningVsRealite = async (req, res) => {
       pointagesByDate[pointageDateParis].push(p);
       
       // 🌙 LOGIQUE RESTAURANT : Rattacher les départs après minuit au shift de J-1
-      const isDepartType = p.type === 'depart' || p.type === 'départ' || p.type === 'SORTIE';
+      const isDepartType = p.type === 'depart' || p.type === 'départ' || p.type === 'SORTIE' || p.type === 'sortie';
       
       if (isDepartType) {
+        // Seulement les départs avant le cutoff (05:00) peuvent être rattachés à J-1
+        const [departHH] = pointageTime.split(':').map(Number);
+        if (departHH < BUSINESS_CUTOFF_HOUR) {
         // Calculer J-1
         const prevDay = new Date(p.horodatage);
         prevDay.setDate(prevDay.getDate() - 1);
         const prevDayParis = prevDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
         
-        // Chercher si un shift de nuit de J-1 attend ce départ
+        // Chercher si un shift de nuit/tardif de J-1 attend ce départ
         let nightShiftFound = false;
         
         for (const [shiftKey, nightShift] of shiftNightMapping.entries()) {
@@ -209,6 +216,7 @@ const getPlanningVsRealite = async (req, res) => {
         if (!nightShiftFound && pointageDateParis !== prevDayParis) {
           const [hh] = pointageTime.split(':').map(Number);
         }
+        } // fin cutoff check
       }
     });
     

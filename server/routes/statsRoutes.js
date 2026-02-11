@@ -298,11 +298,13 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
     // Calculer les heures prévues et travaillées
     let totalHeuresPrevues = 0;
     let totalHeuresTravaillees = 0;
+    const aujourdhuiGlobales = getCurrentDateString();
 
     shifts.forEach(shift => {
       const dateKey = toLocalDateString(shift.date);
       const congeKey = `${shift.employeId}_${dateKey}`;
       const isConge = congesParEmployeJour.has(congeKey);
+      const estFuturGlobal = dateKey > aujourdhuiGlobales;
 
       // Parser les segments
       let segments = shift.segments;
@@ -315,8 +317,8 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       }
       if (!Array.isArray(segments)) segments = [];
 
-      // Calculer les heures prévues (sauf si congé)
-      if (!isConge) {
+      // Calculer les heures prévues (sauf si congé ou futur)
+      if (!isConge && !estFuturGlobal) {
         segments.forEach(segment => {
           if (segment.start && segment.end && !segment.isExtra) {
             const segType = (segment.type || 'work').toLowerCase();
@@ -910,6 +912,9 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
     // Grouper les pointages par jour (avec gestion nuit post-minuit)
     const pointagesParJour = grouperPointagesAvecNuit(pointages, shifts);
 
+    // Date du jour pour exclure les shifts futurs des heures prévues
+    const aujourdhuiRapport = getCurrentDateString();
+
     // Traiter chaque shift
     shifts.forEach(shift => {
       const dateKey = toLocalDateString(shift.date);
@@ -917,6 +922,9 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
 
       // Vérifier si ce jour est un jour de congé approuvé - si oui, ignorer le shift pour les heures prévues
       const isConge = congesParJour.has(dateKey);
+      
+      // Vérifier si ce jour est dans le futur (pas encore passé)
+      const estFuturRapport = dateKey > aujourdhuiRapport;
 
       // Parser les segments si c'est une string JSON
       let segments = shift.segments;
@@ -932,9 +940,7 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       let heuresPrevuesJour = 0;
       let heuresTravailleesJour = 0;
 
-      if (shift.type === 'travail' && segments.length > 0 && !isConge) {
-        // Calculer les heures prévues - UNIQUEMENT les segments de travail (pas les pauses)
-        // Ne pas compter si c'est un jour de congé
+      if (shift.type === 'travail' && segments.length > 0 && !isConge && !estFuturRapport) {
         segments.forEach(segment => {
           if (segment.start && segment.end && !segment.isExtra) {
             // Ne compter que si c'est du travail (pas une pause)
@@ -1250,11 +1256,13 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
 
     let totalPrevues = 0;
     let totalTravaillees = 0;
+    const aujourdhuiExport = getCurrentDateString();
 
     shifts.forEach(shift => {
       const dateKey = toLocalDateString(shift.date);
       const pointagesJour = pointagesParJour.get(dateKey) || [];
       const isConge = congesParJour.has(dateKey);
+      const estFuturExport = dateKey > aujourdhuiExport;
 
       let heuresPrevuesJour = 0;
       let heuresTravailleesJour = 0;
@@ -1270,8 +1278,8 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       }
       if (!Array.isArray(segments)) segments = [];
 
-      // Si c'est un jour de congé approuvé, ne pas compter les heures prévues
-      if (shift.type === 'travail' && segments.length > 0 && !isConge) {
+      // Si c'est un jour de congé approuvé ou dans le futur, ne pas compter les heures prévues
+      if (shift.type === 'travail' && segments.length > 0 && !isConge && !estFuturExport) {
         // UNIQUEMENT les segments de travail (pas les pauses)
         segments.forEach(segment => {
           if (segment.start && segment.end && !segment.isExtra) {
@@ -1318,8 +1326,9 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       }
       if (!Array.isArray(segments)) segments = [];
 
-      // Ne pas inclure les jours de congé dans le calcul de présence/retards
-      if (shift.type === 'travail' && segments.length > 0 && !isConge) {
+      // Ne pas inclure les jours de congé ou futurs dans le calcul de présence/retards
+      const estFuturMap = dateKey > aujourdhuiExport;
+      if (shift.type === 'travail' && segments.length > 0 && !isConge && !estFuturMap) {
         const pointagesJour = pointagesParJour.get(dateKey) || [];
         const heuresTravailleesJour = calculateRealHours(pointagesJour);
         heuresParJourMap.set(dateKey, {
@@ -1400,24 +1409,30 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
           statut = 'Repos';
         } else if (shift.type === 'travail' && segments.length > 0) {
           // Jour de travail planifié
-          // Calculer heures prévues - UNIQUEMENT les segments de travail (pas les pauses)
-          segments.forEach(segment => {
-            if (segment.start && segment.end && !segment.isExtra) {
-              const segType = (segment.type || 'work').toLowerCase();
-              if (segType === 'work' || segType === 'travail' || !segment.type) {
-                heuresPrevuesJour += calculateSegmentHours(segment);
-              }
-            }
-          });
-          heuresTravailleesJour = calculateRealHours(pointagesJour);
+          const estFuturData = dateKey > aujourdhuiExport;
           
-          // Déterminer le statut
-          if (heuresTravailleesJour > 0) {
-            statut = 'Présent';
-          } else if (pointagesJour.length === 0) {
-            statut = 'Absence';
+          if (!estFuturData) {
+            // Calculer heures prévues - UNIQUEMENT pour les jours passés/aujourd'hui
+            segments.forEach(segment => {
+              if (segment.start && segment.end && !segment.isExtra) {
+                const segType = (segment.type || 'work').toLowerCase();
+                if (segType === 'work' || segType === 'travail' || !segment.type) {
+                  heuresPrevuesJour += calculateSegmentHours(segment);
+                }
+              }
+            });
+            heuresTravailleesJour = calculateRealHours(pointagesJour);
+            
+            // Déterminer le statut
+            if (heuresTravailleesJour > 0) {
+              statut = 'Présent';
+            } else if (pointagesJour.length === 0) {
+              statut = 'Absence';
+            } else {
+              statut = 'Incomplet';
+            }
           } else {
-            statut = 'Incomplet';
+            statut = 'Planifié';
           }
         }
       } else if (isConge) {
@@ -1737,6 +1752,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
 
       // Grouper les pointages par jour (avec gestion nuit post-minuit)
       const pointagesParJour = grouperPointagesAvecNuit(pointagesEmploye, shiftsEmploye);
+      const aujourdhuiExportAll = getCurrentDateString();
 
       let heuresPrevues = 0;
       let heuresTravaillees = 0;
@@ -1753,6 +1769,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         joursTraites.add(dateKey);
         const pointagesJour = pointagesParJour.get(dateKey) || [];
         const congeJour = congesParJour.get(dateKey);
+        const estFuturAll = dateKey > aujourdhuiExportAll;
 
         // Parser les segments
         let segments = shift.segments;
@@ -1761,7 +1778,7 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         }
         if (!Array.isArray(segments)) segments = [];
 
-        if (shift.type === 'travail' && segments.length > 0) {
+        if (shift.type === 'travail' && segments.length > 0 && !estFuturAll) {
           let heuresPrevuesJour = 0;
           segments.forEach(segment => {
             if (segment.start && segment.end && !segment.isExtra) {
