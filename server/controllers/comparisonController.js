@@ -184,6 +184,26 @@ const getPlanningVsRealite = async (req, res) => {
         // Seulement les départs avant le cutoff (05:00) peuvent être rattachés à J-1
         const [departHH] = pointageTime.split(':').map(Number);
         if (departHH < BUSINESS_CUTOFF_HOUR) {
+        
+        // 🆕 GARDE ANTI-COUPURE : Vérifier si ce départ a une arrivée "compagnon" sur le même jour
+        // Si oui, il appartient à une nouvelle session de travail → ne PAS rattacher à J-1
+        // Ex: départ 03:31 avec arrivée 03:30 le même jour = session séparée, pas la continuation du shift tardif
+        const hasArrivéeBuddy = pointagesReels.some(other => {
+          if (other.id === p.id) return false;
+          const otherType = other.type;
+          const isOtherArrivee = otherType === 'arrivee' || otherType === 'arrivée' || otherType === 'ENTRÉE' || otherType === 'entree';
+          if (!isOtherArrivee) return false;
+          // Doit être le même jour calendaire (Paris)
+          const otherDateParis = new Date(other.horodatage).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+          if (otherDateParis !== pointageDateParis) return false;
+          // L'arrivée doit précéder ce départ et être dans les 6h
+          const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
+          return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
+        });
+        
+        if (hasArrivéeBuddy) {
+          // Ce départ a sa propre arrivée → session indépendante, pas de rattachement à J-1
+        } else {
         // Calculer J-1
         const prevDay = new Date(p.horodatage);
         prevDay.setDate(prevDay.getDate() - 1);
@@ -216,6 +236,7 @@ const getPlanningVsRealite = async (req, res) => {
         if (!nightShiftFound && pointageDateParis !== prevDayParis) {
           const [hh] = pointageTime.split(':').map(Number);
         }
+        } // fin garde anti-coupure
         } // fin cutoff check
       }
     });

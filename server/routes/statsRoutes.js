@@ -123,6 +123,17 @@ function grouperPointagesAvecNuit(pointages, shiftsData) {
     // Si c'est une sortie entre 00:00 et 06:00
     if (heureLocale < 6 && isSortie(p.type)) {
       const dateActuelle = toLocalDateString(p.horodatage);
+      
+      // 🆕 GARDE ANTI-COUPURE : vérifier si ce départ a une arrivée compagnon le même jour
+      const pointagesMemeJour = pointagesParJour.get(dateActuelle) || [];
+      const hasArrivéeBuddy = pointagesMemeJour.some(other => {
+        if (other.id === p.id) return false;
+        if (!isEntree(other.type)) return false;
+        const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
+        return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
+      });
+      if (hasArrivéeBuddy) return; // Session indépendante, pas de rattachement
+      
       // Calculer la date de la veille (en Paris)
       const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
       const dateVeille = toLocalDateString(new Date(veilleMs));
@@ -191,11 +202,22 @@ function grouperPointagesParEmployeJourAvecNuit(pointages, shifts) {
     
     if (heureLocale < 6 && isSortie(p.type)) {
       const dateActuelle = toLocalDateString(p.horodatage);
+      
+      // 🆕 GARDE ANTI-COUPURE : vérifier si ce départ a une arrivée compagnon le même jour
+      const keyActuel = `${p.userId}_${dateActuelle}`;
+      const pointagesMemeJour = pointagesParEmployeJour.get(keyActuel) || [];
+      const hasArrivéeBuddy = pointagesMemeJour.some(other => {
+        if (other.id === p.id) return false;
+        if (!isEntree(other.type)) return false;
+        const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
+        return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
+      });
+      if (hasArrivéeBuddy) return; // Session indépendante, pas de rattachement
+      
       const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
       const dateVeille = toLocalDateString(new Date(veilleMs));
       
       const keyVeille = `${p.userId}_${dateVeille}`;
-      const keyActuel = `${p.userId}_${dateActuelle}`;
       
       // Vérifier si la veille a des entrées orphelines
       const pointagesVeille = pointagesParEmployeJour.get(keyVeille) || [];

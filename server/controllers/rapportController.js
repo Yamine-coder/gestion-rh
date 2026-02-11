@@ -41,6 +41,23 @@ function grouperPointagesAvecNuit(pointages, shifts) {
     const heureLocale = parseInt(heure.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
     
     if (heureLocale < 6 && isSortie(p.type)) {
+      // 🆕 GARDE ANTI-COUPURE : vérifier si ce départ a une arrivée "compagnon" le même jour
+      // Ex: départ 03:31 avec arrivée 03:30 = session séparée → ne pas rattacher à la veille
+      const dateActuelle = toLocalDateString(p.horodatage);
+      const pointagesMemeJour = pointagesParJour[dateActuelle] || [];
+      const hasArrivéeBuddy = pointagesMemeJour.some(other => {
+        if (other.id === p.id) return false;
+        if (!isEntree(other.type)) return false;
+        // L'arrivée doit précéder ce départ et être dans les 6h
+        const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
+        return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
+      });
+      
+      if (hasArrivéeBuddy) {
+        // Ce départ a sa propre arrivée → session indépendante, pas de rattachement
+        return;
+      }
+      
       const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
       const dateVeille = toLocalDateString(new Date(veilleMs));
       
