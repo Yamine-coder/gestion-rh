@@ -279,13 +279,30 @@ class AnomalyScheduler {
     // 🕐 Calculer les bornes UTC pour la journée Paris
     const { startUTC, endUTC } = getParisDateBoundsUTC(dateStr);
 
+    // Détecter si le shift a des segments de nuit (end < start, ex: 21:00-01:00)
+    const segments = parseSegments(shift.segments);
+    const hasNightSegment = segments.some(seg => {
+      if (!seg.start && !seg.debut) return false;
+      if (!seg.end && !seg.fin) return false;
+      const startStr = seg.start || seg.debut;
+      const endStr = seg.end || seg.fin;
+      const [sh] = startStr.split(':').map(Number);
+      const [eh] = endStr.split(':').map(Number);
+      return eh < sh; // ex: 21:00-01:00
+    });
+
+    // Étendre la fenêtre de +6h pour les shifts de nuit (sortie post-minuit)
+    const endUTCEffective = hasNightSegment
+      ? new Date(endUTC.getTime() + 6 * 60 * 60 * 1000)
+      : endUTC;
+
     // Vérifier s'il y a eu au moins un pointage d'entrée aujourd'hui
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: employeId,
         horodatage: {
           gte: startUTC,
-          lt: endUTC
+          lt: endUTCEffective
         }
       },
       orderBy: { horodatage: 'asc' }
@@ -296,7 +313,7 @@ class AnomalyScheduler {
     const sorties = filtrerSorties(pointages);
 
     // Récupérer les heures prévues du shift
-    const segments = parseSegments(shift.segments);
+    // (segments déjà parsés ci-dessus)
     
     // 🆕 IMPORTANT: Séparer segments NORMAUX et EXTRA
     // Les segments extra (isExtra=true) sont des heures "au noir"

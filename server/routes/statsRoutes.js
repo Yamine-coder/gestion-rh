@@ -54,6 +54,151 @@ function normaliserTypeAbsence(type) {
 }
 
 
+/**
+ * Détecte si un shift a des segments de nuit (end < start, ex: 21:00-01:00)
+ */
+function isShiftDeNuit(shift) {
+  let segments = shift.segments;
+  if (typeof segments === 'string') {
+    try { segments = JSON.parse(segments); } catch (e) { return false; }
+  }
+  if (!Array.isArray(segments)) return false;
+  return segments.some(seg => {
+    if (!seg.start || !seg.end) return false;
+    const [sh] = seg.start.split(':').map(Number);
+    const [eh] = seg.end.split(':').map(Number);
+    return eh < sh; // ex: 21:00-01:00 → 1 < 21
+  });
+}
+
+/**
+ * Étend une dateFin de +6h pour capturer les sorties post-minuit (night shifts)
+ */
+function etendreFinPourNuit(dateFin) {
+  const dateFinEtendue = new Date(dateFin);
+  dateFinEtendue.setHours(dateFinEtendue.getHours() + 6);
+  return dateFinEtendue;
+}
+
+/**
+ * Regroupe les pointages par jour en réassociant les sorties post-minuit (00:00-06:00)
+ * au jour précédent si ce jour a un shift de nuit.
+ * @param {Array} pointages - Liste de pointages
+ * @param {Map|Array} shiftsData - Shifts indexés par dateKey ou tableau de shifts
+ * @returns {Map} pointagesParJour
+ */
+function grouperPointagesAvecNuit(pointages, shiftsData) {
+  const pointagesParJour = new Map();
+  
+  // Premier passage : grouper par date calendaire
+  pointages.forEach(p => {
+    const dateKey = toLocalDateString(p.horodatage);
+    if (!pointagesParJour.has(dateKey)) {
+      pointagesParJour.set(dateKey, []);
+    }
+    pointagesParJour.get(dateKey).push(p);
+  });
+  
+  // Second passage : réassocier les sorties post-minuit au jour précédent
+  pointages.forEach(p => {
+    const heure = new Date(p.horodatage);
+    // Calculer l'heure en Paris
+    const heureLocale = parseInt(heure.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
+    
+    // Si c'est une sortie entre 00:00 et 06:00
+    if (heureLocale < 6 && isSortie(p.type)) {
+      const dateActuelle = toLocalDateString(p.horodatage);
+      // Calculer la date de la veille
+      const veille = new Date(p.horodatage);
+      veille.setDate(veille.getDate() - 1);
+      const dateVeille = toLocalDateString(veille);
+      
+      // Vérifier si la veille a un shift de nuit
+      let shiftVeille = null;
+      if (Array.isArray(shiftsData)) {
+        shiftVeille = shiftsData.find(s => toLocalDateString(s.date) === dateVeille);
+      } else if (shiftsData instanceof Map) {
+        shiftVeille = shiftsData.get(dateVeille);
+      }
+      
+      if (shiftVeille && isShiftDeNuit(shiftVeille)) {
+        // Ajouter ce pointage aussi au jour précédent
+        if (!pointagesParJour.has(dateVeille)) {
+          pointagesParJour.set(dateVeille, []);
+        }
+        // Éviter les doublons
+        const dejaPresent = pointagesParJour.get(dateVeille).some(pp => pp.id === p.id);
+        if (!dejaPresent) {
+          pointagesParJour.get(dateVeille).push(p);
+        }
+        // Retirer du jour actuel si ce pointage est orphelin (sortie sans entrée ce jour-là)
+        const pointagesJourActuel = pointagesParJour.get(dateActuelle) || [];
+        const entreesJourActuel = pointagesJourActuel.filter(pp => isEntree(pp.type));
+        if (entreesJourActuel.length === 0) {
+          // Pas d'entrée ce jour = sortie orpheline, retirer
+          pointagesParJour.set(dateActuelle, pointagesJourActuel.filter(pp => pp.id !== p.id));
+        }
+      }
+    }
+  });
+  
+  return pointagesParJour;
+}
+
+/**
+ * Version multi-employé de grouperPointagesAvecNuit
+ */
+function grouperPointagesParEmployeJourAvecNuit(pointages, shifts) {
+  const pointagesParEmployeJour = new Map();
+  
+  // Premier passage : grouper par employé+date calendaire
+  pointages.forEach(p => {
+    const dateKey = toLocalDateString(p.horodatage);
+    const key = `${p.userId}_${dateKey}`;
+    if (!pointagesParEmployeJour.has(key)) {
+      pointagesParEmployeJour.set(key, []);
+    }
+    pointagesParEmployeJour.get(key).push(p);
+  });
+  
+  // Second passage : réassocier les sorties post-minuit
+  pointages.forEach(p => {
+    const heure = new Date(p.horodatage);
+    const heureLocale = parseInt(heure.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
+    
+    if (heureLocale < 6 && isSortie(p.type)) {
+      const dateActuelle = toLocalDateString(p.horodatage);
+      const veille = new Date(p.horodatage);
+      veille.setDate(veille.getDate() - 1);
+      const dateVeille = toLocalDateString(veille);
+      
+      // Trouver le shift de la veille pour cet employé
+      const shiftVeille = shifts.find(s => s.employeId === p.userId && toLocalDateString(s.date) === dateVeille);
+      
+      if (shiftVeille && isShiftDeNuit(shiftVeille)) {
+        const keyVeille = `${p.userId}_${dateVeille}`;
+        const keyActuel = `${p.userId}_${dateActuelle}`;
+        
+        if (!pointagesParEmployeJour.has(keyVeille)) {
+          pointagesParEmployeJour.set(keyVeille, []);
+        }
+        const dejaPresent = pointagesParEmployeJour.get(keyVeille).some(pp => pp.id === p.id);
+        if (!dejaPresent) {
+          pointagesParEmployeJour.get(keyVeille).push(p);
+        }
+        // Retirer du jour actuel si orphelin
+        const pointagesJourActuel = pointagesParEmployeJour.get(keyActuel) || [];
+        const entreesJourActuel = pointagesJourActuel.filter(pp => isEntree(pp.type));
+        if (entreesJourActuel.length === 0) {
+          pointagesParEmployeJour.set(keyActuel, pointagesJourActuel.filter(pp => pp.id !== p.id));
+        }
+      }
+    }
+  });
+  
+  return pointagesParEmployeJour;
+}
+
 // 📊 Stats globales pour la page Rapports d'heures
 router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
   try {
@@ -89,10 +234,11 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       }
     });
 
-    // Récupérer tous les pointages de la période
+    // Récupérer tous les pointages de la période (+6h pour sorties post-minuit)
+    const dateFinEtendue = etendreFinPourNuit(dateFin);
     const pointages = await prisma.pointage.findMany({
       where: {
-        horodatage: { gte: dateDebut, lte: dateFin }
+        horodatage: { gte: dateDebut, lte: dateFinEtendue }
       }
     });
 
@@ -117,16 +263,8 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       }
     });
 
-    // Grouper les pointages par employé et jour
-    const pointagesParEmployeJour = new Map();
-    pointages.forEach(p => {
-      const dateKey = toLocalDateString(p.horodatage);
-      const key = `${p.userId}_${dateKey}`;
-      if (!pointagesParEmployeJour.has(key)) {
-        pointagesParEmployeJour.set(key, []);
-      }
-      pointagesParEmployeJour.get(key).push(p);
-    });
+    // Grouper les pointages par employé et jour (avec gestion nuit post-minuit)
+    const pointagesParEmployeJour = grouperPointagesParEmployeJourAvecNuit(pointages, shifts);
 
     // Calculer les heures prévues et travaillées
     let totalHeuresPrevues = 0;
@@ -254,11 +392,12 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
       orderBy: { date: 'asc' }
     });
 
-    // Récupérer tous les pointages
+    // Récupérer tous les pointages (+6h pour sorties post-minuit)
+    const dateFinEtendueDetail = etendreFinPourNuit(dateFin);
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: parseInt(employeId),
-        horodatage: { gte: dateDebut, lte: dateFin }
+        horodatage: { gte: dateDebut, lte: dateFinEtendueDetail }
       },
       orderBy: { horodatage: 'asc' }
     });
@@ -280,15 +419,8 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
       }
     });
 
-    // Grouper les pointages par jour
-    const pointagesParJour = new Map();
-    pointages.forEach(p => {
-      const dateKey = toLocalDateString(p.horodatage);
-      if (!pointagesParJour.has(dateKey)) {
-        pointagesParJour.set(dateKey, []);
-      }
-      pointagesParJour.get(dateKey).push(p);
-    });
+    // Grouper les pointages par jour (avec gestion nuit post-minuit)
+    const pointagesParJour = grouperPointagesAvecNuit(pointages, shifts);
 
     // Créer une map des congés par date
     const congesParJour = new Map();
@@ -661,13 +793,14 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
       orderBy: { date: 'asc' }
     });
 
-    // Récupérer les pointages de l'employé
+    // Récupérer les pointages de l'employé (+6h pour sorties post-minuit)
+    const dateFinEtendueRapport = etendreFinPourNuit(dateFin);
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: parseInt(employeId),
         horodatage: {
           gte: dateDebut,
-          lte: dateFin
+          lte: dateFinEtendueRapport
         }
       },
       orderBy: { horodatage: 'asc' }
@@ -706,15 +839,8 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
     let absencesJustifiees = 0;
     let absencesInjustifiees = 0;
 
-    // Grouper les pointages par jour
-    const pointagesParJour = new Map();
-    pointages.forEach(p => {
-      const dateKey = toLocalDateString(p.horodatage);
-      if (!pointagesParJour.has(dateKey)) {
-        pointagesParJour.set(dateKey, []);
-      }
-      pointagesParJour.get(dateKey).push(p);
-    });
+    // Grouper les pointages par jour (avec gestion nuit post-minuit)
+    const pointagesParJour = grouperPointagesAvecNuit(pointages, shifts);
 
     // Traiter chaque shift
     shifts.forEach(shift => {
@@ -1461,10 +1587,11 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
       orderBy: { date: 'asc' }
     });
 
-    // Récupérer tous les pointages de la période
+    // Récupérer tous les pointages de la période (+6h pour sorties post-minuit)
+    const dateFinEtendueExport = etendreFinPourNuit(dateFin);
     const pointages = await prisma.pointage.findMany({
       where: {
-        horodatage: { gte: dateDebut, lte: dateFin }
+        horodatage: { gte: dateDebut, lte: dateFinEtendueExport }
       },
       orderBy: { horodatage: 'asc' }
     });
@@ -1536,15 +1663,8 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         }
       });
 
-      // Grouper les pointages par jour
-      const pointagesParJour = new Map();
-      pointagesEmploye.forEach(p => {
-        const dateKey = toLocalDateString(p.horodatage);
-        if (!pointagesParJour.has(dateKey)) {
-          pointagesParJour.set(dateKey, []);
-        }
-        pointagesParJour.get(dateKey).push(p);
-      });
+      // Grouper les pointages par jour (avec gestion nuit post-minuit)
+      const pointagesParJour = grouperPointagesAvecNuit(pointagesEmploye, shiftsEmploye);
 
       let heuresPrevues = 0;
       let heuresTravaillees = 0;
@@ -1904,7 +2024,7 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
       });
 
       const pointages = await prisma.pointage.findMany({
-        where: { userId: employe.id, horodatage: { gte: dateDebut, lte: dateFin } },
+        where: { userId: employe.id, horodatage: { gte: dateDebut, lte: etendreFinPourNuit(dateFin) } },
         orderBy: { horodatage: 'asc' }
       });
 
