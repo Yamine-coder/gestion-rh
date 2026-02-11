@@ -7,6 +7,8 @@ services:
     buildCommand: npm install --omit=dev && npx prisma generate && npx prisma db push
     startCommand: npm start
     envVars:
+      - key: PORT
+        value: "10000"
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
