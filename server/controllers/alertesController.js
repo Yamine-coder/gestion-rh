@@ -4,6 +4,7 @@
 const prisma = require('../prisma/client');
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, trouverDerniereSortie } = require('../utils/pointageTypeUtils');
+const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
 
 /**
  * Détecte les retards et absences en temps réel
@@ -38,13 +39,14 @@ const detecterRetardsAbsences = async (req, res) => {
     // ✅ PERF-01: Batch-load tous les pointages et anomalies du jour (évite N+1 queries)
     const employeIds = [...new Set(shifts.filter(s => s.employe?.statut === 'actif').map(s => s.employeId))];
     
+    const { start: ptStart, end: ptEnd } = getBusinessDayBoundsUTC(today);
     const [allPointages, allAnomalies] = await Promise.all([
       prisma.pointage.findMany({
         where: {
           userId: { in: employeIds },
           horodatage: {
-            gte: new Date(`${today}T00:00:00.000Z`),
-            lte: new Date(`${today}T23:59:59.999Z`)
+            gte: ptStart,
+            lte: ptEnd
           }
         },
         orderBy: { horodatage: 'asc' }

@@ -8,6 +8,7 @@ const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
 const scoringService = require('../services/scoringService');
+const { BUSINESS_DAY_CUTOFF_HOUR, getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
 const {
   getMesPointages,
   getMesPointagesAujourdhui,
@@ -66,7 +67,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     const heurePointage = horodatage.getHours();
     let dateJour;
     
-    if (heurePointage < 6) {
+    if (heurePointage < BUSINESS_DAY_CUTOFF_HOUR) {
       // Avant 6h : chercher le shift de la veille d'abord
       const hier = new Date(horodatage);
       hier.setDate(hier.getDate() - 1);
@@ -88,7 +89,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     });
     
     // Si pas de shift trouvé et avant 6h, essayer aussi la date du jour (cas edge)
-    if (!shift && heurePointage < 6) {
+    if (!shift && heurePointage < BUSINESS_DAY_CUTOFF_HOUR) {
       const dateAujourdhui = toLocalDateString(horodatage);
       shift = await prisma.shift.findFirst({
         where: {
@@ -108,7 +109,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     // IMPORTANT: Pour les pointages avant 6h (fin de shift nocturne), on vérifie
     // le congé sur la date de la VEILLE (date réelle de travail), pas la date calendaire.
     // Ex: Sortie à 00:16 le 11/02 = fin du shift du 10/02, pas un pointage le 11.
-    const dateCongeVerif = (heurePointage < 6) 
+    const dateCongeVerif = (heurePointage < BUSINESS_DAY_CUTOFF_HOUR) 
       ? toLocalDateString(new Date(horodatage.getTime() - 24 * 60 * 60 * 1000))
       : dateJour;
     
@@ -824,10 +825,8 @@ router.delete('/delete-error', authenticateToken, isAdmin, async (req, res) => {
     const targetDate = new Date(date);
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
-    // 🌙 Étendre jusqu'à 06:00 J+1 pour capturer les sorties post-minuit
-    const endOfDay = new Date(targetDate);
-    endOfDay.setDate(endOfDay.getDate() + 1);
-    endOfDay.setHours(6, 0, 0, 0);
+    // Bornes jour business (05:00 → 04:59 J+1)
+    const { end: endOfDay } = getBusinessDayBoundsUTC(date);
 
     // Chercher les pointages de l'employé pour cette date
     const pointagesToDelete = await prisma.pointage.findMany({

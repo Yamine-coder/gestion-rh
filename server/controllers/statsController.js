@@ -1,5 +1,6 @@
 // server/controllers/statsController.js
 const prisma = require('../prisma/client');
+const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
 
 // ================== 1. Stats RH globales (déjà utilisées) ==================
 const getStatsRH = async (req, res) => {
@@ -7,8 +8,9 @@ const getStatsRH = async (req, res) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
-    // 🌙 Fenêtre étendue pour capturer les sorties post-minuit des shifts tardifs
-    const todayEndExtended = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 6,0,0,0);
+    // Fenêtre étendue: jour business (05:00 → 04:59 J+1)
+    const todayDateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const { end: todayEndExtended } = getBusinessDayBoundsUTC(todayDateStr);
     const premierDuMois = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // Parallel base queries
@@ -222,11 +224,7 @@ const getAllPointages = async (req, res) => {
     if (userId) where.userId = parseInt(userId);
     if (type) where.type = type;
     if (date) {
-      const debut = new Date(`${date}T00:00:00`);
-      // 🌙 Étendre jusqu'à 06:00 J+1 pour capturer les sorties post-minuit
-      const finDate = new Date(`${date}T00:00:00`);
-      finDate.setDate(finDate.getDate() + 1);
-      finDate.setHours(6, 0, 0, 0);
+      const { start: debut, end: finDate } = getBusinessDayBoundsUTC(date);
       where.horodatage = { gte: debut, lte: finDate };
     }
 

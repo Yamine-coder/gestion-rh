@@ -1,6 +1,7 @@
 // server/controllers/anomaliesController.js
 const prisma = require('../prisma/client');
 const { getParisDateString } = require("../utils/parisTimeUtils");
+const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
 const { parseCategories } = require('../utils/categoriesHelper');
 
 /**
@@ -621,13 +622,9 @@ const traiterAnomalie = async (req, res) => {
           }
           
           // 🔍 RÉCUPÉRER LES VRAIS POINTAGES de la journée (pas les heures de l'anomalie)
-          const dateAnomalie = new Date(anomalie.date);
-          const debutJour = new Date(dateAnomalie);
-          debutJour.setHours(0, 0, 0, 0);
-          // 🌙 Étendre jusqu'à 06:00 J+1 pour capturer les sorties post-minuit
-          const finJour = new Date(dateAnomalie);
-          finJour.setDate(finJour.getDate() + 1);
-          finJour.setHours(6, 0, 0, 0);
+          // Bornes du jour business (05:00 → 04:59 J+1 en UTC)
+          const dateAnomalieStr = new Date(anomalie.date).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+          const { start: debutJour, end: finJour } = getBusinessDayBoundsUTC(dateAnomalieStr);
           
           const pointagesJour = await prisma.pointage.findMany({
             where: {
@@ -2062,8 +2059,8 @@ const getBilanJournalier = async (req, res) => {
     // Utiliser des dates UTC pour éviter les problèmes de timezone
     const dateDebut = new Date(date + 'T00:00:00.000Z');
     const dateFin = new Date(date + 'T23:59:59.999Z');
-    // Étendre à J+1 06:00 UTC pour capturer les départs post-minuit (shifts tardifs/nuit)
-    const dateFinEtendue = new Date(new Date(date + 'T00:00:00.000Z').getTime() + 30 * 60 * 60 * 1000); // +30h = J+1 06:00
+    // Bornes du jour business pour les pointages (05:00 Paris → 04:59 J+1 Paris)
+    const { start: businessDayStart, end: businessDayEnd } = getBusinessDayBoundsUTC(date);
     
     // 1. Récupérer le shift prévu pour ce jour
     const shift = await prisma.shift.findFirst({
@@ -2081,8 +2078,8 @@ const getBilanJournalier = async (req, res) => {
       where: {
         userId: parseInt(employeId),
         horodatage: {
-          gte: dateDebut,
-          lte: dateFinEtendue
+          gte: businessDayStart,
+          lte: businessDayEnd
         }
       },
       orderBy: { horodatage: 'asc' }

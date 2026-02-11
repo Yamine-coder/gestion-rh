@@ -1,7 +1,12 @@
 const prisma = require("../prisma/client");
-const { getParisDateString, getParisTimeString, calculateTimeGapMinutes, getParisBusinessDayKey } = require("../utils/parisTimeUtils");
+const { getParisTimeString, calculateTimeGapMinutes } = require("../utils/parisTimeUtils");
 const { toLocalDateString, getCurrentDateString } = require("../utils/dateUtils");
 const { parseSegments } = require('../utils/segmentUtils');
+const {
+  getBusinessDay,
+  getBusinessRangeBoundsUTC,
+  horodatageToParisDate,
+} = require('../utils/businessDayUtils');
 
 // Centralisation des seuils d'alerte
 const THRESHOLDS = {
@@ -37,9 +42,6 @@ const getPlanningVsRealite = async (req, res) => {
   }
 
   try {
-    // ---- CONFIG JOUR BUSINESS ----
-    const BUSINESS_CUTOFF_HOUR = 5; // 05:00 local Paris = début de la journée business
-
     // Helper: liste des jours demandés (strings YYYY-MM-DD)
     function listDates(startStr, endStr) {
       const out = [];
@@ -58,20 +60,17 @@ const getPlanningVsRealite = async (req, res) => {
     } else if (dateDebut && dateFin) {
       requestedDays = listDates(dateDebut, dateFin);
     } else {
-      const todayParis = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
       requestedDays = [getCurrentDateString()];
     }
 
     const minDay = requestedDays[0];
     const maxDay = requestedDays[requestedDays.length - 1];
 
-  // Fenêtre large simple UTC : J-1 00:00 UTC jusqu'à J+2 00:00 UTC (inclut marges pour cutoff)
-  const queryStart = new Date(minDay + 'T00:00:00.000Z');
-  queryStart.setUTCDate(queryStart.getUTCDate() - 1);
-  const queryEnd = new Date(maxDay + 'T00:00:00.000Z');
-  queryEnd.setUTCDate(queryEnd.getUTCDate() + 2);
-
-  // Helper: clé jour business via util
+    // Fenêtre UTC basée sur les jours business (cutoff 05:00 Paris)
+    const { start: queryStart, end: queryEnd } = getBusinessRangeBoundsUTC(minDay, maxDay);
+    // Marge pour attraper shifts J-1 et pointages post-minuit
+    queryStart.setUTCDate(queryStart.getUTCDate() - 1);
+    queryEnd.setUTCDate(queryEnd.getUTCDate() + 1);
 
     // 1. Récupérer les shifts prévus (plannings) - incluant les absences
   const shiftsPrevus = await prisma.shift.findMany({
@@ -100,153 +99,29 @@ const getPlanningVsRealite = async (req, res) => {
     // 3. Organiser les données par jour et calculer les écarts
     const comparaisons = [];
 
-    // 🌙 DÉTECTION DES SHIFTS DE NUIT RESTAURANT (7h → 00:30/01:00)
-    const shiftNightMapping = new Map();
-    
-    shiftsPrevus.forEach(shift => {
-      const shiftDateParis = new Date(shift.date).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-      const segments = parseSegments(shift.segments);
-      
-      if (shift.type === 'travail' && segments.length > 0) {
-        segments.forEach((segment, idx) => {
-          if (segment.start && segment.end) {
-            const [startHH, startMM] = segment.start.split(':').map(Number);
-            const [endHH, endMM] = segment.end.split(':').map(Number);
-            
-            const startMinutes = startHH * 60 + startMM;
-            const endMinutes = endHH * 60 + endMM;
-            
-            // Shift de nuit : fin < début (ex: 19:00 → 00:30)
-            const spansMultipleDays = endMinutes < startMinutes;
-            // 🌙 Shift tardif : fin >= 20:00 — l'employé peut rester après minuit
-            const endsLate = endMinutes >= 20 * 60;
-            
-            if (spansMultipleDays || endsLate) {
-              const shiftKey = `${shift.id}_seg${idx}`;
-              
-              const nextDay = new Date(shift.date);
-              nextDay.setDate(nextDay.getDate() + 1);
-              const nextDayParis = nextDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-              
-              const durationHours = spansMultipleDays
-                ? ((24 * 60) - startMinutes + endMinutes) / 60
-                : (endMinutes - startMinutes) / 60;
-              
-              shiftNightMapping.set(shiftKey, {
-                shiftId: shift.id,
-                shiftDate: shiftDateParis,
-                nextDate: nextDayParis,
-                segment,
-                segmentIndex: idx,
-                durationHours
-              });
-            }
-          }
-        });
-      }
-    });
-    
-    // Grouper par jour business (Europe/Paris + cutoff)
+    // Grouper les shifts par date calendaire Paris
+    // (un shift créé pour le "10 février" reste sur le 10 février)
     const shiftsByDate = {};
     shiftsPrevus.forEach(shift => {
-      // Pour les shifts, utiliser le jour calendaire de la date stockée (pas le cutoff)
-      // car un shift créé pour le "28 août" doit être traité comme tel
-      const shiftDateParis = new Date(shift.date).toLocaleDateString('en-CA', { 
-        timeZone: 'Europe/Paris' 
-      }); // Format YYYY-MM-DD
-      
+      const shiftDateParis = horodatageToParisDate(shift.date);
       if (!shiftsByDate[shiftDateParis]) shiftsByDate[shiftDateParis] = [];
       shiftsByDate[shiftDateParis].push(shift);
     });
 
+    // Grouper les pointages par JOUR BUSINESS (cutoff 05:00 Paris)
+    // Un départ à 00:30 le 11/02 → jour business du 10/02 (automatique)
+    // Plus besoin de shiftNightMapping, de rattachement J-1, ni de garde anti-coupure
     const pointagesByDate = {};
-    const pointagesNightShiftsUsed = new Set();
-    
     pointagesReels.forEach(p => {
-      const pointageDateParis = new Date(p.horodatage).toLocaleDateString('en-CA', { 
-        timeZone: 'Europe/Paris' 
-      });
-      const pointageTime = new Date(p.horodatage).toLocaleTimeString('fr-FR', { 
-        timeZone: 'Europe/Paris',
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
-      
-      // Groupage standard
-      if (!pointagesByDate[pointageDateParis]) pointagesByDate[pointageDateParis] = [];
-      pointagesByDate[pointageDateParis].push(p);
-      
-      // 🌙 LOGIQUE RESTAURANT : Rattacher les départs après minuit au shift de J-1
-      const isDepartType = p.type === 'depart' || p.type === 'départ' || p.type === 'SORTIE' || p.type === 'sortie';
-      
-      if (isDepartType) {
-        // Seulement les départs avant le cutoff (05:00) peuvent être rattachés à J-1
-        const [departHH] = pointageTime.split(':').map(Number);
-        if (departHH < BUSINESS_CUTOFF_HOUR) {
-        
-        // 🆕 GARDE ANTI-COUPURE : Vérifier si ce départ a une arrivée "compagnon" sur le même jour
-        // Si oui, il appartient à une nouvelle session de travail → ne PAS rattacher à J-1
-        // Ex: départ 03:31 avec arrivée 03:30 le même jour = session séparée, pas la continuation du shift tardif
-        const hasArrivéeBuddy = pointagesReels.some(other => {
-          if (other.id === p.id) return false;
-          const otherType = other.type;
-          const isOtherArrivee = otherType === 'arrivee' || otherType === 'arrivée' || otherType === 'ENTRÉE' || otherType === 'entree';
-          if (!isOtherArrivee) return false;
-          // Doit être le même jour calendaire (Paris)
-          const otherDateParis = new Date(other.horodatage).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-          if (otherDateParis !== pointageDateParis) return false;
-          // L'arrivée doit précéder ce départ et être dans les 6h
-          const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
-          return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
-        });
-        
-        if (hasArrivéeBuddy) {
-          // Ce départ a sa propre arrivée → session indépendante, pas de rattachement à J-1
-        } else {
-        // Calculer J-1
-        const prevDay = new Date(p.horodatage);
-        prevDay.setDate(prevDay.getDate() - 1);
-        const prevDayParis = prevDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-        
-        // Chercher si un shift de nuit/tardif de J-1 attend ce départ
-        let nightShiftFound = false;
-        
-        for (const [shiftKey, nightShift] of shiftNightMapping.entries()) {
-          if (nightShift.shiftDate === prevDayParis && nightShift.nextDate === pointageDateParis) {
-            
-            // Ajouter ce pointage AUSSI au jour précédent
-            if (!pointagesByDate[prevDayParis]) pointagesByDate[prevDayParis] = [];
-            
-            if (!pointagesNightShiftsUsed.has(p.id)) {
-              pointagesByDate[prevDayParis].push({
-                ...p,
-                _nightShiftCandidate: true,
-                _originalDate: pointageDateParis,
-                _nightShiftKey: shiftKey
-              });
-              pointagesNightShiftsUsed.add(p.id);
-              nightShiftFound = true;
-            }
-            
-            break;
-          }
-        }
-        
-        if (!nightShiftFound && pointageDateParis !== prevDayParis) {
-          const [hh] = pointageTime.split(':').map(Number);
-        }
-        } // fin garde anti-coupure
-        } // fin cutoff check
-      }
+      const businessDay = getBusinessDay(p.horodatage);
+      if (!pointagesByDate[businessDay]) pointagesByDate[businessDay] = [];
+      pointagesByDate[businessDay].push(p);
     });
-    
-  // Limiter aux jours demandés uniquement (même si on a étendu la fenêtre SQL)
-  const allDates = new Set(requestedDays);
-  
-    for (const dateKey of allDates) {
+
+    for (const dateKey of requestedDays) {
       const shiftsJour = shiftsByDate[dateKey] || [];
-      const pointagesJour = pointagesByDate[dateKey] || [];
+      const pointagesJour = (pointagesByDate[dateKey] || [])
+        .sort((a, b) => new Date(a.horodatage) - new Date(b.horodatage));
       
       const comparaisonJour = {
         date: dateKey,
@@ -781,17 +656,6 @@ function calculerEcarts(planifie, reel) {
   }
 
   return ecarts;
-}
-
-/**
- * Calcule l'écart en minutes entre une heure prévue et une heure réelle
- * Tout est normalisé sur le fuseau Europe/Paris
- * @deprecated - Utiliser calculateTimeGapMinutes des utils/parisTimeUtils.js
- */
-function calculerEcartHoraire(heurePrevu, heureReelle) {
-  
-  // Rediriger vers la fonction utilitaire standardisée
-  return calculateTimeGapMinutes(heurePrevu, heureReelle);
 }
 
 module.exports = {

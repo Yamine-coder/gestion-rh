@@ -14,6 +14,7 @@ const prisma = require('../prisma/client');
 const { generateEmployeePDF, generateAllEmployeesExcel } = require('../utils/exportUtils');
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles } = require('../utils/pointageTypeUtils');
+const { grouperParJourBusiness, grouperParEmployeJourBusiness } = require('../utils/businessDayUtils');
 
 /**
  * Normalise les types d'absence pour un affichage unifié
@@ -67,187 +68,12 @@ function toParisTimeString(date) {
 
 
 /**
- * Détecte si un shift a des segments de nuit (end < start, ex: 21:00-01:00)
- * OU si le shift finit tard (≥ 20:00) et pourrait avoir une sortie post-minuit
- */
-function isShiftDeNuitOuTardif(shift) {
-  let segments = shift.segments;
-  if (typeof segments === 'string') {
-    try { segments = JSON.parse(segments); } catch (e) { return false; }
-  }
-  if (!Array.isArray(segments)) return false;
-  return segments.some(seg => {
-    if (!seg.start || !seg.end) return false;
-    const [sh] = seg.start.split(':').map(Number);
-    const [eh] = seg.end.split(':').map(Number);
-    // Night shift (end < start) OU shift finissant à 20h ou plus tard
-    return eh < sh || eh >= 20;
-  });
-}
-
-/**
  * Étend une dateFin de +6h pour capturer les sorties post-minuit (night shifts)
  */
 function etendreFinPourNuit(dateFin) {
   const dateFinEtendue = new Date(dateFin);
   dateFinEtendue.setHours(dateFinEtendue.getHours() + 6);
   return dateFinEtendue;
-}
-
-/**
- * Regroupe les pointages par jour en réassociant les sorties post-minuit (00:00-06:00)
- * au jour précédent si ce jour a une entrée orpheline (sans sortie correspondante).
- * Approche basée sur les POINTAGES (pas seulement les shifts).
- * @param {Array} pointages - Liste de pointages
- * @param {Map|Array} shiftsData - Shifts indexés par dateKey ou tableau de shifts
- * @returns {Map} pointagesParJour
- */
-function grouperPointagesAvecNuit(pointages, shiftsData) {
-  const pointagesParJour = new Map();
-  
-  // Premier passage : grouper par date calendaire (Paris)
-  pointages.forEach(p => {
-    const dateKey = toLocalDateString(p.horodatage);
-    if (!pointagesParJour.has(dateKey)) {
-      pointagesParJour.set(dateKey, []);
-    }
-    pointagesParJour.get(dateKey).push(p);
-  });
-  
-  // Second passage : réassocier les sorties post-minuit au jour précédent
-  pointages.forEach(p => {
-    const heure = new Date(p.horodatage);
-    // Calculer l'heure en Paris
-    const heureLocale = parseInt(heure.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
-    
-    // Si c'est une sortie entre 00:00 et 06:00
-    if (heureLocale < 6 && isSortie(p.type)) {
-      const dateActuelle = toLocalDateString(p.horodatage);
-      
-      // 🆕 GARDE ANTI-COUPURE : vérifier si ce départ a une arrivée compagnon le même jour
-      const pointagesMemeJour = pointagesParJour.get(dateActuelle) || [];
-      const hasArrivéeBuddy = pointagesMemeJour.some(other => {
-        if (other.id === p.id) return false;
-        if (!isEntree(other.type)) return false;
-        const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
-        return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
-      });
-      if (hasArrivéeBuddy) return; // Session indépendante, pas de rattachement
-      
-      // Calculer la date de la veille (en Paris)
-      const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
-      const dateVeille = toLocalDateString(new Date(veilleMs));
-      
-      // Vérifier si la veille a des entrées orphelines (plus d'entrées que de sorties)
-      const pointagesVeille = pointagesParJour.get(dateVeille) || [];
-      const entreesVeille = pointagesVeille.filter(pp => isEntree(pp.type));
-      const sortiesVeille = pointagesVeille.filter(pp => isSortie(pp.type));
-      
-      // S'il y a plus d'entrées que de sorties la veille = sortie manquante
-      const veilleABesoinDeSortie = entreesVeille.length > sortiesVeille.length;
-      
-      // Vérifier aussi si la veille a un shift tardif/de nuit (en backup)
-      let shiftVeille = null;
-      if (Array.isArray(shiftsData)) {
-        shiftVeille = shiftsData.find(s => toLocalDateString(s.date) === dateVeille);
-      } else if (shiftsData instanceof Map) {
-        shiftVeille = shiftsData.get(dateVeille);
-      }
-      const veilleAShiftTardif = shiftVeille && isShiftDeNuitOuTardif(shiftVeille);
-      
-      if (veilleABesoinDeSortie || veilleAShiftTardif) {
-        // Ajouter ce pointage au jour précédent
-        if (!pointagesParJour.has(dateVeille)) {
-          pointagesParJour.set(dateVeille, []);
-        }
-        // Éviter les doublons
-        const dejaPresent = pointagesParJour.get(dateVeille).some(pp => pp.id === p.id);
-        if (!dejaPresent) {
-          pointagesParJour.get(dateVeille).push(p);
-        }
-        // Retirer du jour actuel si ce pointage est orphelin (sortie sans entrée ce jour-là)
-        const pointagesJourActuel = pointagesParJour.get(dateActuelle) || [];
-        const entreesJourActuel = pointagesJourActuel.filter(pp => isEntree(pp.type));
-        if (entreesJourActuel.length === 0) {
-          // Pas d'entrée ce jour = sortie orpheline, retirer
-          pointagesParJour.set(dateActuelle, pointagesJourActuel.filter(pp => pp.id !== p.id));
-        }
-      }
-    }
-  });
-  
-  return pointagesParJour;
-}
-
-/**
- * Version multi-employé de grouperPointagesAvecNuit
- */
-function grouperPointagesParEmployeJourAvecNuit(pointages, shifts) {
-  const pointagesParEmployeJour = new Map();
-  
-  // Premier passage : grouper par employé+date calendaire
-  pointages.forEach(p => {
-    const dateKey = toLocalDateString(p.horodatage);
-    const key = `${p.userId}_${dateKey}`;
-    if (!pointagesParEmployeJour.has(key)) {
-      pointagesParEmployeJour.set(key, []);
-    }
-    pointagesParEmployeJour.get(key).push(p);
-  });
-  
-  // Second passage : réassocier les sorties post-minuit
-  pointages.forEach(p => {
-    const heure = new Date(p.horodatage);
-    const heureLocale = parseInt(heure.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
-    
-    if (heureLocale < 6 && isSortie(p.type)) {
-      const dateActuelle = toLocalDateString(p.horodatage);
-      
-      // 🆕 GARDE ANTI-COUPURE : vérifier si ce départ a une arrivée compagnon le même jour
-      const keyActuel = `${p.userId}_${dateActuelle}`;
-      const pointagesMemeJour = pointagesParEmployeJour.get(keyActuel) || [];
-      const hasArrivéeBuddy = pointagesMemeJour.some(other => {
-        if (other.id === p.id) return false;
-        if (!isEntree(other.type)) return false;
-        const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
-        return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
-      });
-      if (hasArrivéeBuddy) return; // Session indépendante, pas de rattachement
-      
-      const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
-      const dateVeille = toLocalDateString(new Date(veilleMs));
-      
-      const keyVeille = `${p.userId}_${dateVeille}`;
-      
-      // Vérifier si la veille a des entrées orphelines
-      const pointagesVeille = pointagesParEmployeJour.get(keyVeille) || [];
-      const entreesVeille = pointagesVeille.filter(pp => isEntree(pp.type));
-      const sortiesVeille = pointagesVeille.filter(pp => isSortie(pp.type));
-      const veilleABesoinDeSortie = entreesVeille.length > sortiesVeille.length;
-      
-      // Vérifier aussi le shift tardif/nuit
-      const shiftVeille = shifts.find(s => s.employeId === p.userId && toLocalDateString(s.date) === dateVeille);
-      const veilleAShiftTardif = shiftVeille && isShiftDeNuitOuTardif(shiftVeille);
-      
-      if (veilleABesoinDeSortie || veilleAShiftTardif) {
-        if (!pointagesParEmployeJour.has(keyVeille)) {
-          pointagesParEmployeJour.set(keyVeille, []);
-        }
-        const dejaPresent = pointagesParEmployeJour.get(keyVeille).some(pp => pp.id === p.id);
-        if (!dejaPresent) {
-          pointagesParEmployeJour.get(keyVeille).push(p);
-        }
-        // Retirer du jour actuel si orphelin
-        const pointagesJourActuel = pointagesParEmployeJour.get(keyActuel) || [];
-        const entreesJourActuel = pointagesJourActuel.filter(pp => isEntree(pp.type));
-        if (entreesJourActuel.length === 0) {
-          pointagesParEmployeJour.set(keyActuel, pointagesJourActuel.filter(pp => pp.id !== p.id));
-        }
-      }
-    }
-  });
-  
-  return pointagesParEmployeJour;
 }
 
 // 📊 Stats globales pour la page Rapports d'heures
@@ -314,8 +140,8 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       }
     });
 
-    // Grouper les pointages par employé et jour (avec gestion nuit post-minuit)
-    const pointagesParEmployeJour = grouperPointagesParEmployeJourAvecNuit(pointages, shifts);
+    // Grouper les pointages par employé + jour business (cutoff 05:00)
+    const pointagesParEmployeJour = grouperParEmployeJourBusiness(pointages);
 
     // Calculer les heures prévues et travaillées
     let totalHeuresPrevues = 0;
@@ -472,8 +298,8 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
       }
     });
 
-    // Grouper les pointages par jour (avec gestion nuit post-minuit)
-    const pointagesParJour = grouperPointagesAvecNuit(pointages, shifts);
+    // Grouper les pointages par jour business (cutoff 05:00)
+    const pointagesParJour = grouperParJourBusiness(pointages);
 
     // Créer une map des congés par date
     const congesParJour = new Map();
@@ -931,8 +757,8 @@ router.get('/employe/:employeId/rapport', authenticateToken, isAdmin, async (req
     let absencesJustifiees = 0;
     let absencesInjustifiees = 0;
 
-    // Grouper les pointages par jour (avec gestion nuit post-minuit)
-    const pointagesParJour = grouperPointagesAvecNuit(pointages, shifts);
+    // Grouper les pointages par jour business (cutoff 05:00)
+    const pointagesParJour = grouperParJourBusiness(pointages);
 
     // Date du jour pour exclure les shifts futurs des heures prévues
     const aujourdhuiRapport = getCurrentDateString();
@@ -1772,8 +1598,8 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
         }
       });
 
-      // Grouper les pointages par jour (avec gestion nuit post-minuit)
-      const pointagesParJour = grouperPointagesAvecNuit(pointagesEmploye, shiftsEmploye);
+      // Grouper les pointages par jour business (cutoff 05:00)
+      const pointagesParJour = grouperParJourBusiness(pointagesEmploye);
       const aujourdhuiExportAll = getCurrentDateString();
 
       let heuresPrevues = 0;

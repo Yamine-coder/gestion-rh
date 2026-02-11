@@ -1,5 +1,6 @@
 // server/services/paiementExtrasService.js
 const prisma = require('../prisma/client');
+const { getBusinessDayBoundsUTC, horodatageToParisHHMM } = require('../utils/businessDayUtils');
 
 const TAUX_HORAIRE_DEFAUT = 10; // €/h par défaut
 
@@ -124,12 +125,9 @@ async function creerPaiementDepuisShiftExtra(shift, segmentIndex, adminId) {
  * pour un segment extra donné
  */
 async function calculerHeuresReellesDepuisPointages(employeId, date, segment) {
-  // Récupérer les pointages du jour pour cet employé (+6h pour sorties post-minuit)
-  const dateDebut = new Date(date);
-  dateDebut.setHours(0, 0, 0, 0);
-  const dateFin = new Date(date);
-  dateFin.setDate(dateFin.getDate() + 1);
-  dateFin.setHours(6, 0, 0, 0); // 🌙 Inclure les sorties post-minuit jusqu'à 06:00 J+1
+  // Bornes jour business (05:00 Paris → 04:59 J+1)
+  const dateStr = date instanceof Date ? date.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' }) : String(date).slice(0, 10);
+  const { start: dateDebut, end: dateFin } = getBusinessDayBoundsUTC(dateStr);
   
   const pointages = await prisma.pointage.findMany({
     where: {
@@ -161,7 +159,9 @@ async function calculerHeuresReellesDepuisPointages(employeId, date, segment) {
   
   for (const p of pointages) {
     const pDate = new Date(p.horodatage);
-    const pMinutes = pDate.getHours() * 60 + pDate.getMinutes();
+    const pParisStr = pDate.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false });
+    const [pH, pM] = pParisStr.split(':').map(Number);
+    const pMinutes = pH * 60 + pM;
     
     // Vérifier si le pointage est dans la plage du segment (avec tolérance)
     const estDansPlage = pMinutes >= (segmentDebutMinutes - tolerance) && pMinutes <= (segmentFinMinutes + tolerance);
@@ -181,12 +181,10 @@ async function calculerHeuresReellesDepuisPointages(employeId, date, segment) {
   
   if (!depart) {
     // Seulement arrivée, pas encore de départ
-    const arriveeH = arrivee.getHours().toString().padStart(2, '0');
-    const arriveeM = arrivee.getMinutes().toString().padStart(2, '0');
     return { 
       heuresReelles: null, 
       pointageComplet: false,
-      arriveeReelle: `${arriveeH}:${arriveeM}`,
+      arriveeReelle: horodatageToParisHHMM(arrivee),
       departReelle: null
     };
   }
@@ -196,16 +194,11 @@ async function calculerHeuresReellesDepuisPointages(employeId, date, segment) {
   const heuresReelles = dureeMs / (1000 * 60 * 60);
   
   // Formater les heures de pointage
-  const arriveeH = arrivee.getHours().toString().padStart(2, '0');
-  const arriveeM = arrivee.getMinutes().toString().padStart(2, '0');
-  const departH = depart.getHours().toString().padStart(2, '0');
-  const departM = depart.getMinutes().toString().padStart(2, '0');
-  
   return { 
-    heuresReelles: Math.round(heuresReelles * 100) / 100, // Arrondir à 2 décimales
+    heuresReelles: Math.round(heuresReelles * 100) / 100,
     pointageComplet: true,
-    arriveeReelle: `${arriveeH}:${arriveeM}`,
-    departReelle: `${departH}:${departM}`
+    arriveeReelle: horodatageToParisHHMM(arrivee),
+    departReelle: horodatageToParisHHMM(depart)
   };
 }
 

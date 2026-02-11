@@ -7,6 +7,7 @@ const { stringifyCategories, parseCategories, CATEGORIES_VALIDES, enrichUserWith
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPES_ENTREE } = require('../utils/pointageTypeUtils');
 const { invalidateStatusCache } = require('../middlewares/authMiddleware');
 const { parseSegments } = require('../utils/segmentUtils');
+const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
 
 const creerEmploye = async (req, res) => {
   // Support des catégories multiples : 'categories' (array) OU 'categorie' (string legacy)
@@ -641,15 +642,9 @@ const getDashboardStats = async (req, res) => {
     const startOfToday = new Date(today);
     startOfToday.setHours(0, 0, 0, 0);
     
-    // Pour le taux de pointage, utiliser une fenêtre plus large qui inclut la journée précédente
-    // pour capter les pointages qui peuvent être décalés par timezone
-    const startPointage = new Date(startOfToday);
-    startPointage.setDate(startPointage.getDate() - 1);
-    startPointage.setHours(22, 0, 0, 0); // Depuis 22h hier (00h local)
-    
-    const finPointage = new Date(startOfToday);
-    finPointage.setDate(finPointage.getDate() + 1);
-    finPointage.setHours(6, 0, 0, 0); // Jusqu'à 06h demain
+    // Bornes jour business (05:00 Paris → 04:59 J+1)
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const { start: startPointage, end: finPointage } = getBusinessDayBoundsUTC(todayStr);
     
     const now = today;    // Gestion de la période depuis les paramètres de requête
     const { periode = 'mois' } = req.query;
@@ -691,13 +686,9 @@ const getDashboardStats = async (req, res) => {
     last7Days.setDate(last7Days.getDate() - 7);
     last7Days.setHours(0, 0, 0, 0);
 
-    // Calcul des heures travaillées aujourd'hui seulement
-  // Fenêtre heures travaillées (identique logique) : aujourd'hui 00:00 -> demain 06:00
-  const tomorrow = new Date(startOfToday);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const finEtendue = new Date(tomorrow);
-  finEtendue.setHours(6,0,0,0);
-  const tempsPresenceAujourdhui = await calculerTotalHeures(startOfToday, finEtendue);
+    // Calcul des heures travaillées aujourd'hui (jour business)
+  const { start: startBusiness, end: finEtendue } = getBusinessDayBoundsUTC(todayStr);
+  const tempsPresenceAujourdhui = await calculerTotalHeures(startBusiness, finEtendue);
 
     // Demandes en attente
     const demandesAttente = await prisma.conge.count({

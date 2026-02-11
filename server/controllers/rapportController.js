@@ -4,85 +4,7 @@ const prisma = require('../prisma/client');
 const { toLocalDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie } = require('../utils/pointageTypeUtils');
 const { parseSegments } = require('../utils/segmentUtils');
-
-/**
- * Détecte si un shift a des segments de nuit ou tardifs (fin >= 20h ou fin < début)
- */
-function isShiftDeNuitOuTardif(shift) {
-  const segments = parseSegments(shift.segments);
-  if (!Array.isArray(segments)) return false;
-  return segments.some(seg => {
-    if (!seg.start || !seg.end) return false;
-    const [sh] = (seg.start || '').split(':').map(Number);
-    const [eh] = (seg.end || '').split(':').map(Number);
-    return eh < sh || eh >= 20;
-  });
-}
-
-/**
- * Regroupe les pointages par jour en rattachant les sorties post-minuit (00:00-06:00)
- * au jour précédent si celui-ci a une entrée orpheline ou un shift tardif/nuit.
- */
-function grouperPointagesAvecNuit(pointages, shifts) {
-  const pointagesParJour = {};
-  
-  // 1er passage : grouper par date calendaire
-  pointages.forEach(p => {
-    if (!p.horodatage) return;
-    const dateKey = toLocalDateString(p.horodatage);
-    if (!pointagesParJour[dateKey]) pointagesParJour[dateKey] = [];
-    pointagesParJour[dateKey].push(p);
-  });
-  
-  // 2e passage : rattacher les sorties post-minuit à la veille
-  pointages.forEach(p => {
-    if (!p.horodatage) return;
-    const heure = new Date(p.horodatage);
-    const heureLocale = parseInt(heure.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
-    
-    if (heureLocale < 6 && isSortie(p.type)) {
-      // 🆕 GARDE ANTI-COUPURE : vérifier si ce départ a une arrivée "compagnon" le même jour
-      // Ex: départ 03:31 avec arrivée 03:30 = session séparée → ne pas rattacher à la veille
-      const dateActuelle = toLocalDateString(p.horodatage);
-      const pointagesMemeJour = pointagesParJour[dateActuelle] || [];
-      const hasArrivéeBuddy = pointagesMemeJour.some(other => {
-        if (other.id === p.id) return false;
-        if (!isEntree(other.type)) return false;
-        // L'arrivée doit précéder ce départ et être dans les 6h
-        const diffMs = new Date(p.horodatage).getTime() - new Date(other.horodatage).getTime();
-        return diffMs > 0 && diffMs < 6 * 60 * 60 * 1000;
-      });
-      
-      if (hasArrivéeBuddy) {
-        // Ce départ a sa propre arrivée → session indépendante, pas de rattachement
-        return;
-      }
-      
-      const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
-      const dateVeille = toLocalDateString(new Date(veilleMs));
-      
-      const pointagesVeille = pointagesParJour[dateVeille] || [];
-      const entreesVeille = pointagesVeille.filter(pp => isEntree(pp.type));
-      const sortiesVeille = pointagesVeille.filter(pp => isSortie(pp.type));
-      const veilleABesoinDeSortie = entreesVeille.length > sortiesVeille.length;
-      
-      const shiftVeille = shifts.find(s => toLocalDateString(s.date) === dateVeille);
-      const veilleAShiftTardif = shiftVeille && isShiftDeNuitOuTardif(shiftVeille);
-      
-      if (veilleABesoinDeSortie || veilleAShiftTardif) {
-        if (!pointagesParJour[dateVeille]) pointagesParJour[dateVeille] = [];
-        pointagesParJour[dateVeille].push(p);
-        // Retirer du jour calendaire actuel
-        const dateActuelle = toLocalDateString(p.horodatage);
-        if (pointagesParJour[dateActuelle]) {
-          pointagesParJour[dateActuelle] = pointagesParJour[dateActuelle].filter(pp => pp.id !== p.id);
-        }
-      }
-    }
-  });
-  
-  return pointagesParJour;
-}
+const { getBusinessDay } = require('../utils/businessDayUtils');
 
 // Récupérer le rapport d'heures pour un employé
 const getRapportEmploye = async (req, res) => {
@@ -242,8 +164,14 @@ const getRapportEmploye = async (req, res) => {
     });
     
     // Calculer les heures travaillées et retards à partir des pointages
-    // 🌙 Grouper avec gestion nuit : les sorties post-minuit sont rattachées à la veille
-    const pointagesParDate = grouperPointagesAvecNuit(pointages, shifts);
+    // Grouper par jour business (cutoff 05:00 Paris) — remplace grouperPointagesAvecNuit
+    const pointagesParDate = {};
+    pointages.forEach(p => {
+      if (!p.horodatage) return;
+      const businessDay = getBusinessDay(p.horodatage);
+      if (!pointagesParDate[businessDay]) pointagesParDate[businessDay] = [];
+      pointagesParDate[businessDay].push(p);
+    });
 
     // Analyser chaque jour — CALCUL PAR PAIRES entrée/sortie (soustrait les pauses)
     Object.entries(pointagesParDate).forEach(([date, pointagesJour]) => {

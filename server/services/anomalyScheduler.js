@@ -16,6 +16,7 @@ const prisma = require('../prisma/client');
 const congeReminderService = require('./congeReminderService');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties } = require('../utils/pointageTypeUtils');
 const { parseSegments } = require('../utils/segmentUtils');
+const { getBusinessDayBoundsUTC: getBusinessBounds, BUSINESS_DAY_CUTOFF_HOUR, isShiftTardifOuNuit: isShiftTardif } = require('../utils/businessDayUtils');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🕐 UTILITAIRES TIMEZONE - Europe/Paris
@@ -57,39 +58,9 @@ function getParisTime() {
   };
 }
 
-/**
- * Calcule les bornes UTC pour une journée Paris
- * @param {string} dateStr - Date au format 'YYYY-MM-DD'
- * @returns {Object} { startUTC: Date, endUTC: Date }
- */
+// Wrapper pour compatibilité (utilise le module centralisé)
 function getParisDateBoundsUTC(dateStr) {
-  // Utilise Intl.DateTimeFormat pour déterminer correctement le décalage UTC de Paris
-  // Gère automatiquement les transitions CET/CEST (hiver/été)
-  
-  // Créer une date à midi Paris pour déterminer le décalage UTC fiable
-  const midday = new Date(`${dateStr}T12:00:00Z`);
-  const parisFormatter = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false
-  });
-  
-  // Calculer le décalage UTC réel de Paris pour cette date
-  const parts = parisFormatter.formatToParts(midday);
-  const getPart = (type) => parts.find(p => p.type === type)?.value;
-  const parisDateStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}Z`;
-  const parisAsUTC = new Date(parisDateStr);
-  const offsetMs = midday.getTime() - parisAsUTC.getTime(); // Décalage Paris en ms
-  
-  // Début de journée Paris (00:00:00) converti en UTC
-  const startUTC = new Date(`${dateStr}T00:00:00Z`);
-  startUTC.setTime(startUTC.getTime() - offsetMs);
-  
-  // Fin de journée Paris (23:59:59) converti en UTC  
-  const endUTC = new Date(`${dateStr}T23:59:59Z`);
-  endUTC.setTime(endUTC.getTime() - offsetMs);
-  
+  const { start: startUTC, end: endUTC } = getBusinessBounds(dateStr);
   return { startUTC, endUTC };
 }
 
@@ -165,7 +136,7 @@ class AnomalyScheduler {
     // 🆕 LOGIQUE JOURNÉE DE TRAVAIL 6h-6h
     // Si on est entre 00:00 et 06:00, c'est encore la journée de travail de la VEILLE
     let currentMinutes = currentHour * 60 + currentMinute;
-    if (currentHour < 6) {
+    if (currentHour < BUSINESS_DAY_CUTOFF_HOUR) {
       // Calculer la date de la veille
       const hier = new Date();
       hier.setDate(hier.getDate() - 1);

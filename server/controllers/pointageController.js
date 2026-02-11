@@ -5,6 +5,7 @@ const scoringService = require('../services/scoringService');
 const { sendAnomalieUrgente } = require('../services/notificationEmailService');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles, TYPES_ENTREE, TYPES_SORTIE, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
 const { parseSegments } = require('../utils/segmentUtils');
+const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
 
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
@@ -36,10 +37,8 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
       return { updated: 0 };
     }
 
-    // 2. Récupérer tous les pointages du jour pour cet employé (+6h pour sorties post-minuit)
-    const dateFinEtendue = new Date(`${dateStr}T00:00:00.000Z`);
-    dateFinEtendue.setDate(dateFinEtendue.getDate() + 1);
-    dateFinEtendue.setUTCHours(6, 0, 0, 0); // 🌙 Inclure sorties post-minuit
+    // Bornes du jour business (05:00 Paris → 04:59 J+1)
+    const { end: dateFinEtendue } = getBusinessDayBoundsUTC(dateStr);
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: parseInt(userId),
@@ -456,12 +455,7 @@ const getPointagesParJour = async (req, res) => {
   const date = req.params.date;
 
   try {
-    const debutJour = new Date(`${date}T00:00:00`);
-    const finJour = new Date(`${date}T23:59:59`);
-    // Ajoute une plage pour les départs après minuit (ex: jusqu'à 6h du matin du lendemain)
-    const finEtendue = new Date(debutJour);
-    finEtendue.setDate(finEtendue.getDate() + 1);
-    finEtendue.setHours(6, 0, 0, 0);
+    const { start: debutJour, end: finEtendue } = getBusinessDayBoundsUTC(date);
 
     const pointages = await prisma.pointage.findMany({
       where: {

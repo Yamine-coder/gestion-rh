@@ -3,7 +3,7 @@
 
 const WORK_DAY_CONFIG = {
   // Heure de coupure : avant cette heure, on considère que c'est encore la journée précédente
-  CUTOFF_HOUR: 6, // 6h du matin par défaut
+  CUTOFF_HOUR: 5, // 5h du matin — aligné avec businessDayUtils.BUSINESS_DAY_CUTOFF_HOUR
   
   // Documentation des cas d'usage
   EXAMPLES: {
