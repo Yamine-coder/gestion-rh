@@ -2562,7 +2562,9 @@ function PlanningRHTable({
     if (!timeRegex.test(segment.start) || !timeRegex.test(segment.end)) return false;
     
     // V�rifier que l'heure de d�but est avant l'heure de fin
-    if (segment.start >= segment.end) return false;
+    // Vérifier que l'heure de début est différente de l'heure de fin
+    // Note: end < start est autorisé (shift de nuit passant minuit, ex: 21:00-01:00)
+    if (segment.start === segment.end) return false;
     
     return true;
   };

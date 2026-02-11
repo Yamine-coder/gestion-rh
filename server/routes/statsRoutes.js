@@ -53,11 +53,24 @@ function normaliserTypeAbsence(type) {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
+/**
+ * Retourne l'heure HH:MM en timezone Europe/Paris (pas UTC)
+ */
+function toParisTimeString(date) {
+  return new Date(date).toLocaleTimeString('fr-FR', {
+    timeZone: 'Europe/Paris',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
 
 /**
  * Détecte si un shift a des segments de nuit (end < start, ex: 21:00-01:00)
+ * OU si le shift finit tard (≥ 20:00) et pourrait avoir une sortie post-minuit
  */
-function isShiftDeNuit(shift) {
+function isShiftDeNuitOuTardif(shift) {
   let segments = shift.segments;
   if (typeof segments === 'string') {
     try { segments = JSON.parse(segments); } catch (e) { return false; }
@@ -67,7 +80,8 @@ function isShiftDeNuit(shift) {
     if (!seg.start || !seg.end) return false;
     const [sh] = seg.start.split(':').map(Number);
     const [eh] = seg.end.split(':').map(Number);
-    return eh < sh; // ex: 21:00-01:00 → 1 < 21
+    // Night shift (end < start) OU shift finissant à 20h ou plus tard
+    return eh < sh || eh >= 20;
   });
 }
 
@@ -82,7 +96,8 @@ function etendreFinPourNuit(dateFin) {
 
 /**
  * Regroupe les pointages par jour en réassociant les sorties post-minuit (00:00-06:00)
- * au jour précédent si ce jour a un shift de nuit.
+ * au jour précédent si ce jour a une entrée orpheline (sans sortie correspondante).
+ * Approche basée sur les POINTAGES (pas seulement les shifts).
  * @param {Array} pointages - Liste de pointages
  * @param {Map|Array} shiftsData - Shifts indexés par dateKey ou tableau de shifts
  * @returns {Map} pointagesParJour
@@ -90,7 +105,7 @@ function etendreFinPourNuit(dateFin) {
 function grouperPointagesAvecNuit(pointages, shiftsData) {
   const pointagesParJour = new Map();
   
-  // Premier passage : grouper par date calendaire
+  // Premier passage : grouper par date calendaire (Paris)
   pointages.forEach(p => {
     const dateKey = toLocalDateString(p.horodatage);
     if (!pointagesParJour.has(dateKey)) {
@@ -108,21 +123,29 @@ function grouperPointagesAvecNuit(pointages, shiftsData) {
     // Si c'est une sortie entre 00:00 et 06:00
     if (heureLocale < 6 && isSortie(p.type)) {
       const dateActuelle = toLocalDateString(p.horodatage);
-      // Calculer la date de la veille
-      const veille = new Date(p.horodatage);
-      veille.setDate(veille.getDate() - 1);
-      const dateVeille = toLocalDateString(veille);
+      // Calculer la date de la veille (en Paris)
+      const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
+      const dateVeille = toLocalDateString(new Date(veilleMs));
       
-      // Vérifier si la veille a un shift de nuit
+      // Vérifier si la veille a des entrées orphelines (plus d'entrées que de sorties)
+      const pointagesVeille = pointagesParJour.get(dateVeille) || [];
+      const entreesVeille = pointagesVeille.filter(pp => isEntree(pp.type));
+      const sortiesVeille = pointagesVeille.filter(pp => isSortie(pp.type));
+      
+      // S'il y a plus d'entrées que de sorties la veille = sortie manquante
+      const veilleABesoinDeSortie = entreesVeille.length > sortiesVeille.length;
+      
+      // Vérifier aussi si la veille a un shift tardif/de nuit (en backup)
       let shiftVeille = null;
       if (Array.isArray(shiftsData)) {
         shiftVeille = shiftsData.find(s => toLocalDateString(s.date) === dateVeille);
       } else if (shiftsData instanceof Map) {
         shiftVeille = shiftsData.get(dateVeille);
       }
+      const veilleAShiftTardif = shiftVeille && isShiftDeNuitOuTardif(shiftVeille);
       
-      if (shiftVeille && isShiftDeNuit(shiftVeille)) {
-        // Ajouter ce pointage aussi au jour précédent
+      if (veilleABesoinDeSortie || veilleAShiftTardif) {
+        // Ajouter ce pointage au jour précédent
         if (!pointagesParJour.has(dateVeille)) {
           pointagesParJour.set(dateVeille, []);
         }
@@ -168,17 +191,23 @@ function grouperPointagesParEmployeJourAvecNuit(pointages, shifts) {
     
     if (heureLocale < 6 && isSortie(p.type)) {
       const dateActuelle = toLocalDateString(p.horodatage);
-      const veille = new Date(p.horodatage);
-      veille.setDate(veille.getDate() - 1);
-      const dateVeille = toLocalDateString(veille);
+      const veilleMs = heure.getTime() - 24 * 60 * 60 * 1000;
+      const dateVeille = toLocalDateString(new Date(veilleMs));
       
-      // Trouver le shift de la veille pour cet employé
+      const keyVeille = `${p.userId}_${dateVeille}`;
+      const keyActuel = `${p.userId}_${dateActuelle}`;
+      
+      // Vérifier si la veille a des entrées orphelines
+      const pointagesVeille = pointagesParEmployeJour.get(keyVeille) || [];
+      const entreesVeille = pointagesVeille.filter(pp => isEntree(pp.type));
+      const sortiesVeille = pointagesVeille.filter(pp => isSortie(pp.type));
+      const veilleABesoinDeSortie = entreesVeille.length > sortiesVeille.length;
+      
+      // Vérifier aussi le shift tardif/nuit
       const shiftVeille = shifts.find(s => s.employeId === p.userId && toLocalDateString(s.date) === dateVeille);
+      const veilleAShiftTardif = shiftVeille && isShiftDeNuitOuTardif(shiftVeille);
       
-      if (shiftVeille && isShiftDeNuit(shiftVeille)) {
-        const keyVeille = `${p.userId}_${dateVeille}`;
-        const keyActuel = `${p.userId}_${dateActuelle}`;
-        
+      if (veilleABesoinDeSortie || veilleAShiftTardif) {
         if (!pointagesParEmployeJour.has(keyVeille)) {
           pointagesParEmployeJour.set(keyVeille, []);
         }
@@ -513,22 +542,29 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
             return t.includes('entree') || t.includes('arrivee') || t === 'entree' || t === 'arrivee';
           };
           
-          if (pointagesJour.length === 0) {
+          // Vérifier si ce jour est dans le futur (pas encore passé)
+          const aujourdhuiStr = getCurrentDateString();
+          const estFutur = dateKey > aujourdhuiStr;
+          
+          if (pointagesJour.length === 0 && !estFutur) {
             statut = 'Absence injustifiée';
             statutDetail = `Planifié ${segments[0]?.start || '?'}-${segments[segments.length-1]?.end || '?'}, aucun pointage`;
+          } else if (pointagesJour.length === 0 && estFutur) {
+            statut = 'Planifié';
+            statutDetail = `${segments[0]?.start || '?'}-${segments[segments.length-1]?.end || '?'}`;
           } else if (pointagesJour.length % 2 !== 0) {
             statut = 'Pointage incomplet';
             statutDetail = `${pointagesJour.length} pointage(s) - manque ${pointagesJour.length % 2 === 1 ? 'sortie' : 'entrée'}`;
           } else if (retard > 0) {
             statut = `Retard (${retard} min)`;
             const premierPointage = pointagesJour.find(p => isEntree(p));
-            const heureArrivee = premierPointage ? premierPointage.horodatage.toTimeString().slice(0, 5) : '?';
+            const heureArrivee = premierPointage ? toParisTimeString(premierPointage.horodatage) : '?';
             const heurePrevue = segments[0]?.start || '?';
             statutDetail = `Arrivée ${heureArrivee} au lieu de ${heurePrevue}`;
           } else {
             statut = 'Présent';
             const premierPointage = pointagesJour.find(p => isEntree(p));
-            const heureArrivee = premierPointage ? premierPointage.horodatage.toTimeString().slice(0, 5) : '?';
+            const heureArrivee = premierPointage ? toParisTimeString(premierPointage.horodatage) : '?';
             statutDetail = `Arrivée ${heureArrivee}`;
           }
 
@@ -556,7 +592,7 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
             })),
             pointages: pointagesJour.map(p => ({
               type: p.type,
-              heure: p.horodatage.toTimeString().slice(0, 5),
+              heure: toParisTimeString(p.horodatage),
               horodatage: p.horodatage
             })),
             retard,
@@ -579,7 +615,7 @@ router.get('/employe/:employeId/rapport-detaille', authenticateToken, isAdmin, a
           type: 'hors_planning',
           pointages: pointagesJour.map(p => ({
             type: p.type,
-            heure: p.horodatage.toTimeString().slice(0, 5),
+            heure: toParisTimeString(p.horodatage),
             horodatage: p.horodatage
           }))
         };
@@ -1044,7 +1080,7 @@ function analyserRetard(segment, pointagesJour, dateShift) {
     retardMinutes += 24 * 60;
   }
 
-  const heureArriveeStr = heureArrivee.toTimeString().slice(0, 5); // Format HH:MM local
+  const heureArriveeStr = toParisTimeString(heureArrivee); // Format HH:MM Paris
 
   return {
     retard: Math.max(0, retardMinutes),

@@ -279,20 +279,20 @@ class AnomalyScheduler {
     // 🕐 Calculer les bornes UTC pour la journée Paris
     const { startUTC, endUTC } = getParisDateBoundsUTC(dateStr);
 
-    // Détecter si le shift a des segments de nuit (end < start, ex: 21:00-01:00)
+    // Détecter si le shift a des segments de nuit (end < start) OU finit tard (≥20h)
     const segments = parseSegments(shift.segments);
-    const hasNightSegment = segments.some(seg => {
+    const hasNightOrLateSegment = segments.some(seg => {
       if (!seg.start && !seg.debut) return false;
       if (!seg.end && !seg.fin) return false;
       const startStr = seg.start || seg.debut;
       const endStr = seg.end || seg.fin;
       const [sh] = startStr.split(':').map(Number);
       const [eh] = endStr.split(':').map(Number);
-      return eh < sh; // ex: 21:00-01:00
+      return eh < sh || eh >= 20 || sh >= 20; // Night shift OU shift tardif
     });
 
-    // Étendre la fenêtre de +6h pour les shifts de nuit (sortie post-minuit)
-    const endUTCEffective = hasNightSegment
+    // Étendre la fenêtre de +6h pour les shifts de nuit/tardifs (sortie post-minuit)
+    const endUTCEffective = hasNightOrLateSegment
       ? new Date(endUTC.getTime() + 6 * 60 * 60 * 1000)
       : endUTC;
 
