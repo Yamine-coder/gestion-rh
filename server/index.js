@@ -56,18 +56,17 @@ const corsOptions = {
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    // Accepter les origines explicites + le projet Vercel spécifique
-    const isVercelProject = process.env.VERCEL_PROJECT_SLUG 
-      ? origin.includes(process.env.VERCEL_PROJECT_SLUG) && origin.endsWith('.vercel.app')
-      : false; // Pas de fallback permissif — VERCEL_PROJECT_SLUG requis en prod
+    // Accepter les origines explicites + les URLs Vercel du projet chez-antoine
+    const isVercelPreview = origin.endsWith('.vercel.app') && origin.includes('chez-antoine');
     
-    if (allowedOrigins.includes(origin) || isVercelProject) {
+    if (allowedOrigins.includes(origin) || isVercelPreview) {
       callback(null, true);
     } else {
       if (process.env.NODE_ENV !== 'production') {
         console.log('CORS bloqué pour origin:', origin);
         callback(null, true); // Permissif en dev
       } else {
+        console.log('CORS bloqué en prod pour origin:', origin);
         callback(new Error('Origin non autorisée par CORS'));
       }
     }
