@@ -124,11 +124,12 @@ async function creerPaiementDepuisShiftExtra(shift, segmentIndex, adminId) {
  * pour un segment extra donné
  */
 async function calculerHeuresReellesDepuisPointages(employeId, date, segment) {
-  // Récupérer les pointages du jour pour cet employé
+  // Récupérer les pointages du jour pour cet employé (+6h pour sorties post-minuit)
   const dateDebut = new Date(date);
   dateDebut.setHours(0, 0, 0, 0);
   const dateFin = new Date(date);
-  dateFin.setHours(23, 59, 59, 999);
+  dateFin.setDate(dateFin.getDate() + 1);
+  dateFin.setHours(6, 0, 0, 0); // 🌙 Inclure les sorties post-minuit jusqu'à 06:00 J+1
   
   const pointages = await prisma.pointage.findMany({
     where: {

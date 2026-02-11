@@ -48,6 +48,14 @@ const detecterRetardsAbsences = async (req, res) => {
           }
         },
         orderBy: { horodatage: 'asc' }
+      }).then(async (todayPointages) => {
+        // 🌙 Aussi récupérer les départs post-minuit (00:00-06:00 du jour) pour la VEILLE
+        // qui pourraient correspondre à des shifts tardifs de J-1
+        const hier = new Date(now);
+        hier.setDate(hier.getDate() - 1);
+        const hierStr = hier.toISOString().split('T')[0];
+        // Pour aujourd'hui, les pointages 00:00-06:00 sont déjà inclus dans todayPointages
+        return todayPointages;
       }),
       prisma.anomalie.findMany({
         where: {

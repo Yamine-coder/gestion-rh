@@ -36,13 +36,16 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
       return { updated: 0 };
     }
 
-    // 2. Récupérer tous les pointages du jour pour cet employé
+    // 2. Récupérer tous les pointages du jour pour cet employé (+6h pour sorties post-minuit)
+    const dateFinEtendue = new Date(`${dateStr}T00:00:00.000Z`);
+    dateFinEtendue.setDate(dateFinEtendue.getDate() + 1);
+    dateFinEtendue.setUTCHours(6, 0, 0, 0); // 🌙 Inclure sorties post-minuit
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: parseInt(userId),
         horodatage: {
           gte: new Date(`${dateStr}T00:00:00.000Z`),
-          lt: new Date(`${dateStr}T23:59:59.999Z`)
+          lt: dateFinEtendue
         }
       },
       orderBy: { horodatage: 'asc' }
@@ -145,8 +148,11 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
   const horodatage = new Date(pointage.horodatage);
   const dateStr = toLocalDateString(horodatage);
   
-  // Récupérer le shift du jour pour cet employé
-  const shift = await prisma.shift.findFirst({
+  // 🌙 Pour les départs post-minuit (00:00-06:00), chercher aussi le shift de la VEILLE
+  const heureLocale = parseInt(horodatage.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
+  const cherchVeille = isSortie(type) && heureLocale < 6;
+  
+  let shift = await prisma.shift.findFirst({
     where: {
       employeId: parseInt(userId),
       date: {
@@ -156,6 +162,22 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
       type: 'travail'
     }
   });
+
+  // Si pas de shift aujourd'hui et départ post-minuit, chercher le shift de la veille
+  if (!shift && cherchVeille) {
+    const veille = new Date(horodatage.getTime() - 24 * 60 * 60 * 1000);
+    const dateVeille = toLocalDateString(veille);
+    shift = await prisma.shift.findFirst({
+      where: {
+        employeId: parseInt(userId),
+        date: {
+          gte: new Date(`${dateVeille}T00:00:00.000Z`),
+          lt: new Date(`${dateVeille}T23:59:59.999Z`)
+        },
+        type: 'travail'
+      }
+    });
+  }
 
   if (!shift) {
     return;

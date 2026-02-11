@@ -820,12 +820,14 @@ router.delete('/delete-error', authenticateToken, isAdmin, async (req, res) => {
       });
     }
 
-    // Convertir la date pour la recherche (début et fin de journée)
+    // Convertir la date pour la recherche (début et fin de journée + post-minuit)
     const targetDate = new Date(date);
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
+    // 🌙 Étendre jusqu'à 06:00 J+1 pour capturer les sorties post-minuit
     const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+    endOfDay.setHours(6, 0, 0, 0);
 
     // Chercher les pointages de l'employé pour cette date
     const pointagesToDelete = await prisma.pointage.findMany({

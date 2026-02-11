@@ -624,8 +624,10 @@ const traiterAnomalie = async (req, res) => {
           const dateAnomalie = new Date(anomalie.date);
           const debutJour = new Date(dateAnomalie);
           debutJour.setHours(0, 0, 0, 0);
+          // 🌙 Étendre jusqu'à 06:00 J+1 pour capturer les sorties post-minuit
           const finJour = new Date(dateAnomalie);
-          finJour.setHours(23, 59, 59, 999);
+          finJour.setDate(finJour.getDate() + 1);
+          finJour.setHours(6, 0, 0, 0);
           
           const pointagesJour = await prisma.pointage.findMany({
             where: {
@@ -2060,6 +2062,8 @@ const getBilanJournalier = async (req, res) => {
     // Utiliser des dates UTC pour éviter les problèmes de timezone
     const dateDebut = new Date(date + 'T00:00:00.000Z');
     const dateFin = new Date(date + 'T23:59:59.999Z');
+    // Étendre à J+1 06:00 UTC pour capturer les départs post-minuit (shifts tardifs/nuit)
+    const dateFinEtendue = new Date(new Date(date + 'T00:00:00.000Z').getTime() + 30 * 60 * 60 * 1000); // +30h = J+1 06:00
     
     // 1. Récupérer le shift prévu pour ce jour
     const shift = await prisma.shift.findFirst({
@@ -2072,13 +2076,13 @@ const getBilanJournalier = async (req, res) => {
       }
     });
     
-    // 2. Récupérer les pointages réels
+    // 2. Récupérer les pointages réels (étendu pour capter les départs post-minuit)
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: parseInt(employeId),
         horodatage: {
           gte: dateDebut,
-          lte: dateFin
+          lte: dateFinEtendue
         }
       },
       orderBy: { horodatage: 'asc' }
@@ -2102,9 +2106,10 @@ const getBilanJournalier = async (req, res) => {
     
     // Helper: convertir Date en minutes depuis minuit (heure locale Paris)
     const dateEnMinutes = (d) => {
-      // Ajouter 1h pour Paris (UTC+1 en hiver)
-      const parisDate = new Date(d.getTime() + 60 * 60 * 1000);
-      return parisDate.getUTCHours() * 60 + parisDate.getUTCMinutes();
+      // Utiliser la vraie timezone Europe/Paris (gère été/hiver automatiquement)
+      const parisStr = d.toLocaleString('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false });
+      const [h, m] = parisStr.split(':').map(Number);
+      return h * 60 + m;
     };
     
     // 4. CALCUL MÉTIER : Temps travaillé net vs temps prévu
@@ -2138,7 +2143,10 @@ const getBilanJournalier = async (req, res) => {
     segments.forEach((segment, idx) => {
       const debutPrevu = heureEnMinutes(segment.debut || segment.start);
       const finPrevue = heureEnMinutes(segment.fin || segment.end);
-      const dureePrevue = finPrevue - debutPrevu;
+      // Gérer le passage à minuit pour la durée prévue (ex: 22:00-01:00)
+      const dureePrevue = finPrevue >= debutPrevu 
+        ? finPrevue - debutPrevu 
+        : (1440 - debutPrevu) + finPrevue;
       minutesPrevues += dureePrevue;
       
       // Trouver le pointage correspondant (même index)
@@ -2150,6 +2158,10 @@ const getBilanJournalier = async (req, res) => {
       if (pointage) {
         arriveeReelle = dateEnMinutes(pointage.arrivee.horodatage);
         departReel = dateEnMinutes(pointage.depart.horodatage);
+        // Gérer le passage à minuit (départ 00:16, arrivée 21:50 → ajouter 24h)
+        if (departReel < arriveeReelle) {
+          departReel += 1440; // +24h en minutes
+        }
         dureeReelle = departReel - arriveeReelle;
         minutesTravaillees += dureeReelle;
       }
@@ -2164,8 +2176,8 @@ const getBilanJournalier = async (req, res) => {
           duree: dureePrevue
         },
         reel: pointage ? {
-          debut: `${Math.floor(arriveeReelle / 60)}:${String(arriveeReelle % 60).padStart(2, '0')}`,
-          fin: `${Math.floor(departReel / 60)}:${String(departReel % 60).padStart(2, '0')}`,
+          debut: `${Math.floor((arriveeReelle % 1440) / 60)}:${String(arriveeReelle % 60).padStart(2, '0')}`,
+          fin: `${Math.floor((departReel % 1440) / 60)}:${String(departReel % 60).padStart(2, '0')}`,
           duree: dureeReelle
         } : null,
         ecart: ecartSegment

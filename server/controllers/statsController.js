@@ -7,6 +7,8 @@ const getStatsRH = async (req, res) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0,0,0,0);
     const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23,59,59,999);
+    // 🌙 Fenêtre étendue pour capturer les sorties post-minuit des shifts tardifs
+    const todayEndExtended = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 6,0,0,0);
     const premierDuMois = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // Parallel base queries
@@ -29,7 +31,7 @@ const getStatsRH = async (req, res) => {
         select: { id:true, statut:true, dateSortie:true } 
       }),
       prisma.pointage.findMany({
-        where: { horodatage: { gte: todayStart, lte: todayEnd } },
+        where: { horodatage: { gte: todayStart, lte: todayEndExtended } },
         select: { id:true, userId:true, horodatage:true, type:true }
       }),
       prisma.conge.findMany({
@@ -221,8 +223,11 @@ const getAllPointages = async (req, res) => {
     if (type) where.type = type;
     if (date) {
       const debut = new Date(`${date}T00:00:00`);
-      const fin = new Date(`${date}T23:59:59`);
-      where.horodatage = { gte: debut, lte: fin };
+      // 🌙 Étendre jusqu'à 06:00 J+1 pour capturer les sorties post-minuit
+      const finDate = new Date(`${date}T00:00:00`);
+      finDate.setDate(finDate.getDate() + 1);
+      finDate.setHours(6, 0, 0, 0);
+      where.horodatage = { gte: debut, lte: finDate };
     }
 
     const pointages = await prisma.pointage.findMany({
