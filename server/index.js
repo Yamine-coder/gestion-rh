@@ -56,8 +56,9 @@ const corsOptions = {
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    // Accepter les origines explicites + les URLs Vercel du projet chez-antoine
-    const isVercelPreview = origin.endsWith('.vercel.app') && origin.includes('chez-antoine');
+    // Accepter les origines explicites + les URLs Vercel du projet
+    const isVercelPreview = origin.endsWith('.vercel.app') && 
+      (origin.includes('chez-antoine') || origin.includes('yamines-projects'));
     
     if (allowedOrigins.includes(origin) || isVercelPreview) {
       callback(null, true);
