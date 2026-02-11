@@ -327,8 +327,10 @@ const syncAnomaliesFromComparison = async (req, res) => {
       // Préparer les détails spécifiques selon le type
       const details = {
         ecartMinutes: ecart.ecartMinutes || null,
-        heurePrevu: ecart.heurePrevu || null,
-        heureReelle: ecart.heureReelle || null,
+        heurePrevu: ecart.heurePrevu || ecart.prevu || null,
+        heureReelle: ecart.heureReelle || ecart.reel || null,
+        heureArriveeReelle: ecart.heureArriveeReelle || null,
+        heureDepartReelle: ecart.heureDepartReelle || null,
         motif: ecart.motif || null,
         originalDescription: ecart.description,
         requiresAdminValidation: ecart.requiresAdminValidation || false
@@ -801,9 +803,11 @@ const traiterAnomalie = async (req, res) => {
         const dateDebut = new Date(dateAnomalie);
         dateDebut.setHours(0, 0, 0, 0);
         const dateFin = new Date(dateAnomalie);
-        dateFin.setHours(23, 59, 59, 999);
+        // Étendre jusqu'au lendemain 10h pour couvrir les shifts de nuit
+        dateFin.setDate(dateFin.getDate() + 1);
+        dateFin.setHours(10, 0, 0, 0);
         
-        // Récupérer les pointages du jour
+        // Récupérer les pointages du jour (+ lendemain matin pour shifts nuit)
         const pointagesDuJour = await prisma.pointage.findMany({
           where: {
             userId: anomalie.employeId,
@@ -841,6 +845,18 @@ const traiterAnomalie = async (req, res) => {
           if (pointagesDuJour.length > 1) {
             departPointage = new Date(dernierPointage.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
           }
+        }
+        
+        // Fallback: utiliser les données de l'anomalie si les pointages ne sont pas trouvés
+        if (!arriveePointage && anomalieDetails.heureArriveeReelle) {
+          arriveePointage = anomalieDetails.heureArriveeReelle;
+        }
+        if (!departPointage && anomalieDetails.heureDepartReelle) {
+          departPointage = anomalieDetails.heureDepartReelle;
+        }
+        // Fallback supplémentaire depuis les champs heureReelle/heurePrevu
+        if (!departPointage && anomalieDetails.heureReelle) {
+          departPointage = anomalieDetails.heureReelle;
         }
         
         // Extraire le créneau prévu depuis le shift

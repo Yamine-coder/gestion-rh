@@ -1055,10 +1055,11 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
       orderBy: { date: 'asc' }
     });
 
+    const dateFinEtendueExportIndiv = etendreFinPourNuit(dateFin);
     const pointages = await prisma.pointage.findMany({
       where: {
         userId: parseInt(employeId),
-        horodatage: { gte: dateDebut, lte: dateFin }
+        horodatage: { gte: dateDebut, lte: dateFinEtendueExportIndiv }
       },
       orderBy: { horodatage: 'asc' }
     });
@@ -1093,14 +1094,7 @@ router.get('/employe/:employeId/export', authenticateToken, isAdmin, async (req,
     csvLines.push('Date,Heures Prévues,Heures Travaillées,Écart,Type,Motif');
     
     // Traitement simplifié des données
-    const pointagesParJour = new Map();
-    pointages.forEach(p => {
-      const dateKey = toLocalDateString(p.horodatage);
-      if (!pointagesParJour.has(dateKey)) {
-        pointagesParJour.set(dateKey, []);
-      }
-      pointagesParJour.get(dateKey).push(p);
-    });
+    const pointagesParJour = grouperParJourBusiness(pointages);
 
     let totalPrevues = 0;
     let totalTravaillees = 0;

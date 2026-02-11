@@ -404,7 +404,7 @@ export default function ModalTraiterAnomalie({
       // Pour le paiement en extra - simplifié: juste les heures
       // Le taux horaire et la méthode seront choisis au moment du paiement dans ExtrasManager
       if (action === 'payer_extra') {
-        options.heuresExtra = parseFloat(heuresExtra);
+        options.heuresExtra = parseFloat(heuresExtra) || 0; // heuresExtra est déjà en heures décimales
         // Taux par défaut 10€/h sera utilisé côté backend
       }
 
@@ -461,14 +461,18 @@ export default function ModalTraiterAnomalie({
 
       // Message spécifique pour paiement extra
       if (action === 'payer_extra') {
-        details.push({ text: `Paiement créé : ${heuresExtra}h` });
+        const val = parseFloat(heuresExtra) || 0; const h = Math.floor(val); const r = Math.round((val - h) * 60);
+        const label = h > 0 ? `${h}h${r > 0 ? String(r).padStart(2,'0') : ''}` : `${r}min`;
+        details.push({ text: `Paiement créé : ${label}` });
         details.push({ text: 'Retrouvez-le dans "Suivi Extras"' });
       }
 
       // Message spécifique pour conversion en extra
       if (action === 'convertir_extra') {
         const heures = heuresExtra || anomalie?.details?.heuresTravaillees || 0;
-        details.push({ text: `Converti en ${heures}h extra` });
+        const cval = parseFloat(heures) || 0; const ch = Math.floor(cval); const cr = Math.round((cval - ch) * 60);
+        const clabel = ch > 0 ? `${ch}h${cr > 0 ? String(cr).padStart(2,'0') : ''}` : `${cr}min`;
+        details.push({ text: `Converti en ${clabel} extra` });
         details.push({ text: 'Paiement créé dans "Suivi Extras"' });
       }
       
@@ -640,14 +644,58 @@ export default function ModalTraiterAnomalie({
             {/* Détails en grille */}
             {anomalie.details && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {anomalie.details.ecartMinutes && (
-                  <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
-                    <div className="text-[10px] text-slate-400 uppercase mb-0.5">Écart</div>
-                    <div className={`text-sm font-semibold ${anomalie.details.ecartMinutes > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {anomalie.details.ecartMinutes > 0 ? '+' : ''}{anomalie.details.ecartMinutes} min
+                {(() => {
+                  const type = anomalie.type || '';
+                  const isExtra = type.includes('extra') || type.includes('heures_sup') || type.includes('hors_plage');
+                  
+                  if (isExtra) {
+                    // Pour extras : afficher la durée réellement travaillée
+                    const heureArr = anomalie.details.heureArriveeReelle || anomalie.details.heureReelle;
+                    const heureDep = anomalie.details.heureDepartReelle;
+                    if (heureArr && heureDep) {
+                      const [aH, aM] = heureArr.split(':').map(Number);
+                      const [dH, dM] = heureDep.split(':').map(Number);
+                      let totalMin = (dH * 60 + dM) - (aH * 60 + aM);
+                      if (totalMin < 0) totalMin += 1440;
+                      const h = Math.floor(totalMin / 60);
+                      const r = totalMin % 60;
+                      return (
+                        <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
+                          <div className="text-[10px] text-slate-400 uppercase mb-0.5">Durée travaillée</div>
+                          <div className="text-sm font-semibold text-blue-600">
+                            {h > 0 ? `${h}h${r > 0 ? String(r).padStart(2,'0') : ''}` : `${totalMin}min`}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }
+                  
+                  // Pour retards/avances/départs anticipés : badge contextuel
+                  if (!anomalie.details.ecartMinutes) return null;
+                  const mins = Math.abs(anomalie.details.ecartMinutes);
+                  const h = Math.floor(mins / 60);
+                  const r = mins % 60;
+                  const dureeLabel = h > 0 ? `${h}h${r > 0 ? String(r).padStart(2,'0') : ''}` : `${mins}min`;
+                  
+                  let label, colorClass;
+                  if (type.includes('retard')) {
+                    label = 'Retard'; colorClass = 'text-red-600';
+                  } else if (type.includes('depart_premature') || type.includes('depart_anticipe')) {
+                    label = 'Départ anticipé'; colorClass = 'text-amber-600';
+                  } else if (type.includes('arrivee_anticipee')) {
+                    label = 'Avance'; colorClass = 'text-emerald-600';
+                  } else {
+                    label = 'Écart'; colorClass = anomalie.details.ecartMinutes > 0 ? 'text-emerald-600' : 'text-red-600';
+                  }
+                  
+                  return (
+                    <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
+                      <div className="text-[10px] text-slate-400 uppercase mb-0.5">{label}</div>
+                      <div className={`text-sm font-semibold ${colorClass}`}>{dureeLabel}</div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
                 {anomalie.details.heurePrevu && (
                   <div className="bg-white rounded-lg p-2 text-center border border-slate-200">
                     <div className="text-[10px] text-slate-400 uppercase mb-0.5">Prévu</div>
@@ -796,13 +844,13 @@ export default function ModalTraiterAnomalie({
                     <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase mb-0.5">Prévu</div>
                       <div className="text-lg font-semibold text-slate-700">
-                        {(bilanJournalier.minutesPrevues / 60 || 0).toFixed(1)}h
+                        {(() => { const m = bilanJournalier.minutesPrevues || 0; const h = Math.floor(m / 60); const r = Math.round(m % 60); return r > 0 ? `${h}h${String(r).padStart(2,'0')}` : `${h}h`; })()}
                       </div>
                     </div>
                     <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
                       <div className="text-[10px] text-slate-400 uppercase mb-0.5">Travaillé</div>
                       <div className="text-lg font-semibold text-blue-600">
-                        {(bilanJournalier.minutesTravaillees / 60 || 0).toFixed(1)}h
+                        {(() => { const m = bilanJournalier.minutesTravaillees || 0; const h = Math.floor(m / 60); const r = Math.round(m % 60); return r > 0 ? `${h}h${String(r).padStart(2,'0')}` : `${h}h`; })()}
                       </div>
                     </div>
                     <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
@@ -810,7 +858,7 @@ export default function ModalTraiterAnomalie({
                       <div className={`text-lg font-semibold ${
                         bilanJournalier.soldeNet >= 0 ? 'text-emerald-600' : 'text-red-600'
                       }`}>
-                        {bilanJournalier.soldeNet >= 0 ? '+' : ''}{bilanJournalier.soldeNet?.toFixed(2) || 0}h
+                        {(() => { const sm = bilanJournalier.soldeMinutes || Math.round((bilanJournalier.soldeNet || 0) * 60); const abs = Math.abs(sm); const sign = sm >= 0 ? '+' : '-'; const h = Math.floor(abs / 60); const r = abs % 60; return r > 0 ? `${sign}${h}h${String(r).padStart(2,'0')}` : `${sign}${h}h`; })()}
                       </div>
                     </div>
                   </div>
@@ -1027,7 +1075,7 @@ export default function ModalTraiterAnomalie({
                   <div className="mb-4 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-2">
                     <CheckCircle className="h-4 w-4 text-emerald-500" />
                     <span className="text-xs text-emerald-700">
-                      ✓ Solde positif (+{bilanJournalier.soldeNet.toFixed(2)}h) - Paiement recommandé
+                      ✓ Solde positif (+{(() => { const sm = bilanJournalier.soldeMinutes || Math.round(bilanJournalier.soldeNet * 60); const h = Math.floor(sm / 60); const r = sm % 60; return h > 0 ? `${h}h${r > 0 ? String(r).padStart(2,'0') : ''}` : `${sm}min`; })()}) - Paiement recommandé
                     </span>
                   </div>
                 )}
@@ -1036,24 +1084,46 @@ export default function ModalTraiterAnomalie({
                 <div className="bg-white rounded-lg p-4 border border-purple-200 mb-4">
                   <div className="text-center">
                     <div className="text-3xl font-bold text-purple-700 mb-1">
-                      {heuresExtra ? `${parseFloat(heuresExtra).toFixed(2)}h` : '0h'}
+                      {(() => { const val = parseFloat(heuresExtra) || 0; const h = Math.floor(val); const r = Math.round((val - h) * 60); return h > 0 ? `${h}h${r > 0 ? String(r).padStart(2,'0') : ''}` : `${r}min`; })()}
                     </div>
                     <div className="text-sm text-gray-500">à enregistrer pour paiement</div>
                   </div>
                   
-                  {/* Champ heures modifiable si besoin */}
+                  {/* Champs heures + minutes modifiables */}
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <label className="block text-xs font-medium text-gray-500 mb-1 text-center">
-                      Modifier les heures si nécessaire
+                      Modifier si nécessaire
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.1"
-                      value={heuresExtra}
-                      onChange={(e) => setHeuresExtra(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                    />
+                    <div className="flex items-center justify-center gap-2">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={Math.floor(parseFloat(heuresExtra) || 0)}
+                        onChange={(e) => {
+                          const h = parseInt(e.target.value) || 0;
+                          const val = parseFloat(heuresExtra) || 0;
+                          const mins = Math.round((val - Math.floor(val)) * 60);
+                          setHeuresExtra((h + mins / 60).toFixed(2));
+                        }}
+                        className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-500">h</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="59"
+                        value={Math.round(((parseFloat(heuresExtra) || 0) - Math.floor(parseFloat(heuresExtra) || 0)) * 60)}
+                        onChange={(e) => {
+                          const mins = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                          const h = Math.floor(parseFloat(heuresExtra) || 0);
+                          setHeuresExtra((h + mins / 60).toFixed(2));
+                        }}
+                        className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <span className="text-sm font-medium text-gray-500">min</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1112,24 +1182,46 @@ export default function ModalTraiterAnomalie({
                 <div className="bg-white rounded-lg p-4 border border-emerald-200 mb-4">
                   <div className="text-center">
                     <div className="text-3xl font-bold text-emerald-700 mb-1">
-                      {heuresExtra ? `${parseFloat(heuresExtra).toFixed(2)}h` : (anomalie?.details?.heuresTravaillees ? `${anomalie.details.heuresTravaillees}h` : '0h')}
+                      {(() => { const val = parseFloat(heuresExtra) || 0; const h = Math.floor(val); const r = Math.round((val - h) * 60); return h > 0 ? `${h}h${r > 0 ? String(r).padStart(2,'0') : ''}` : `${r}min`; })()}
                     </div>
                     <div className="text-sm text-gray-500">à convertir en extra</div>
                   </div>
                   
-                  {/* Champ heures modifiable si besoin */}
+                  {/* Champs heures + minutes modifiables */}
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <label className="block text-xs font-medium text-gray-500 mb-1 text-center">
-                      Modifier les heures si nécessaire
+                      Modifier si nécessaire
                     </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.1"
-                      value={heuresExtra || anomalie?.details?.heuresTravaillees || ''}
-                      onChange={(e) => setHeuresExtra(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                    />
+                    <div className="flex items-center justify-center gap-2">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={Math.floor(parseFloat(heuresExtra) || 0)}
+                        onChange={(e) => {
+                          const h = parseInt(e.target.value) || 0;
+                          const val = parseFloat(heuresExtra) || 0;
+                          const mins = Math.round((val - Math.floor(val)) * 60);
+                          setHeuresExtra((h + mins / 60).toFixed(2));
+                        }}
+                        className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      <span className="text-sm font-medium text-gray-500">h</span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="59"
+                        value={Math.round(((parseFloat(heuresExtra) || 0) - Math.floor(parseFloat(heuresExtra) || 0)) * 60)}
+                        onChange={(e) => {
+                          const mins = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                          const h = Math.floor(parseFloat(heuresExtra) || 0);
+                          setHeuresExtra((h + mins / 60).toFixed(2));
+                        }}
+                        className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                      <span className="text-sm font-medium text-gray-500">min</span>
+                    </div>
                   </div>
                 </div>
 

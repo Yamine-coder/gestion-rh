@@ -1341,6 +1341,7 @@ function KanbanColumn({
 function KanbanCard({ paiement, onClick, onAnnuler, onPayerDirect, isPriority, isPaid, isCancelled, isWaitingPointage, isSelected, onToggleSelect }) {
   const { employe, date, heures, montant, pointageValide, arriveeReelle, departReelle, methodePaiement, payeLe, commentaire, source, ecartHeures } = paiement;
   const [showMenu, setShowMenu] = useState(false);
+  const [showConfirmAnnuler, setShowConfirmAnnuler] = useState(false);
   
   const formatDate = (d) => {
     const dt = new Date(d);
@@ -1645,10 +1646,8 @@ function KanbanCard({ paiement, onClick, onAnnuler, onPayerDirect, isPriority, i
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (window.confirm('Annuler cet extra ?')) {
-                        onAnnuler(paiement.id, 'Annulé manuellement');
-                      }
                       setShowMenu(false);
+                      setShowConfirmAnnuler(true);
                     }}
                     className='w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 whitespace-nowrap'
                   >
@@ -1661,6 +1660,38 @@ function KanbanCard({ paiement, onClick, onAnnuler, onPayerDirect, isPriority, i
           )}
         </div>
       </div>
+
+      {/* Confirmation d'annulation inline */}
+      {showConfirmAnnuler && (
+        <div 
+          className='absolute inset-0 bg-white/95 backdrop-blur-sm rounded-lg z-20 flex flex-col items-center justify-center p-3 border-2 border-red-200'
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Ban className='w-5 h-5 text-red-500 mb-1.5' />
+          <p className='text-sm font-medium text-gray-800 mb-1'>Annuler cet extra ?</p>
+          <p className='text-xs text-gray-500 mb-3 text-center'>
+            {employe?.prenom} {employe?.nom} — {Number(heures).toFixed(1)}h
+          </p>
+          <div className='flex gap-2'>
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowConfirmAnnuler(false); }}
+              className='px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors'
+            >
+              Non
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAnnuler(paiement.id, 'Annulé manuellement');
+                setShowConfirmAnnuler(false);
+              }}
+              className='px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors'
+            >
+              Oui, annuler
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1734,28 +1765,45 @@ function PayerModal({ paiement, onClose, onConfirm, loading }) {
         <div className='p-4 space-y-3'>
           {/* Résumé + Pointage */}
           <div className='bg-gray-50 rounded-lg p-3'>
-            <div className='flex justify-between items-center mb-2'>
-              <div>
-                <span className='text-[10px] text-gray-500 uppercase'>Créneau</span>
-                <div className='text-sm font-medium text-gray-800'>
-                  {segment ? `${segment.start} - ${segment.end}` : '-'}
-                </div>
-              </div>
-              <div className='text-right'>
-                <span className='text-[10px] text-gray-500 uppercase'>Durée</span>
-                <div className='text-sm font-medium text-gray-800'>{heures.toFixed(1)}h</div>
-              </div>
+            {/* Programmé */}
+            <div className='flex items-center gap-2 mb-2'>
+              <div className='w-2 h-2 rounded-full bg-[#cf292c]/30 flex-shrink-0'></div>
+              <span className='text-xs text-gray-500 w-20'>Programmé</span>
+              <span className='text-sm font-medium text-gray-800'>
+                {segment ? `${segment.start} - ${segment.end}` 
+                  : paiement.segmentInitial ? paiement.segmentInitial.replace('-', ' - ')
+                  : <span className='text-gray-400 italic'>Aucun shift prévu</span>}
+              </span>
             </div>
-            {/* Statut pointage */}
-            {paiement.pointageValide ? (
-              <div className='flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded'>
-                <CheckCircle2 className='w-3.5 h-3.5' />
-                <span>Pointé : {paiement.arriveeReelle} - {paiement.departReelle}</span>
-              </div>
-            ) : (
-              <div className='flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-2 py-1.5 rounded border border-red-200'>
-                <AlertTriangle className='w-3.5 h-3.5' />
-                <span className='font-medium flex items-center gap-1'><AlertTriangle className='w-3.5 h-3.5' /> Non pointé - Paiement non recommandé</span>
+
+            {/* Pointé */}
+            <div className='flex items-center gap-2 mb-3'>
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${paiement.pointageValide ? 'bg-emerald-400' : 'bg-red-400'}`}></div>
+              <span className='text-xs text-gray-500 w-20'>Pointé</span>
+              {paiement.pointageValide ? (
+                <span className='text-sm font-medium text-emerald-700'>
+                  {paiement.arriveeReelle || paiement.anomalie?.details?.heureArriveeReelle || '—'}
+                  {' - '}
+                  {paiement.departReelle || paiement.anomalie?.details?.heureDepartReelle || '—'}
+                </span>
+              ) : (
+                <span className='text-sm font-medium text-red-500'>Non pointé</span>
+              )}
+            </div>
+
+            {/* Séparateur + Extra à payer */}
+            <div className='border-t border-gray-200 pt-2 flex items-center justify-between'>
+              <span className='text-xs font-medium text-[#cf292c] uppercase'>Extra à payer</span>
+              <span className='text-lg font-bold text-[#cf292c]'>
+                {(() => { const h = Math.floor(heures); const m = Math.round((heures - h) * 60); return h > 0 ? `${h}h${m > 0 ? String(m).padStart(2,'0') : ''}` : `${m}min`; })()}
+              </span>
+            </div>
+
+            {/* Alerte si non pointé */}
+            {!paiement.pointageValide && (
+              <div className='mt-2 flex items-center gap-1.5 text-xs text-red-600 bg-red-50 px-2 py-1.5 rounded border border-red-200'>
+                <AlertTriangle className='w-3.5 h-3.5 flex-shrink-0' />
+                <span className='font-medium'>Aucun pointage — paiement non recommandé</span>
               </div>
             )}
           </div>

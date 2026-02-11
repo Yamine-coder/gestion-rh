@@ -576,7 +576,7 @@ function calculerEcarts(planifie, reel) {
           reel: pointage.depart,
           heureArriveeReelle: pointage.arrivee,
           heureDepartReelle: pointage.depart,
-          ecartMinutes: ecartDepart,
+          ecartMinutes: -ecartDepart, // Signe inversé : positif = travaillé plus, négatif = travaillé moins
           segment: segment.originalIndex || (segIdx + 1) // 🆕 Utiliser l'index original si disponible
         });
       }
