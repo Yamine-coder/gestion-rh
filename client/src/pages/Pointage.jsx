@@ -51,16 +51,16 @@ const Pointage = () => {
     if (effectiveWorkDay) {
       return {
         date: parseLocalDate(effectiveWorkDay),
-        isNightShift: hour < 6 || hour >= 22,
-        displayLabel: (hour < 6 || hour >= 22) ? 'Service de nuit' : 'Journée de travail'
+        isNightShift: hour < 5 || hour >= 22,
+        displayLabel: (hour < 5 || hour >= 22) ? 'Service de nuit' : 'Journée de travail'
       };
     }
     
     // Fallback : utiliser la date actuelle (avant détection du shift)
     return {
       date: new Date(now),
-      isNightShift: hour < 6 || hour >= 22,
-      displayLabel: (hour < 6 || hour >= 22) ? 'Service de nuit' : 'Journée de travail'
+      isNightShift: hour < 5 || hour >= 22,
+      displayLabel: (hour < 5 || hour >= 22) ? 'Service de nuit' : 'Journée de travail'
     };
   }, [heureActuelle, effectiveWorkDay]);
 
@@ -97,15 +97,16 @@ const Pointage = () => {
   useEffect(() => {
   // console.log('Token présent ?', !!token);
     
-    // Fonction utilitaire pour calculer la journée de travail (06h-06h)
+    // Fonction utilitaire pour calculer le jour business (cutoff 05h)
+    const CUTOFF_HOUR = 5; // Aligné avec server/utils/businessDayUtils.js
     const getWorkDay = (date) => {
       const d = new Date(date);
       const hour = d.getHours();
-      // Si avant 6h du matin, c'est encore la journée de travail de la veille
-      if (hour < 6) {
+      // Si avant l'heure de coupure, c'est encore la journée de travail de la veille
+      if (hour < CUTOFF_HOUR) {
         d.setDate(d.getDate() - 1);
       }
-      return toLocalDateString(d); // Utilise l'utilitaire centralisé
+      return toLocalDateString(d);
     };
 
     const fetchHistorique = async (workDayFilter = null) => {
@@ -115,24 +116,22 @@ const Pointage = () => {
           headers: { Authorization: `Bearer ${token}` }
         });
         
-        // 🎯 LOGIQUE SIRH : Si on a un jour de travail effectif, l'utiliser
-        // Sinon, utiliser la date calendaire du pointage
+        // 🎯 LOGIQUE JOUR BUSINESS : Filtrer par jour business (cutoff 05h)
+        // Un pointage à 01:15 le 11/02 → jour business = 10/02
         const now = new Date();
-        const todayStr = toLocalDateString(now);
-        const yesterdayStr = toLocalDateString(new Date(now.getTime() - 24*60*60*1000));
+        const currentBusinessDay = getWorkDay(now);
         
-        // Filtrer les pointages de J et J-1 (pour couvrir les shifts de nuit)
         const pointagesJournee = res.data.filter(p => {
           const pointageDate = new Date(p.horodatage);
-          const pointageDateStr = toLocalDateString(pointageDate);
+          const pointageBusinessDay = getWorkDay(pointageDate);
           
           // Si on a un workDayFilter (effectiveWorkDay), filtrer dessus
           if (workDayFilter) {
-            return pointageDateStr === workDayFilter;
+            return pointageBusinessDay === workDayFilter;
           }
           
-          // Sinon, prendre les pointages d'aujourd'hui et d'hier
-          return pointageDateStr === todayStr || pointageDateStr === yesterdayStr;
+          // Sinon, prendre les pointages du jour business actuel
+          return pointageBusinessDay === currentBusinessDay;
         });
         
         setHistorique(pointagesJournee);
@@ -213,7 +212,7 @@ const Pointage = () => {
           // Distance en minutes (gérer le passage minuit)
           let distance = Math.abs(currentMinutes - shiftStart);
           // Si le shift commence demain matin tôt, ajuster
-          if (shiftStart < 360 && currentMinutes > 1200) { // shift avant 6h, on est après 20h
+          if (shiftStart < 300 && currentMinutes > 1200) { // shift avant 5h (cutoff), on est après 20h
             distance = Math.abs(currentMinutes - (shiftStart + 1440)); // +24h
           }
           
@@ -238,7 +237,7 @@ const Pointage = () => {
           
           // Si le shift d'hier finit après minuit (ex: 02:00 = 120min)
           // et qu'on est avant cette heure, c'est pertinent
-          if (endMinutes < 360 && currentMinutes < endMinutes + 60) { // finit avant 6h, on est proche
+          if (endMinutes < 300 && currentMinutes < endMinutes + 60) { // finit avant 5h (cutoff), on est proche
             const shiftStart = getShiftStartMinutes(shift);
             // Calculer distance depuis le début du shift (hier soir)
             const distance = currentMinutes + (1440 - (shiftStart || 0)); // distance depuis hier
@@ -272,7 +271,7 @@ const Pointage = () => {
         if (!workDay) {
           const now = new Date();
           const workDayDate = new Date(now);
-          if (now.getHours() < 6) {
+          if (now.getHours() < CUTOFF_HOUR) {
             workDayDate.setDate(workDayDate.getDate() - 1);
           }
           workDay = toLocalDateString(workDayDate);
@@ -388,17 +387,22 @@ const Pointage = () => {
   // 🎯 SIRH : Re-fetch des pointages quand le jour de travail effectif est détecté
   useEffect(() => {
     if (effectiveWorkDay && token) {
+      const CUTOFF = 5; // Aligné avec businessDayUtils
       const fetchPointagesForWorkDay = async () => {
         try {
           const res = await axios.get(`${API_BASE}/pointage/mes-pointages`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           
-          // Filtrer pour le jour de travail effectif
+          // Filtrer pour le jour de travail effectif (jour business, pas calendaire)
           const pointagesJournee = res.data.filter(p => {
             const pointageDate = new Date(p.horodatage);
-            const pointageDateStr = toLocalDateString(pointageDate);
-            return pointageDateStr === effectiveWorkDay;
+            const d = new Date(pointageDate);
+            if (d.getHours() < CUTOFF) {
+              d.setDate(d.getDate() - 1);
+            }
+            const pointageBusinessDay = toLocalDateString(d);
+            return pointageBusinessDay === effectiveWorkDay;
           });
           
           setHistorique(pointagesJournee);
@@ -512,8 +516,8 @@ const Pointage = () => {
         const nowMinutes = now.getHours() * 60 + now.getMinutes();
         
         // Shift de jour typique (fin avant minuit)
-        const isNightTime = nowMinutes < 6 * 60; // Entre 00:00 et 05:59
-        const isShiftDayShift = latestEndMinutes >= 6 * 60 && latestEndMinutes <= 23 * 60; // Fin entre 06:00 et 23:00
+        const isNightTime = nowMinutes < 5 * 60; // Entre 00:00 et 04:59 (cutoff 05h)
+        const isShiftDayShift = latestEndMinutes >= 5 * 60 && latestEndMinutes <= 23 * 60; // Fin entre 05:00 et 23:00
         
         // Le shift est terminé si:
         // 1. On est après l'heure de fin (même jour)

@@ -3,7 +3,7 @@
 
 const WORK_DAY_CONFIG = {
   // Heure de coupure : avant cette heure, on considère que c'est encore la journée précédente
-  CUTOFF_HOUR: 6, // 6h du matin par défaut
+  CUTOFF_HOUR: 5, // 5h du matin — aligné avec server/utils/businessDayUtils.js
   
   // Documentation des cas d'usage
   EXAMPLES: {
@@ -36,7 +36,7 @@ const WORK_DAY_CONFIG = {
 /**
  * Calcule les bornes de la "journée de travail" selon la logique métier
  * @param {Date} reference - Date de référence (généralement maintenant)
- * @param {number} cutoffHour - Heure de coupure (défaut: 6h)
+ * @param {number} cutoffHour - Heure de coupure (défaut: 5h)
  * @returns {Object} { debutJournee, finJournee }
  */
 function getWorkDayBounds(reference = new Date(), cutoffHour = WORK_DAY_CONFIG.CUTOFF_HOUR) {

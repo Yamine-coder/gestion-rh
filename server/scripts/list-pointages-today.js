@@ -9,7 +9,7 @@ const prisma = require('../prisma/client');
     const tomorrow = new Date(start);
     tomorrow.setDate(tomorrow.getDate()+1);
     const finEtendue = new Date(tomorrow);
-    finEtendue.setHours(6,0,0,0);
+    finEtendue.setHours(5,0,0,0);
 
     console.log('Fenêtre locale :', start.toString(), '->', now.toString(), '(étendue jusqu\'à', finEtendue.toString(), ')');
     console.log('Fenêtre ISO :', start.toISOString(), '->', now.toISOString(), '(étendue', finEtendue.toISOString(), ')');

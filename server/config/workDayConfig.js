@@ -36,7 +36,7 @@ const WORK_DAY_CONFIG = {
 /**
  * Calcule les bornes de la "journée de travail" selon la logique métier
  * @param {Date} reference - Date de référence (généralement maintenant)
- * @param {number} cutoffHour - Heure de coupure (défaut: 6h)
+ * @param {number} cutoffHour - Heure de coupure (défaut: 5h)
  * @returns {Object} { debutJournee, finJournee }
  */
 function getWorkDayBounds(reference = new Date(), cutoffHour = WORK_DAY_CONFIG.CUTOFF_HOUR) {

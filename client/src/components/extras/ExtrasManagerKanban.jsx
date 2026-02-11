@@ -807,7 +807,7 @@ function ConfirmNonPointeModal({ data, onClose, onConfirm, onConfirmWithAdjust, 
       const [h, m] = heureFin.split(':').map(Number);
       const heureFinSegment = new Date(pDate);
       heureFinSegment.setHours(h, m, 0, 0);
-      if (h < 6) heureFinSegment.setDate(heureFinSegment.getDate() + 1);
+      if (h < 5) heureFinSegment.setDate(heureFinSegment.getDate() + 1);
       
       const now = new Date();
       if (now > heureFinSegment) {

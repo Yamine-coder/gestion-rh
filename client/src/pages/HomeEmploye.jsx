@@ -359,7 +359,7 @@ function HomeEmploye() {
     try {
   const [totalRes, pointagesRes] = await Promise.all([
         api.get('/pointage/total-aujourdhui'),
-        api.get('/pointage/mes-pointages')
+        api.get('/pointage/mes-pointages-aujourdhui')
       ]);
       setJourneeHeures(formatHeures(totalRes.data.totalHeures || 0));
   const arr = Array.isArray(pointagesRes.data) ? pointagesRes.data : [];

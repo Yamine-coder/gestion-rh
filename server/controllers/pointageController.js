@@ -147,9 +147,9 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
   const horodatage = new Date(pointage.horodatage);
   const dateStr = toLocalDateString(horodatage);
   
-  // 🌙 Pour les départs post-minuit (00:00-06:00), chercher aussi le shift de la VEILLE
+  // 🌙 Pour les départs post-minuit (00:00-05:00), chercher aussi le shift de la VEILLE
   const heureLocale = parseInt(horodatage.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }));
-  const cherchVeille = isSortie(type) && heureLocale < 6;
+  const cherchVeille = isSortie(type) && heureLocale < 5;
   
   let shift = await prisma.shift.findFirst({
     where: {

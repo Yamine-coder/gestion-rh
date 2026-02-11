@@ -10,7 +10,7 @@ const prisma = require('../prisma/client');
     // Fenêtre étendue (comme dans adminController)
     const finEtenduePointes = new Date(startOfToday);
     finEtenduePointes.setDate(finEtenduePointes.getDate() + 1);
-    finEtenduePointes.setHours(6,0,0,0);
+    finEtenduePointes.setHours(5,0,0,0);
 
     console.log('=== DIAGNOSTIC TAUX DE POINTAGE ===');
     console.log('Fenêtre:', startOfToday.toISOString(), '->', finEtenduePointes.toISOString());
