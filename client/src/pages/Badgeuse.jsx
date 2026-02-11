@@ -644,10 +644,10 @@ const Badgeuse = () => {
         </div>
 
         {/* Center - Scanner */}
-        <div className="w-full max-w-[280px] sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl flex-1 flex items-center">
+        <div className="w-full max-w-[380px] sm:max-w-md md:max-w-lg lg:max-w-xl xl:max-w-2xl flex-1 flex items-center">
           <div className="relative w-full">
             {/* Scanner frame */}
-            <div className="relative aspect-square rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden border-2 sm:border-4 border-white/20 shadow-2xl shadow-black/50">
+            <div className="relative aspect-[4/3] rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden border-2 sm:border-4 border-white/20 shadow-2xl shadow-black/50">
               
               {cameraChecking ? (
                 // État de chargement initial
@@ -666,7 +666,11 @@ const Badgeuse = () => {
               ) : !cameraError && cameraReady ? (
                 <>
                   <QrReader
-                    constraints={{ facingMode: 'user' }}  // Caméra avant pour tablette murale
+                    constraints={{
+                      facingMode: 'user',
+                      width: { ideal: 1280 },
+                      height: { ideal: 960 },
+                    }}
                     onResult={(result, error) => {
                       if (error && error.name !== 'NotFoundException') {
                         console.warn('Scanner:', error);
@@ -676,9 +680,9 @@ const Badgeuse = () => {
                       }
                     }}
                     videoId="video"
-                    scanDelay={300}
+                    scanDelay={150}
                     containerStyle={{ width: '100%', height: '100%' }}
-                    videoStyle={{ objectFit: 'cover' }}
+                    videoStyle={{ objectFit: 'cover', width: '100%', height: '100%' }}
                   />
                   
                   {/* Overlay pendant le traitement d'un scan */}
