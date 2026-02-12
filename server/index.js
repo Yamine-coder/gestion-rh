@@ -157,6 +157,22 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Self-ping keep-alive : empêche Render free tier de dormir (ping toutes les 14 min)
+if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+  const SELF_PING_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+  setInterval(async () => {
+    try {
+      const res = await fetch(`${SELF_PING_URL}/health`);
+      if (res.ok) {
+        console.log(`[KEEP-ALIVE] Ping OK — ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris' })}`);
+      }
+    } catch (err) {
+      console.log('[KEEP-ALIVE] Ping échoué:', err.message);
+    }
+  }, 14 * 60 * 1000); // 14 minutes
+  console.log('[KEEP-ALIVE] Self-ping activé (toutes les 14 min)');
+}
+
 // Global Express error handler
 app.use((err, req, res, next) => {
   console.error('[GLOBAL ERROR]', err.message);

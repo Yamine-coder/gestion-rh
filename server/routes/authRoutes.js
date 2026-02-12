@@ -77,7 +77,7 @@ router.post('/refresh-token', authMiddleware, async (req, res) => {
     const newToken = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: '7d' }
     );
 
     res.json({ token: newToken });

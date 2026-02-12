@@ -49,7 +49,7 @@ const signup = async (req, res) => {
         role: newUser.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: '7d' }
     );
 
     res.status(201).json({ token, role: newUser.role });
@@ -118,7 +118,7 @@ const login = async (req, res) => {
         role: user.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: '8h' }
+      { expiresIn: '7d' }
     );
 
     res.status(200).json({ 

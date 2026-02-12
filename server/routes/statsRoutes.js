@@ -39,7 +39,7 @@ function normaliserTypeAbsence(type) {
     return 'Arrêt maladie';
   }
   // Sans solde
-  if (t.includes('sans solde')) {
+  if (t.includes('sans solde') || t.includes('sans_solde') || t === 'sans solde') {
     return 'Congé sans solde';
   }
   // Exceptionnel
@@ -2001,7 +2001,7 @@ router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) 
       const congesCP = conges.filter(c => c.type === 'CP' || c.type === 'conge_paye');
       const congesRTT = conges.filter(c => c.type === 'RTT');
       const congesMaladie = conges.filter(c => c.type === 'maladie' || c.type === 'arret_maladie');
-      const congesSansSolde = conges.filter(c => c.type?.toLowerCase().includes('sans solde'));
+      const congesSansSolde = conges.filter(c => { const t = c.type?.toLowerCase() || ''; return t.includes('sans solde') || t.includes('sans_solde'); });
       const congesExceptionnel = conges.filter(c => c.type?.toLowerCase().includes('exceptionnel') || c.type?.toLowerCase().includes('familial'));
       const congesFormation = conges.filter(c => c.type?.toLowerCase().includes('formation'));
 

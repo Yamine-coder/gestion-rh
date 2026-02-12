@@ -271,29 +271,48 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     const datesRTT = [];
     const datesMaladie = [];
     const datesInjustifiees = [];
+    const datesSansSolde = [];
+    const datesFormation = [];
+    const datesExceptionnel = [];
     let joursCP = 0;
     let joursRTT = 0;
     let joursMaladie = 0;
 
     emp.heuresParJour?.forEach((jour) => {
+      // Ignorer les jours futurs (pas encore travaillés, ce n'est pas une absence)
+      const jourDate = new Date(jour.jour);
+      const now = new Date();
+      // Comparer en date Paris (sans heure)
+      const jourKey = jourDate.toISOString().slice(0, 10);
+      const todayKey = now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' }); // format YYYY-MM-DD
+      if (jourKey > todayKey) return;
+
       if (jour.type === 'absence' || (jour.heuresTravaillees === 0 && jour.heuresPrevues > 0)) {
         const dateFormatee = new Date(jour.jour).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' });
         const congeType = (jour.details?.congeType || jour.congeType || '').toLowerCase();
 
-        if (congeType.includes('maladie')) {
+        if (congeType.includes('maladie') || congeType.includes('arret')) {
           datesMaladie.push(dateFormatee);
           joursMaladie++;
         } else if (congeType.includes('rtt')) {
           datesRTT.push(dateFormatee);
           joursRTT++;
-        } else if (congeType.includes('cp') || congeType.includes('congé')) {
+        } else if (congeType.includes('sans') && congeType.includes('sold')) {
+          // "sans_solde", "sans solde", "Congé sans solde", etc.
+          datesSansSolde.push(dateFormatee);
+        } else if (congeType.includes('formation')) {
+          datesFormation.push(dateFormatee);
+        } else if (congeType.includes('exceptionnel')) {
+          datesExceptionnel.push(dateFormatee);
+        } else if (congeType.includes('cp') || congeType.includes('cong')) {
+          // "cp", "conge_paye", "congé payé" — APRÈS les checks sans solde/exceptionnel
           datesCP.push(dateFormatee);
           joursCP++;
         } else if (!congeType) {
           datesInjustifiees.push(dateFormatee);
         } else {
-          datesCP.push(dateFormatee);
-          joursCP++;
+          // Type inconnu → absence injustifiée plutôt que CP par défaut
+          datesInjustifiees.push(dateFormatee);
         }
       }
     });
@@ -343,6 +362,9 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       datesRTT,
       datesMaladie,
       datesInjustifiees,
+      datesSansSolde,
+      datesFormation,
+      datesExceptionnel,
       joursCP,
       joursRTT,
       joursMaladie,
@@ -396,84 +418,110 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     moyenneHeuresParJour: 0
   });
 
-  // === RAPPORT COMPTABLE PROFESSIONNEL ===
+  // === NAVETTE - RAPPORT HEURES ===
   const hrSheet = workbook.addWorksheet('Rapport Heures', {
     properties: { tabColor: { argb: 'FFCF292C' } },
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }]
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 4 }]
   });
 
-  // ENTREPRISE - nom en rouge
-  hrSheet.mergeCells('A1:L1');
-  const entrepriseCell = hrSheet.getCell('A1');
-  entrepriseCell.value = 'LE FOURNIL A PIZZAS - CHEZ ANTOINE';
-  entrepriseCell.font = { size: 14, bold: true, color: { argb: 'FFCF292C' } };
-  entrepriseCell.alignment = { vertical: 'middle', horizontal: 'center' };
-  hrSheet.getRow(1).height = 30;
-
-  // TITRE - professionnel avec fond sombre
-  hrSheet.mergeCells('A2:L2');
-  const titleCell = hrSheet.getCell('A2');
-  titleCell.value = 'RAPPORT MENSUEL - HEURES & ABSENCES';
-  titleCell.font = { size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
-  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: palette.dark } };
-  hrSheet.getRow(2).height = 28;
-
-  // PÉRIODE - avec fond gris clair
-  hrSheet.mergeCells('A3:L3');
-  const periodeCell = hrSheet.getCell('A3');
-  periodeCell.value = `Période : ${dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: 'long', year: 'numeric' })} au ${dateFin.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: 'long', year: 'numeric' })}  —  ${computedEmployes.length} salarié(s)`;
-  periodeCell.font = { size: 10, italic: true, color: { argb: palette.dark } };
-  periodeCell.alignment = { vertical: 'middle', horizontal: 'center' };
-  periodeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
-  hrSheet.getRow(3).height = 22;
-
-  // Ligne vide de séparation
-  hrSheet.addRow([]);
-
-  // EN-TÊTES - style professionnel avec bordures
-  const headerRow = hrSheet.addRow([
-    'Employé',
-    'Heures travaillées',
-    'Congés payés',
-    'RTT',
-    'Arrêt maladie',
-    'Congé sans solde',
-    'Congé exceptionnel',
-    'Formation',
-    'Abs. injustifiées',
-    'Navigo',
-    'Justificatif',
-    'Observations',
-    'Détail CP',
-    'Détail RTT',
-    'Détail Maladie',
-    'Détail Sans solde',
-    'Détail Exceptionnel',
-    'Détail Formation',
-    'Détail Injustifiées'
-  ]);
-  headerRow.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B7280' } };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-  headerRow.height = 32;
-  headerRow.eachCell((cell) => {
-    cell.border = {
-      top: { style: 'thin', color: { argb: palette.lightGray } },
-      bottom: { style: 'medium', color: { argb: palette.dark } },
-      left: { style: 'thin', color: { argb: palette.lightGray } },
-      right: { style: 'thin', color: { argb: palette.lightGray } }
-    };
-  });
-  headerRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-
-  const columnWidths = [25, 12, 22, 22, 22, 22, 22, 22, 22, 8, 12, 15, 30, 30, 30, 30, 30, 30, 30];
+  // Largeurs de colonnes (8 visibles + 7 cachées)
+  const columnWidths = [30, 38, 28, 14, 18, 16, 12, 22, 30, 30, 30, 30, 30, 30, 30];
   hrSheet.columns = columnWidths.map((width, i) => ({ key: `col${i}`, width }));
 
-  // Masquer les colonnes de détails (dates) - colonnes M à S (index 12 à 18)
-  for (let i = 13; i <= 19; i++) {
+  // Masquer les colonnes de détails (dates) - colonnes I à O (index 8 à 14)
+  for (let i = 9; i <= 15; i++) {
     hrSheet.getColumn(i).hidden = true;
   }
+
+  const moisFr = dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', month: 'long' });
+  const anneeFull = dateDebut.getFullYear();
+
+  // --- ROW 1 : TITRE + ENTREPRISE (compact) ---
+  hrSheet.mergeCells('A1:H1');
+  hrSheet.getRow(1).height = 28;
+  const titleCell = hrSheet.getCell('A1');
+  titleCell.value = { richText: [
+    { text: 'NAVETTE  —  ', font: { size: 13, bold: true, color: { argb: 'FF1F2937' } } },
+    { text: 'Le Fournil à Pizzas', font: { size: 13, bold: true, color: { argb: 'FFCF292C' } } }
+  ]};
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  titleCell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+
+  // --- ROW 2 : PÉRIODE + EMAIL (une seule ligne) ---
+  hrSheet.mergeCells('A2:H2');
+  hrSheet.getRow(2).height = 22;
+  const infoCell = hrSheet.getCell('A2');
+  infoCell.value = { richText: [
+    { text: `${moisFr} ${anneeFull}`, font: { size: 10, bold: true, color: { argb: 'FFCF292C' } } },
+    { text: '   •   Récapitulatif bulletins de salaires   •   ', font: { size: 9, color: { argb: 'FF6B7280' } } },
+    { text: 'sk.auditreporting@gmail.com', font: { size: 9, color: { argb: 'FF2563EB' }, underline: true } }
+  ]};
+  infoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+  // --- ROW 3 : Séparation fine ---
+  hrSheet.getRow(3).height = 4;
+
+  // --- ROW 4 : EN-TÊTES COLONNES (une seule ligne, sobre) ---
+  const hdrBg = 'FF374151';
+  const hdrFont = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+  const hdrRedFont = { bold: false, size: 7.5, italic: true, color: { argb: 'FFFFB3B3' } };
+  const hdrBorder = {
+    top: { style: 'thin', color: { argb: 'FF374151' } },
+    bottom: { style: 'medium', color: { argb: 'FF1F2937' } },
+    left: { style: 'hair', color: { argb: 'FF4B5563' } },
+    right: { style: 'hair', color: { argb: 'FF4B5563' } }
+  };
+
+  const headerDefs = [
+    { col: 1, rt: [
+      { text: 'NOM ET PRÉNOM', font: hdrFont }
+    ]},
+    { col: 2, rt: [
+      { text: 'ABSENCES + MOTIF\n', font: hdrFont },
+      { text: 'indiquez les dates', font: hdrRedFont }
+    ]},
+    { col: 3, rt: [
+      { text: 'CONGÉS PAYÉS PRIS\n', font: hdrFont },
+      { text: 'indiquez les dates', font: hdrRedFont }
+    ]},
+    { col: 4, rt: [
+      { text: 'PRIME\n', font: hdrFont },
+      { text: 'montant', font: hdrRedFont }
+    ]},
+    { col: 5, rt: [
+      { text: 'NAVIGO\n', font: hdrFont },
+      { text: 'mensuel / annuel', font: { size: 7.5, color: { argb: 'FFCBD5E1' } } }
+    ]},
+    { col: 6, rt: [
+      { text: 'TARIF\n', font: hdrFont },
+      { text: 'part salarié', font: { size: 7.5, color: { argb: 'FFCBD5E1' } } }
+    ]},
+    { col: 7, rt: [
+      { text: 'JUSTIF.', font: hdrFont }
+    ]},
+    { col: 8, rt: [
+      { text: 'OBSERVATIONS', font: hdrFont }
+    ]}
+  ];
+
+  hrSheet.getRow(4).height = 36;
+  headerDefs.forEach(({ col, rt }) => {
+    const cell = hrSheet.getCell(4, col);
+    cell.value = { richText: rt };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hdrBg } };
+    cell.border = hdrBorder;
+  });
+  hrSheet.getCell(4, 1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+  // En-têtes colonnes cachées (détails)
+  ['Détail CP', 'Détail RTT', 'Détail Maladie', 'Détail Sans solde', 'Détail Exceptionnel', 'Détail Formation', 'Détail Injustifiées'].forEach((label, i) => {
+    const cell = hrSheet.getCell(4, 9 + i);
+    cell.value = label;
+    cell.font = hdrFont;
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hdrBg } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  });
 
   // Préparer les liens Navigo pour l'Excel
   const navigoLinks = [];
@@ -482,7 +530,6 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     // Vérifier si l'employé a un justificatif Navigo VALIDÉ pour CE MOIS
     const justifMensuel = emp.justificatifsNavigo?.[0];
     const fichierNavigo = justifMensuel?.fichier;
-    const navigoValue = fichierNavigo ? 'Oui' : '';
     
     if (justifMensuel?.id) {
       const extension = path.extname(fichierNavigo || '').toLowerCase();
@@ -490,31 +537,52 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       
       navigoLinks.push({
         rowIndex: index,
-        justificatifId: justifMensuel.id, // ID en BDD pour la route /api/navigo/fichier/:id
+        justificatifId: justifMensuel.id,
         fileName: fileName,
         extension: extension
       });
     }
 
-    // Format avec dates : "X j (dates)"
-    const formatAbsence = (jours, dates) => {
-      if (!jours || jours === 0) return '-';
-      if (jours === 1 && dates && dates.length > 0) return `1 j (${dates[0]})`;
-      if (jours <= 3 && dates && dates.length > 0) return `${jours} j (${dates.join(', ')})`;
-      return `${jours} jours`;
-    };
+    // Absences : richText structuré (type en gras, dates en normal, un par ligne)
+    const absRichText = [];
+    const absTypes = [
+      { dates: emp.datesMaladie, label: 'Maladie', color: 'FFB91C1C' },
+      { dates: emp.datesRTT, label: 'RTT', color: 'FF1D4ED8' },
+      { dates: emp.datesSansSolde, label: 'Sans solde', color: 'FF92400E' },
+      { dates: emp.datesFormation, label: 'Formation', color: 'FF6D28D9' },
+      { dates: emp.datesExceptionnel, label: 'Exceptionnel', color: 'FF0E7490' },
+      { dates: emp.datesInjustifiees, label: 'Injustifié', color: 'FFDC2626' }
+    ];
+    absTypes.forEach(({ dates, label, color }) => {
+      if (dates?.length) {
+        if (absRichText.length) absRichText.push({ text: '\n', font: { size: 8 } });
+        absRichText.push(
+          { text: `${label} : `, font: { bold: true, size: 9, color: { argb: color } } },
+          { text: dates.join(', '), font: { size: 9, color: { argb: 'FF374151' } } }
+        );
+      }
+    });
+
+    // CP : richText structuré aussi
+    const cpRichText = [];
+    if (emp.datesCP?.length) {
+      cpRichText.push(
+        { text: `${emp.joursCP} jour${emp.joursCP > 1 ? 's' : ''} : `, font: { bold: true, size: 9, color: { argb: 'FF1D4ED8' } } },
+        { text: emp.datesCP.join(', '), font: { size: 9, color: { argb: 'FF374151' } } }
+      );
+    }
+
+    // Navigo type & tarif
+    const navigoType = emp.eligibleNavigo ? 'Mensuel' : '';
+    const navigoTarif = emp.eligibleNavigo ? '90,80' : '';
     
     const row = hrSheet.addRow([
       `${emp.nom.toUpperCase()} ${emp.prenom}`,
-      emp.heuresNormales.toFixed(1) + ' h', // Exclut les heures extra (non Navigo),
-      formatAbsence(emp.joursCP || 0, emp.datesCP),
-      formatAbsence(emp.joursRTT || 0, emp.datesRTT),
-      formatAbsence(emp.joursMaladie || 0, emp.datesMaladie),
-      formatAbsence(emp.joursSansSolde || 0, emp.datesSansSolde),
-      formatAbsence(emp.joursExceptionnel || 0, emp.datesExceptionnel),
-      formatAbsence(emp.joursFormation || 0, emp.datesFormation),
-      formatAbsence(emp.absencesInjustifiees || 0, emp.datesInjustifiees),
-      navigoValue,
+      '', // Absences — sera set en richText après
+      '', // CP — sera set en richText après
+      '', // Prime (à remplir manuellement par le comptable)
+      navigoType,
+      navigoTarif,
       '', // Justificatif
       '', // Observations
       // Colonnes cachées avec détails complets
@@ -527,14 +595,19 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       (emp.datesInjustifiees || []).join(', ') || '-'
     ]);
 
-    // Hauteur de ligne adaptée pour afficher les dates
-    row.height = 30;
+    // Appliquer richText pour absences et CP
+    if (absRichText.length) row.getCell(2).value = { richText: absRichText };
+    if (cpRichText.length) row.getCell(3).value = { richText: cpRichText };
+
+    // Hauteur de ligne adaptée au nombre de types d'absences
+    const nbAbsLines = absTypes.filter(t => t.dates?.length).length;
+    row.height = Math.max(28, nbAbsLines * 16);
     row.font = { size: 10, color: { argb: palette.dark } };
 
     // Alternance sobre avec bordures
     const isEven = index % 2 === 0;
     row.eachCell((cell, colNumber) => {
-      if (isEven && colNumber <= 12) { // Seulement colonnes visibles
+      if (isEven && colNumber <= 8) { // Seulement colonnes visibles
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } };
       }
       // Bordures fines
@@ -550,29 +623,27 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     // Nom à gauche et en gras
     row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     row.getCell(1).font = { size: 10, bold: true, color: { argb: palette.dark } };
-    
-    // Heures - en gras
-    row.getCell(2).font = { size: 10, bold: true, color: { argb: palette.dark } };
 
-    // Absences injustifiées (col 9) - rouge si > 0
-    if ((emp.absencesInjustifiees || 0) > 0) {
-      row.getCell(9).font = { size: 10, bold: true, color: { argb: 'FFDC2626' } };
-    }
+    // Absences (col 2) - le richText gère déjà les couleurs par type
+    row.getCell(2).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    row.getCell(3).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-    // Navigo (col 10) - couleur selon éligibilité
-    const navigoCell = row.getCell(10);
+    // Prime (col 4) - cellule vide, fond jaune clair pour indiquer saisie manuelle
+    row.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFDE7' } };
+
+    // Navigo Type (col 5)
     if (emp.eligibleNavigo) {
-      navigoCell.font = { size: 10, bold: true, color: { argb: '059669' } };
+      row.getCell(5).font = { size: 10, bold: true, color: { argb: 'FF059669' } };
+      row.getCell(6).font = { size: 10, color: { argb: palette.dark } };
     } else {
-      navigoCell.font = { size: 9, color: { argb: palette.gray } };
+      row.getCell(5).font = { size: 9, color: { argb: palette.gray } };
     }
     
-    // Justificatif (col 11) - cellule préparée pour recevoir le lien
-    const justifCell = row.getCell(11);
-    justifCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    // Justificatif (col 7) - cellule préparée pour recevoir le lien
+    row.getCell(7).alignment = { vertical: 'middle', horizontal: 'center' };
     
     // Colonnes cachées - alignement à gauche pour lecture facile
-    for (let i = 13; i <= 19; i++) {
+    for (let i = 9; i <= 15; i++) {
       row.getCell(i).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     }
   });
@@ -583,11 +654,11 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   
   navigoLinks.forEach(({ rowIndex, justificatifId, fileName, extension }) => {
     try {
-      // Calculer la position de la ligne (row 5 = header, donc données commencent à row 6)
-      const excelRow = 6 + rowIndex;
+      // Calculer la position de la ligne (row 4 = header, données dès row 5)
+      const excelRow = 5 + rowIndex;
       
       // Récupérer la cellule
-      const cell = hrSheet.getCell(`K${excelRow}`); // Colonne K = Justificatif
+      const cell = hrSheet.getCell(`G${excelRow}`); // Colonne G = Justificatif
       
       // Lien vers la route API publique qui sert le fichier depuis la BDD (persistant)
       const fileUrl = `${BASE_URL}/api/navigo/fichier/${justificatifId}`;
@@ -619,53 +690,21 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     }
   });
   
-  // Ligne vide avant totaux
-  hrSheet.addRow([]);
-
-  // LIGNE DE TOTAUX - style comptable avec double bordure
-  const totalRow = hrSheet.addRow([
-    `TOTAL (${computedEmployes.length} salariés)`,
-    totals.heuresTravaillees.toFixed(1) + ' h',
-    totals.cp ? totals.cp + ' j' : '-',
-    totals.rtt ? totals.rtt + ' j' : '-',
-    totals.maladie ? totals.maladie + ' j' : '-',
-    totals.sansSolde ? totals.sansSolde + ' j' : '-',
-    totals.exceptionnel ? totals.exceptionnel + ' j' : '-',
-    totals.formation ? totals.formation + ' j' : '-',
-    totals.absInjustifiees ? totals.absInjustifiees + ' j' : '-',
-    '',
-    '',
-    ''
-  ]);
-
-  totalRow.font = { bold: true, size: 10, color: { argb: palette.dark } };
-  totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
-  totalRow.height = 28;
-  totalRow.eachCell((cell) => {
-    cell.border = {
-      top: { style: 'double', color: { argb: palette.dark } },
-      bottom: { style: 'double', color: { argb: palette.dark } }
-    };
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
-  });
-  totalRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
-
-  // Note de bas de page avec nom entreprise
+  // Note de bas de page
   hrSheet.addRow([]);
   const noteRow = hrSheet.addRow([
-    `Le Fournil A Pizzas - Chez Antoine, Vincennes  •  Généré le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}  •  Colonnes masquées : dates détaillées par type d'absence`,
-    '', '', '', '', '', '', '', '', '', '', ''
+    `Le Fournil A Pizzas - Chez Antoine, Vincennes  •  Généré le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}`,
+    '', '', '', '', '', '', ''
   ]);
-  hrSheet.mergeCells(`A${noteRow.number}:L${noteRow.number}`);
+  hrSheet.mergeCells(`A${noteRow.number}:H${noteRow.number}`);
   noteRow.getCell(1).font = { size: 8, italic: true, color: { argb: palette.gray } };
   noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
   noteRow.height = 20;
 
   hrSheet.autoFilter = {
-    from: { row: 5, column: 1 },
-    to: { row: 5, column: 12 }
+    from: { row: 4, column: 1 },
+    to: { row: 4, column: 8 }
   };
-
   const buffer = await workbook.xlsx.writeBuffer();
   const mimeType = templateExists
     ? 'application/vnd.ms-excel.sheet.macroEnabled.12'

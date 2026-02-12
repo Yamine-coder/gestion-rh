@@ -3,7 +3,7 @@
  * 
  * Fonctionnalités:
  * - Stockage avec timestamp
- * - Vérification d'expiration (8h par défaut)
+ * - Vérification d'expiration (7 jours)
  * - Auto-logout sur expiration
  * - Refresh automatique avant expiration
  */
@@ -12,8 +12,8 @@ import { API_BASE } from '../config/api';
 
 const TOKEN_KEY = 'token';
 const TOKEN_TIMESTAMP_KEY = 'token_timestamp';
-const TOKEN_EXPIRATION = 8 * 60 * 60 * 1000; // 8 heures en millisecondes
-const REFRESH_THRESHOLD = 30 * 60 * 1000; // Rafraîchir si < 30 min restantes
+const TOKEN_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 7 jours en millisecondes
+const REFRESH_THRESHOLD = 12 * 60 * 60 * 1000; // Rafraîchir si < 12h restantes
 
 /**
  * Stocke le token avec timestamp
