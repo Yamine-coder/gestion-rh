@@ -1,6 +1,6 @@
 // src/components/RapportHeuresEmploye.jsx
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import api from "../api/axiosInstance";
 import {
   HiCalendar,
@@ -29,10 +29,27 @@ const RapportHeuresEmploye = ({ employeId, onClose, initialMois }) => {
   const [error, setError] = useState(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [activeTab, setActiveTab] = useState('synthese'); // synthese, detaille
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(parseInt(moisSelectionne.slice(0, 4)));
+  const monthPickerRef = useRef(null);
   const toast = useToast();
 
   // Couleur de charte principale
   const ACCENT = '#cf292c';
+
+  const moisLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+  const moisLabelLong = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+  // Fermer le picker au clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
 
   const fetchRapportData = useCallback(async () => {
@@ -390,14 +407,47 @@ const RapportHeuresEmploye = ({ employeId, onClose, initialMois }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <label className="text-sm font-medium text-gray-700">Mois</label>
-            <input
-              type="month"
-              value={moisSelectionne}
-              onChange={(e) => setMoisSelectionne(e.target.value)}
-              min="2020-01"
-              max={new Date().toISOString().slice(0, 7)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] bg-white"
-            />
+            <div className="relative" ref={monthPickerRef}>
+              <button
+                type="button"
+                onClick={() => { setPickerYear(parseInt(moisSelectionne.slice(0, 4))); setShowMonthPicker(!showMonthPicker); }}
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white hover:bg-gray-50 focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] flex items-center gap-2 min-w-[160px]"
+              >
+                <HiCalendar className="w-4 h-4 text-gray-400" />
+                <span className="capitalize">{moisLabelLong[parseInt(moisSelectionne.slice(5, 7)) - 1]} {moisSelectionne.slice(0, 4)}</span>
+              </button>
+              {showMonthPicker && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl p-3 z-50 w-64">
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setPickerYear(y => y - 1)} className="p-1 hover:bg-gray-100 rounded text-gray-600">‹</button>
+                    <span className="font-semibold text-gray-800">{pickerYear}</span>
+                    <button onClick={() => setPickerYear(y => y + 1)} className="p-1 hover:bg-gray-100 rounded text-gray-600">›</button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {moisLabels.map((m, i) => {
+                      const val = `${pickerYear}-${String(i + 1).padStart(2, '0')}`;
+                      const isSelected = val === moisSelectionne;
+                      const isCurrent = val === new Date().toISOString().slice(0, 7);
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => { setMoisSelectionne(val); setShowMonthPicker(false); }}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            isSelected
+                              ? 'bg-[#cf292c] text-white'
+                              : isCurrent
+                                ? 'bg-red-50 text-[#cf292c] hover:bg-red-100'
+                                : 'hover:bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

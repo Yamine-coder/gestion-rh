@@ -125,6 +125,25 @@ html, body {
   }
 }
 
+/* Scrollbar custom charte (rouge primary) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5c5c6;
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #cf292c;
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #e5c5c6 transparent;
+}
+
 /* Sur mobile, pas de scrollbar visible */
 @media (max-width: 1023px) {
   html {

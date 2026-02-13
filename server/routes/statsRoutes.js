@@ -11,7 +11,7 @@ const {
 const { authMiddleware: authenticateToken } = require('../middlewares/authMiddleware');
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const prisma = require('../prisma/client');
-const { generateEmployeePDF, generateAllEmployeesExcel } = require('../utils/exportUtils');
+const { generateEmployeePDF, generateAllEmployeesExcel, generateFichePresenceExcel } = require('../utils/exportUtils');
 const { toLocalDateString, getCurrentDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles } = require('../utils/pointageTypeUtils');
 const { grouperParJourBusiness, grouperParEmployeJourBusiness } = require('../utils/businessDayUtils');
@@ -1869,7 +1869,173 @@ router.get('/rapports/export-all', authenticateToken, isAdmin, async (req, res) 
   }
 });
 
-// 📦 Export ZIP avec Excel + justificatifs Navigo
+// � Export Fiche de Présence mensuelle (Excel)
+router.get('/rapports/export-presence', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { mois } = req.query;
+    
+    let dateDebut, dateFin;
+    if (mois) {
+      const [annee, moisNum] = mois.split('-');
+      dateDebut = new Date(parseInt(annee), parseInt(moisNum) - 1, 1);
+      dateFin = new Date(parseInt(annee), parseInt(moisNum), 0, 23, 59, 59, 999);
+    } else {
+      const maintenant = new Date();
+      dateDebut = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+      dateFin = new Date(maintenant.getFullYear(), maintenant.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+
+    // Récupérer tous les employés actifs
+    const employes = await prisma.user.findMany({
+      where: {
+        role: 'employee',
+        statut: 'actif',
+        OR: [
+          { dateSortie: null },
+          { dateSortie: { gt: dateFin } }
+        ]
+      },
+      select: {
+        id: true, nom: true, prenom: true, role: true, statut: true, dateSortie: true
+      },
+      orderBy: [{ nom: 'asc' }, { prenom: 'asc' }]
+    });
+
+    // Récupérer shifts
+    const shifts = await prisma.shift.findMany({
+      where: { date: { gte: dateDebut, lte: dateFin } },
+      orderBy: { date: 'asc' }
+    });
+
+    // Récupérer pointages
+    const dateFinEtendue = etendreFinPourNuit(dateFin);
+    const pointages = await prisma.pointage.findMany({
+      where: { horodatage: { gte: dateDebut, lte: dateFinEtendue } },
+      orderBy: { horodatage: 'asc' }
+    });
+
+    // Récupérer congés approuvés
+    const conges = await prisma.conge.findMany({
+      where: {
+        statut: 'approuvé',
+        OR: [{ dateDebut: { lte: dateFin }, dateFin: { gte: dateDebut } }]
+      },
+      select: { id: true, userId: true, dateDebut: true, dateFin: true, type: true }
+    });
+
+    // Grouper par employé
+    const shiftsParEmploye = new Map();
+    const pointagesParEmploye = new Map();
+    const congesParEmploye = new Map();
+
+    shifts.forEach(s => {
+      if (!shiftsParEmploye.has(s.employeId)) shiftsParEmploye.set(s.employeId, []);
+      shiftsParEmploye.get(s.employeId).push(s);
+    });
+    pointages.forEach(p => {
+      if (!pointagesParEmploye.has(p.userId)) pointagesParEmploye.set(p.userId, []);
+      pointagesParEmploye.get(p.userId).push(p);
+    });
+    conges.forEach(c => {
+      if (!congesParEmploye.has(c.userId)) congesParEmploye.set(c.userId, []);
+      congesParEmploye.get(c.userId).push(c);
+    });
+
+    // Traiter chaque employé
+    const rapportsEmployes = [];
+    for (const employe of employes) {
+      const shiftsEmploye = shiftsParEmploye.get(employe.id) || [];
+      const pointagesEmploye = pointagesParEmploye.get(employe.id) || [];
+      const congesEmploye = congesParEmploye.get(employe.id) || [];
+
+      const congesParJour = new Map();
+      congesEmploye.forEach(conge => {
+        const debut = new Date(conge.dateDebut);
+        const fin = new Date(conge.dateFin);
+        const current = new Date(debut);
+        while (current <= fin) {
+          congesParJour.set(toLocalDateString(current), { type: conge.type });
+          current.setDate(current.getDate() + 1);
+        }
+      });
+
+      const pointagesParJour = grouperParJourBusiness(pointagesEmploye);
+      const aujourdhui = getCurrentDateString();
+      const heuresParJour = [];
+      const joursTraites = new Set();
+
+      shiftsEmploye.forEach(shift => {
+        const dateKey = toLocalDateString(shift.date);
+        joursTraites.add(dateKey);
+        const pointagesJour = pointagesParJour.get(dateKey) || [];
+        const congeJour = congesParJour.get(dateKey);
+        const estFutur = dateKey > aujourdhui;
+
+        let segments = shift.segments;
+        if (typeof segments === 'string') {
+          try { segments = JSON.parse(segments); } catch (e) { segments = []; }
+        }
+        if (!Array.isArray(segments)) segments = [];
+
+        if (shift.type === 'travail' && segments.length > 0 && !estFutur) {
+          let prevues = 0;
+          const creneaux = [];
+          segments.forEach(seg => {
+            if (seg.start && seg.end && !seg.isExtra) {
+              prevues += calculateSegmentHours(seg);
+              creneaux.push(`${seg.start}-${seg.end}`);
+            }
+          });
+          const travaillees = calculateRealHours(pointagesJour);
+          heuresParJour.push({ jour: shift.date, type: 'travail', prevues, travaillees, creneaux });
+        } else if (shift.type === 'absence') {
+          const motif = shift.motif || '';
+          heuresParJour.push({
+            jour: shift.date, type: 'absence', prevues: 7, travaillees: 0,
+            motif: motif,
+            details: motif ? { type: 'congé', congeType: motif }
+              : (congeJour ? { type: 'congé', congeType: congeJour.type } : undefined)
+          });
+        }
+      });
+
+      // Congés sans shift
+      congesParJour.forEach((info, dateKey) => {
+        if (!joursTraites.has(dateKey)) {
+          const dateJour = new Date(dateKey + 'T12:00:00.000Z');
+          if (dateJour >= dateDebut && dateJour <= dateFin) {
+            heuresParJour.push({
+              jour: dateJour, type: 'absence', prevues: 7, travaillees: 0,
+              details: { type: 'congé', congeType: info.type }
+            });
+          }
+        }
+      });
+
+      rapportsEmployes.push({
+        nom: employe.nom,
+        prenom: employe.prenom,
+        heuresParJour
+      });
+    }
+
+    // Générer Excel
+    const moisFr = dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', month: 'long' });
+    const moisCap = moisFr.charAt(0).toUpperCase() + moisFr.slice(1);
+    const buffer = await generateFichePresenceExcel(rapportsEmployes, `${moisCap} ${dateDebut.getFullYear()}`, dateDebut, dateFin);
+    
+    const fileName = `Fiche_Presence_${moisCap}_${dateDebut.getFullYear()}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(buffer);
+
+  } catch (error) {
+    console.error('❌ Erreur export fiche de présence:', error);
+    res.status(500).json({ message: 'Erreur lors de l\'export de la fiche de présence' });
+  }
+});
+
+// �📦 Export ZIP avec Excel + justificatifs Navigo
 router.get('/rapports/export-pdf', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { periode, mois } = req.query;

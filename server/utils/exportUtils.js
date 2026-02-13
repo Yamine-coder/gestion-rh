@@ -418,105 +418,119 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     moyenneHeuresParJour: 0
   });
 
-  // === NAVETTE - RAPPORT HEURES ===
-  const hrSheet = workbook.addWorksheet('Rapport Heures', {
+  // === RÉCAPITULATIF MENSUEL ===
+  const hrSheet = workbook.addWorksheet('Récapitulatif', {
     properties: { tabColor: { argb: 'FFCF292C' } },
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 4 }]
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }]
   });
 
-  // Largeurs de colonnes (8 visibles + 7 cachées)
-  const columnWidths = [30, 38, 28, 14, 18, 16, 12, 22, 30, 30, 30, 30, 30, 30, 30];
+  // Largeurs de colonnes (7 visibles + 7 cachées)
+  const columnWidths = [28, 40, 26, 13, 16, 11, 24, 30, 30, 30, 30, 30, 30, 30];
   hrSheet.columns = columnWidths.map((width, i) => ({ key: `col${i}`, width }));
 
-  // Masquer les colonnes de détails (dates) - colonnes I à O (index 8 à 14)
-  for (let i = 9; i <= 15; i++) {
+  // Masquer les colonnes de détails (dates) - colonnes H à N (index 7 à 13)
+  for (let i = 8; i <= 14; i++) {
     hrSheet.getColumn(i).hidden = true;
   }
 
   const moisFr = dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', month: 'long' });
   const anneeFull = dateDebut.getFullYear();
+  const moisCapitalized = moisFr.charAt(0).toUpperCase() + moisFr.slice(1);
 
-  // --- ROW 1 : TITRE + ENTREPRISE (compact) ---
-  hrSheet.mergeCells('A1:H1');
-  hrSheet.getRow(1).height = 28;
-  const titleCell = hrSheet.getCell('A1');
-  titleCell.value = { richText: [
-    { text: 'NAVETTE  —  ', font: { size: 13, bold: true, color: { argb: 'FF1F2937' } } },
-    { text: 'Le Fournil à Pizzas', font: { size: 13, bold: true, color: { argb: 'FFCF292C' } } }
-  ]};
-  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-  titleCell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+  // Palette charte app (rouge primary #CF292C)
+  const brand = 'FFCF292C';      // Rouge principal
+  const brandDark = 'FFB61F22';   // Rouge foncé
+  const brandLight = 'FFFDF3F3';  // Rouge très clair (bg)
+  const dark = 'FF1F2937';        // Texte principal
+  const charcoal = 'FF374151';    // Texte secondaire
+  const slate = 'FF6B7280';       // Texte tertiaire
+  const lightSlate = 'FFE5E7EB';  // Bordures
+  const veryLight = 'FFF9FAFB';   // Alternance lignes
+  const hdrBgColor = 'FFF9FAFB';  // Fond en-têtes
 
-  // --- ROW 2 : PÉRIODE + EMAIL (une seule ligne) ---
-  hrSheet.mergeCells('A2:H2');
-  hrSheet.getRow(2).height = 22;
-  const infoCell = hrSheet.getCell('A2');
+  // --- ROW 1 : Barre d'accent rouge (fine ligne en haut) ---
+  hrSheet.mergeCells('A1:G1');
+  hrSheet.getRow(1).height = 4;
+  hrSheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: brand } };
+
+  // --- ROW 2 : Nom entreprise ---
+  hrSheet.mergeCells('A2:G2');
+  hrSheet.getRow(2).height = 32;
+  const titleCell = hrSheet.getCell('A2');
+  titleCell.value = 'LE FOURNIL À PIZZAS';
+  titleCell.font = { size: 15, bold: true, color: { argb: brand }, name: 'Calibri' };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+
+  // --- ROW 3 : Période + Contact ---
+  hrSheet.mergeCells('A3:G3');
+  hrSheet.getRow(3).height = 20;
+  const infoCell = hrSheet.getCell('A3');
   infoCell.value = { richText: [
-    { text: `${moisFr} ${anneeFull}`, font: { size: 10, bold: true, color: { argb: 'FFCF292C' } } },
-    { text: '   •   Récapitulatif bulletins de salaires   •   ', font: { size: 9, color: { argb: 'FF6B7280' } } },
-    { text: 'sk.auditreporting@gmail.com', font: { size: 9, color: { argb: 'FF2563EB' }, underline: true } }
+    { text: `Récapitulatif mensuel  ·  `, font: { size: 9.5, color: { argb: slate }, name: 'Calibri' } },
+    { text: `${moisCapitalized} ${anneeFull}`, font: { size: 9.5, bold: true, color: { argb: dark }, name: 'Calibri' } },
+    { text: `  ·  `, font: { size: 9.5, color: { argb: slate }, name: 'Calibri' } },
+    { text: 'sk.auditreporting@gmail.com', font: { size: 9, color: { argb: brand }, name: 'Calibri' } }
   ]};
-  infoCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  infoCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  infoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+  infoCell.border = { bottom: { style: 'thin', color: { argb: lightSlate } } };
 
-  // --- ROW 3 : Séparation fine ---
-  hrSheet.getRow(3).height = 4;
+  // --- ROW 4 : Espacement ---
+  hrSheet.getRow(4).height = 6;
 
-  // --- ROW 4 : EN-TÊTES COLONNES (une seule ligne, sobre) ---
-  const hdrBg = 'FF374151';
-  const hdrFont = { bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
-  const hdrRedFont = { bold: false, size: 7.5, italic: true, color: { argb: 'FFFFB3B3' } };
+  // --- ROW 5 : EN-TÊTES COLONNES ---
+  const hdrBg = hdrBgColor;
+  const hdrFont = { bold: true, size: 9, color: { argb: dark }, name: 'Calibri' };
+  const hdrSubFont = { bold: false, size: 7.5, italic: true, color: { argb: slate }, name: 'Calibri' };
   const hdrBorder = {
-    top: { style: 'thin', color: { argb: 'FF374151' } },
-    bottom: { style: 'medium', color: { argb: 'FF1F2937' } },
-    left: { style: 'hair', color: { argb: 'FF4B5563' } },
-    right: { style: 'hair', color: { argb: 'FF4B5563' } }
+    top: { style: 'thin', color: { argb: lightSlate } },
+    bottom: { style: 'medium', color: { argb: brand } },
+    left: { style: 'hair', color: { argb: lightSlate } },
+    right: { style: 'hair', color: { argb: lightSlate } }
   };
 
   const headerDefs = [
     { col: 1, rt: [
-      { text: 'NOM ET PRÉNOM', font: hdrFont }
+      { text: 'Nom et prénom', font: hdrFont }
     ]},
     { col: 2, rt: [
-      { text: 'ABSENCES + MOTIF\n', font: hdrFont },
-      { text: 'indiquez les dates', font: hdrRedFont }
+      { text: 'Absences + Motif\n', font: hdrFont },
+      { text: 'dates concernées', font: hdrSubFont }
     ]},
     { col: 3, rt: [
-      { text: 'CONGÉS PAYÉS PRIS\n', font: hdrFont },
-      { text: 'indiquez les dates', font: hdrRedFont }
+      { text: 'Congés payés pris\n', font: hdrFont },
+      { text: 'dates concernées', font: hdrSubFont }
     ]},
     { col: 4, rt: [
-      { text: 'PRIME\n', font: hdrFont },
-      { text: 'montant', font: hdrRedFont }
+      { text: 'Prime\n', font: hdrFont },
+      { text: 'montant', font: hdrSubFont }
     ]},
     { col: 5, rt: [
-      { text: 'NAVIGO\n', font: hdrFont },
-      { text: 'mensuel / annuel', font: { size: 7.5, color: { argb: 'FFCBD5E1' } } }
+      { text: 'Navigo\n', font: hdrFont },
+      { text: 'type', font: hdrSubFont }
     ]},
     { col: 6, rt: [
-      { text: 'TARIF\n', font: hdrFont },
-      { text: 'part salarié', font: { size: 7.5, color: { argb: 'FFCBD5E1' } } }
+      { text: 'Justif.', font: hdrFont }
     ]},
     { col: 7, rt: [
-      { text: 'JUSTIF.', font: hdrFont }
-    ]},
-    { col: 8, rt: [
-      { text: 'OBSERVATIONS', font: hdrFont }
+      { text: 'Observations', font: hdrFont }
     ]}
   ];
 
-  hrSheet.getRow(4).height = 36;
+  hrSheet.getRow(5).height = 34;
   headerDefs.forEach(({ col, rt }) => {
-    const cell = hrSheet.getCell(4, col);
+    const cell = hrSheet.getCell(5, col);
     cell.value = { richText: rt };
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hdrBg } };
     cell.border = hdrBorder;
   });
-  hrSheet.getCell(4, 1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+  hrSheet.getCell(5, 1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
 
   // En-têtes colonnes cachées (détails)
   ['Détail CP', 'Détail RTT', 'Détail Maladie', 'Détail Sans solde', 'Détail Exceptionnel', 'Détail Formation', 'Détail Injustifiées'].forEach((label, i) => {
-    const cell = hrSheet.getCell(4, 9 + i);
+    const cell = hrSheet.getCell(5, 8 + i);
     cell.value = label;
     cell.font = hdrFont;
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hdrBg } };
@@ -546,19 +560,19 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     // Absences : richText structuré (type en gras, dates en normal, un par ligne)
     const absRichText = [];
     const absTypes = [
-      { dates: emp.datesMaladie, label: 'Maladie', color: 'FFB91C1C' },
-      { dates: emp.datesRTT, label: 'RTT', color: 'FF1D4ED8' },
-      { dates: emp.datesSansSolde, label: 'Sans solde', color: 'FF92400E' },
-      { dates: emp.datesFormation, label: 'Formation', color: 'FF6D28D9' },
-      { dates: emp.datesExceptionnel, label: 'Exceptionnel', color: 'FF0E7490' },
-      { dates: emp.datesInjustifiees, label: 'Injustifié', color: 'FFDC2626' }
+      { dates: emp.datesMaladie, label: 'Maladie', color: 'FFC0392B' },
+      { dates: emp.datesRTT, label: 'RTT', color: 'FF2980B9' },
+      { dates: emp.datesSansSolde, label: 'Sans solde', color: 'FF8B6914' },
+      { dates: emp.datesFormation, label: 'Formation', color: 'FF7C3AED' },
+      { dates: emp.datesExceptionnel, label: 'Exceptionnel', color: 'FF0891B2' },
+      { dates: emp.datesInjustifiees, label: 'Injustifié', color: 'FFE74C3C' }
     ];
     absTypes.forEach(({ dates, label, color }) => {
       if (dates?.length) {
-        if (absRichText.length) absRichText.push({ text: '\n', font: { size: 8 } });
+        if (absRichText.length) absRichText.push({ text: '\n', font: { size: 8.5, name: 'Calibri' } });
         absRichText.push(
-          { text: `${label} : `, font: { bold: true, size: 9, color: { argb: color } } },
-          { text: dates.join(', '), font: { size: 9, color: { argb: 'FF374151' } } }
+          { text: `${label} : `, font: { bold: true, size: 8.5, color: { argb: color }, name: 'Calibri' } },
+          { text: dates.join(', '), font: { size: 8.5, color: { argb: charcoal }, name: 'Calibri' } }
         );
       }
     });
@@ -567,14 +581,13 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     const cpRichText = [];
     if (emp.datesCP?.length) {
       cpRichText.push(
-        { text: `${emp.joursCP} jour${emp.joursCP > 1 ? 's' : ''} : `, font: { bold: true, size: 9, color: { argb: 'FF1D4ED8' } } },
-        { text: emp.datesCP.join(', '), font: { size: 9, color: { argb: 'FF374151' } } }
+        { text: `${emp.joursCP} jour${emp.joursCP > 1 ? 's' : ''} : `, font: { bold: true, size: 8.5, color: { argb: brand }, name: 'Calibri' } },
+        { text: emp.datesCP.join(', '), font: { size: 8.5, color: { argb: charcoal }, name: 'Calibri' } }
       );
     }
 
-    // Navigo type & tarif
+    // Navigo type
     const navigoType = emp.eligibleNavigo ? 'Mensuel' : '';
-    const navigoTarif = emp.eligibleNavigo ? '90,80' : '';
     
     const row = hrSheet.addRow([
       `${emp.nom.toUpperCase()} ${emp.prenom}`,
@@ -582,7 +595,6 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       '', // CP — sera set en richText après
       '', // Prime (à remplir manuellement par le comptable)
       navigoType,
-      navigoTarif,
       '', // Justificatif
       '', // Observations
       // Colonnes cachées avec détails complets
@@ -601,49 +613,55 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
 
     // Hauteur de ligne adaptée au nombre de types d'absences
     const nbAbsLines = absTypes.filter(t => t.dates?.length).length;
-    row.height = Math.max(28, nbAbsLines * 16);
-    row.font = { size: 10, color: { argb: palette.dark } };
+    row.height = Math.max(26, nbAbsLines * 15);
+    row.font = { size: 9.5, color: { argb: charcoal }, name: 'Calibri' };
 
-    // Alternance sobre avec bordures
+    // Alternance sobre
     const isEven = index % 2 === 0;
+    const rowBg = isEven ? veryLight : 'FFFFFFFF';
+    const cellBorder = {
+      top: { style: 'hair', color: { argb: lightSlate } },
+      bottom: { style: 'hair', color: { argb: lightSlate } },
+      left: { style: 'hair', color: { argb: lightSlate } },
+      right: { style: 'hair', color: { argb: lightSlate } }
+    };
     row.eachCell((cell, colNumber) => {
-      if (isEven && colNumber <= 8) { // Seulement colonnes visibles
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAFAFA' } };
+      if (colNumber <= 7) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
       }
-      // Bordures fines
-      cell.border = {
-        top: { style: 'hair', color: { argb: 'FFE5E7EB' } },
-        bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
-        left: { style: 'hair', color: { argb: 'FFE5E7EB' } },
-        right: { style: 'hair', color: { argb: 'FFE5E7EB' } }
-      };
+      cell.border = cellBorder;
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     });
 
-    // Nom à gauche et en gras
-    row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-    row.getCell(1).font = { size: 10, bold: true, color: { argb: palette.dark } };
+    // Nom — gauche, semi-bold, dark
+    row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1, wrapText: true };
+    row.getCell(1).font = { size: 9.5, bold: true, color: { argb: dark }, name: 'Calibri' };
 
-    // Absences (col 2) - le richText gère déjà les couleurs par type
+    // Absences et CP — gauche
     row.getCell(2).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     row.getCell(3).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
-    // Prime (col 4) - cellule vide, fond jaune clair pour indiquer saisie manuelle
-    row.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFDE7' } };
+    // Prime (col 4) — bordure pointillée subtile + fond très léger
+    row.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFEF5' } };
+    row.getCell(4).border = {
+      top: { style: 'dotted', color: { argb: 'FFD4D4D8' } },
+      bottom: { style: 'dotted', color: { argb: 'FFD4D4D8' } },
+      left: { style: 'dotted', color: { argb: 'FFD4D4D8' } },
+      right: { style: 'dotted', color: { argb: 'FFD4D4D8' } }
+    };
 
     // Navigo Type (col 5)
     if (emp.eligibleNavigo) {
-      row.getCell(5).font = { size: 10, bold: true, color: { argb: 'FF059669' } };
-      row.getCell(6).font = { size: 10, color: { argb: palette.dark } };
+      row.getCell(5).font = { size: 9.5, bold: false, color: { argb: 'FF16A34A' }, name: 'Calibri' };
     } else {
-      row.getCell(5).font = { size: 9, color: { argb: palette.gray } };
+      row.getCell(5).font = { size: 9, color: { argb: slate }, name: 'Calibri' };
     }
     
-    // Justificatif (col 7) - cellule préparée pour recevoir le lien
-    row.getCell(7).alignment = { vertical: 'middle', horizontal: 'center' };
+    // Justificatif (col 6)
+    row.getCell(6).alignment = { vertical: 'middle', horizontal: 'center' };
     
-    // Colonnes cachées - alignement à gauche pour lecture facile
-    for (let i = 9; i <= 15; i++) {
+    // Colonnes cachées
+    for (let i = 8; i <= 14; i++) {
       row.getCell(i).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     }
   });
@@ -654,11 +672,11 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   
   navigoLinks.forEach(({ rowIndex, justificatifId, fileName, extension }) => {
     try {
-      // Calculer la position de la ligne (row 4 = header, données dès row 5)
-      const excelRow = 5 + rowIndex;
+      // Calculer la position de la ligne (row 5 = header, données dès row 6)
+      const excelRow = 6 + rowIndex;
       
       // Récupérer la cellule
-      const cell = hrSheet.getCell(`G${excelRow}`); // Colonne G = Justificatif
+      const cell = hrSheet.getCell(`F${excelRow}`); // Colonne F = Justificatif
       
       // Lien vers la route API publique qui sert le fichier depuis la BDD (persistant)
       const fileUrl = `${BASE_URL}/api/navigo/fichier/${justificatifId}`;
@@ -679,9 +697,10 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       
       cell.font = {
         size: 9,
-        color: { argb: '0066CC' },
+        color: { argb: 'FF2563EB' },
         underline: true,
-        bold: false
+        bold: false,
+        name: 'Calibri'
       };
       
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -690,21 +709,27 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
     }
   });
   
+  // Ligne de séparation finale
+  const sepRow = hrSheet.addRow([]);
+  hrSheet.mergeCells(`A${sepRow.number}:G${sepRow.number}`);
+  sepRow.height = 2;
+  sepRow.getCell(1).border = { top: { style: 'thin', color: { argb: brand } } };
+
   // Note de bas de page
-  hrSheet.addRow([]);
   const noteRow = hrSheet.addRow([
-    `Le Fournil A Pizzas - Chez Antoine, Vincennes  •  Généré le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}`,
-    '', '', '', '', '', '', ''
+    `Généré le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}  ·  Le Fournil à Pizzas — Chez Antoine, Vincennes`,
+    '', '', '', '', '', ''
   ]);
-  hrSheet.mergeCells(`A${noteRow.number}:H${noteRow.number}`);
-  noteRow.getCell(1).font = { size: 8, italic: true, color: { argb: palette.gray } };
-  noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-  noteRow.height = 20;
+  hrSheet.mergeCells(`A${noteRow.number}:G${noteRow.number}`);
+  noteRow.getCell(1).font = { size: 8, italic: true, color: { argb: slate }, name: 'Calibri' };
+  noteRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  noteRow.height = 18;
 
   hrSheet.autoFilter = {
-    from: { row: 4, column: 1 },
-    to: { row: 4, column: 8 }
+    from: { row: 5, column: 1 },
+    to: { row: 5, column: 7 }
   };
+
   const buffer = await workbook.xlsx.writeBuffer();
   const mimeType = templateExists
     ? 'application/vnd.ms-excel.sheet.macroEnabled.12'
@@ -719,4 +744,247 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
   return buffer;
 }
 
-module.exports = { generateEmployeePDF, generateAllEmployeesExcel };
+module.exports = { generateEmployeePDF, generateAllEmployeesExcel, generateFichePresenceExcel };
+
+// ═══════════════════════════════════════════════════════════════
+// FICHE DE PRÉSENCE MENSUELLE (fichier Excel autonome)
+// ═══════════════════════════════════════════════════════════════
+async function generateFichePresenceExcel(rapportsEmployes, periode, dateDebut, dateFin) {
+  const ExcelJS = require('exceljs');
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Gestion RH - Le Fournil à Pizzas';
+
+  // Palette charte app
+  const brand = 'FFCF292C';
+  const dark = 'FF1F2937';
+  const charcoal = 'FF374151';
+  const slate = 'FF6B7280';
+  const lightSlate = 'FFE5E7EB';
+  const veryLight = 'FFF9FAFB';
+  const hdrBgColor = 'FFF9FAFB';
+
+  const moisFr = dateDebut.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', month: 'long' });
+  const moisCapitalized = moisFr.charAt(0).toUpperCase() + moisFr.slice(1);
+  const anneeFull = dateDebut.getFullYear();
+  const nbJoursMois = new Date(anneeFull, dateDebut.getMonth() + 1, 0).getDate();
+  const nbCols = 1 + nbJoursMois; // Nom + jours (sans Total)
+
+  const getColRef = (col) => {
+    if (col <= 26) return String.fromCharCode(64 + col);
+    return 'A' + String.fromCharCode(64 + col - 26);
+  };
+  const lastCol = getColRef(nbCols);
+
+  const presSheet = workbook.addWorksheet('Fiche de présence', {
+    properties: { tabColor: { argb: brand } },
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }]
+  });
+
+  // Largeurs
+  const presColWidths = [24];
+  for (let d = 0; d < nbJoursMois; d++) presColWidths.push(9);
+  presSheet.columns = presColWidths.map((width, i) => ({ key: `c${i}`, width }));
+
+  // --- ROW 1 : Barre d'accent ---
+  presSheet.mergeCells(`A1:${lastCol}1`);
+  presSheet.getRow(1).height = 4;
+  presSheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: brand } };
+
+  // --- ROW 2 : Titre ---
+  presSheet.mergeCells(`A2:${lastCol}2`);
+  presSheet.getRow(2).height = 28;
+  const presTitle = presSheet.getCell('A2');
+  presTitle.value = 'FICHE DE PRÉSENCE';
+  presTitle.font = { size: 14, bold: true, color: { argb: brand }, name: 'Calibri' };
+  presTitle.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  presTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+
+  // --- ROW 3 : Sous-titre ---
+  presSheet.mergeCells(`A3:${lastCol}3`);
+  presSheet.getRow(3).height = 18;
+  const presInfo = presSheet.getCell('A3');
+  presInfo.value = { richText: [
+    { text: `${moisCapitalized} ${anneeFull}`, font: { size: 9.5, bold: true, color: { argb: dark }, name: 'Calibri' } },
+    { text: `  ·  Le Fournil à Pizzas  ·  `, font: { size: 9, color: { argb: slate }, name: 'Calibri' } },
+    { text: `${rapportsEmployes.length} employé${rapportsEmployes.length > 1 ? 's' : ''}`, font: { size: 9, color: { argb: brand }, name: 'Calibri' } }
+  ]};
+  presInfo.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  presInfo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+  presInfo.border = { bottom: { style: 'thin', color: { argb: lightSlate } } };
+
+  // --- ROW 4 : Espacement ---
+  presSheet.getRow(4).height = 4;
+
+  // --- ROW 5 : En-têtes ---
+  presSheet.getRow(5).height = 38;
+  const joursSemaine = ['D', 'L', 'Ma', 'Me', 'J', 'V', 'S'];
+
+  const presHdrCell = presSheet.getCell(5, 1);
+  presHdrCell.value = 'Employé';
+  presHdrCell.font = { bold: true, size: 9, color: { argb: dark }, name: 'Calibri' };
+  presHdrCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hdrBgColor } };
+  presHdrCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  presHdrCell.border = { bottom: { style: 'medium', color: { argb: brand } } };
+
+  for (let d = 1; d <= nbJoursMois; d++) {
+    const dateJour = new Date(anneeFull, dateDebut.getMonth(), d);
+    const jourSem = joursSemaine[dateJour.getDay()];
+    const isWeekend = dateJour.getDay() === 0 || dateJour.getDay() === 6;
+
+    const cell = presSheet.getCell(5, 1 + d);
+    cell.value = { richText: [
+      { text: `${jourSem}\n`, font: { size: 7, color: { argb: isWeekend ? brand : slate }, name: 'Calibri' } },
+      { text: `${d}`, font: { size: 9, bold: true, color: { argb: isWeekend ? brand : dark }, name: 'Calibri' } }
+    ]};
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFEF2F2' : hdrBgColor } };
+    cell.border = {
+      bottom: { style: 'medium', color: { argb: brand } },
+      left: { style: 'hair', color: { argb: lightSlate } },
+      right: { style: 'hair', color: { argb: lightSlate } }
+    };
+  }
+
+  // Abréviations et couleurs
+  const typeAbrev = {
+    'cp': 'CP', 'conge_paye': 'CP', 'congé payé': 'CP', 'conge': 'CP',
+    'rtt': 'RTT', 'maladie': 'M', 'arret': 'M',
+    'sans_solde': 'SS', 'sans solde': 'SS',
+    'formation': 'F', 'exceptionnel': 'EX',
+    'paternite': 'PAT', 'maternite': 'MAT'
+  };
+  const typeColors = {
+    'R': 'FF9CA3AF', 'CP': 'FF2563EB', 'RTT': 'FF7C3AED', 'M': 'FFDC2626',
+    'SS': 'FF92400E', 'F': 'FF0891B2', 'EX': 'FF059669', 'PAT': 'FF6366F1',
+    'MAT': 'FFD946EF', 'INJ': 'FFEF4444', 'ABS': 'FFEF4444'
+  };
+  const typeBgColors = {
+    'R': 'FFF3F4F6', 'CP': 'FFEFF6FF', 'RTT': 'FFF5F3FF', 'M': 'FFFEF2F2',
+    'SS': 'FFFFFBEB', 'F': 'FFECFEFF', 'EX': 'FFECFDF5', 'PAT': 'FFEEF2FF',
+    'MAT': 'FFFDF4FF', 'INJ': 'FFFEF2F2', 'ABS': 'FFFEF2F2'
+  };
+
+  // --- DONNÉES ---
+  rapportsEmployes.forEach((emp, empIdx) => {
+    const rowNum = 6 + empIdx;
+    const isEven = empIdx % 2 === 0;
+    const defaultBg = isEven ? veryLight : 'FFFFFFFF';
+
+    const jourMap = {};
+    emp.heuresParJour?.forEach(j => {
+      const dd = new Date(j.jour || j.date);
+      jourMap[dd.getDate()] = j;
+    });
+
+    // Nom
+    const nomCell = presSheet.getCell(rowNum, 1);
+    nomCell.value = `${(emp.nom || '').toUpperCase()} ${emp.prenom || ''}`;
+    nomCell.font = { size: 8.5, bold: true, color: { argb: dark }, name: 'Calibri' };
+    nomCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    nomCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: defaultBg } };
+    nomCell.border = { bottom: { style: 'hair', color: { argb: lightSlate } }, right: { style: 'thin', color: { argb: lightSlate } } };
+
+    for (let d = 1; d <= nbJoursMois; d++) {
+      const cell = presSheet.getCell(rowNum, 1 + d);
+      const dateJour = new Date(anneeFull, dateDebut.getMonth(), d);
+      const isDimanche = dateJour.getDay() === 0;
+      const jourData = jourMap[d];
+
+      let cellText = '', cellColor = charcoal, cellBg = defaultBg, cellBold = false;
+
+      const jourKey = dateJour.toISOString().slice(0, 10);
+      const todayKey = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+      const isFuture = jourKey > todayKey;
+
+      if (isFuture) {
+        cellText = '';
+        cellBg = isEven ? 'FFF9FAFB' : 'FFFFFFFF';
+      } else if (!jourData || jourData.type === 'repos' || jourData.statut === 'Repos') {
+        cellText = 'R'; cellColor = typeColors['R']; cellBg = typeBgColors['R']; cellBold = true;
+      } else if (jourData.isConge || jourData.type === 'absence') {
+        const congeType = (jourData.motif || jourData.details?.congeType || jourData.congeType || '').toLowerCase();
+        let abrev = 'ABS';
+        for (const [key, val] of Object.entries(typeAbrev)) {
+          if (congeType.includes(key)) { abrev = val; break; }
+        }
+        if (abrev === 'ABS' && jourData.statut) {
+          const s = jourData.statut.toLowerCase();
+          if (s.includes('cong')) abrev = 'CP';
+          else if (s.includes('rtt')) abrev = 'RTT';
+          else if (s.includes('maladie')) abrev = 'M';
+          else if (s.includes('paternit')) abrev = 'PAT';
+          else if (s.includes('maternit')) abrev = 'MAT';
+          else if (s.includes('formation')) abrev = 'F';
+          else if (s.includes('sans')) abrev = 'SS';
+        }
+        if (jourData.travaillees > 0) {
+          cellText = (jourData.creneaux && jourData.creneaux.length > 0) ? jourData.creneaux.join('\n') : abrev;
+          cellColor = typeColors[abrev] || typeColors['ABS'];
+          cellBg = typeBgColors[abrev] || typeBgColors['ABS'];
+        } else {
+          cellText = abrev; cellColor = typeColors[abrev] || typeColors['ABS'];
+          cellBg = typeBgColors[abrev] || typeBgColors['ABS']; cellBold = true;
+        }
+      } else if (jourData.travaillees > 0) {
+        cellText = (jourData.creneaux && jourData.creneaux.length > 0) ? jourData.creneaux.join('\n') : '✓';
+        cellColor = dark; cellBg = defaultBg;
+      } else if (jourData.prevues > 0 && (jourData.travaillees || 0) === 0) {
+        cellText = 'INJ'; cellColor = typeColors['INJ']; cellBg = typeBgColors['INJ']; cellBold = true;
+      } else {
+        cellText = 'R'; cellColor = typeColors['R']; cellBg = typeBgColors['R']; cellBold = true;
+      }
+
+      cell.value = cellText;
+      cell.font = { size: 7, bold: cellBold, color: { argb: cellColor }, name: 'Calibri' };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: cellBg } };
+      cell.border = {
+        bottom: { style: 'hair', color: { argb: lightSlate } },
+        left: { style: isDimanche ? 'thin' : 'hair', color: { argb: isDimanche ? 'FFD1D5DB' : lightSlate } },
+        right: { style: 'hair', color: { argb: lightSlate } }
+      };
+    }
+
+    presSheet.getRow(rowNum).height = 28;
+  });
+
+  // Légende
+  const legendeRow = 6 + rapportsEmployes.length + 1;
+  presSheet.mergeCells(`A${legendeRow}:${lastCol}${legendeRow}`);
+  presSheet.getRow(legendeRow).height = 2;
+  presSheet.getCell(`A${legendeRow}`).border = { top: { style: 'thin', color: { argb: brand } } };
+
+  const legendeItems = [
+    { code: 'R', label: 'Repos' }, { code: 'CP', label: 'Congé payé' },
+    { code: 'RTT', label: 'RTT' }, { code: 'M', label: 'Maladie' },
+    { code: 'SS', label: 'Sans solde' }, { code: 'F', label: 'Formation' },
+    { code: 'EX', label: 'Exceptionnel' }, { code: 'INJ', label: 'Injustifié' },
+    { code: 'PAT', label: 'Paternité' }
+  ];
+  const legRow = legendeRow + 1;
+  presSheet.mergeCells(`A${legRow}:${lastCol}${legRow}`);
+  presSheet.getRow(legRow).height = 16;
+  const legRichText = [{ text: 'Légende :  ', font: { size: 7.5, bold: true, color: { argb: slate }, name: 'Calibri' } }];
+  legendeItems.forEach((item, i) => {
+    if (i > 0) legRichText.push({ text: '   ', font: { size: 7.5, name: 'Calibri' } });
+    legRichText.push(
+      { text: item.code, font: { size: 7.5, bold: true, color: { argb: typeColors[item.code] }, name: 'Calibri' } },
+      { text: ` ${item.label}`, font: { size: 7.5, color: { argb: slate }, name: 'Calibri' } }
+    );
+  });
+  presSheet.getCell(`A${legRow}`).value = { richText: legRichText };
+  presSheet.getCell(`A${legRow}`).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+  const footerRow = legRow + 1;
+  presSheet.mergeCells(`A${footerRow}:${lastCol}${footerRow}`);
+  presSheet.getRow(footerRow).height = 16;
+  presSheet.getCell(`A${footerRow}`).value = `Généré le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })} à ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}  ·  Le Fournil à Pizzas — Chez Antoine, Vincennes`;
+  presSheet.getCell(`A${footerRow}`).font = { size: 7.5, italic: true, color: { argb: slate }, name: 'Calibri' };
+  presSheet.getCell(`A${footerRow}`).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+  presSheet.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5, column: nbCols } };
+  presSheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer;
+}

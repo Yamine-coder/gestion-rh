@@ -1885,7 +1885,7 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
         </div>
 
         {/* Card Congés & Absences (fusionnée avec congés à venir) */}
-        <div className='bg-white rounded-xl border border-slate-200 p-4'>
+        <div className='bg-white rounded-xl border border-slate-200 p-4 flex flex-col'>
           <div className='flex items-center justify-between mb-3'>
             <div className='flex items-center gap-2'>
               <Plane className='w-4 h-4 text-slate-400' />
@@ -1897,7 +1897,7 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
               </span>
             )}
           </div>
-          <div className='space-y-3'>
+          <div className='space-y-3 flex-1 overflow-y-auto max-h-48 custom-scrollbar'>
             {/* Absents aujourd'hui */}
             {enCongeAujourdHui > 0 && (
               <div className='pb-3 border-b border-slate-100'>

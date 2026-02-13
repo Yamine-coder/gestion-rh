@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import dayjs from "dayjs";
 import * as XLSX from "xlsx";
@@ -24,6 +24,14 @@ function VueJournaliereRH() {
 
   const [date, setDate] = useState(getInitialDate());
   const [pointages, setPointages] = useState([]);
+  const [exportingPresence, setExportingPresence] = useState(false);
+  const [presenceMois, setPresenceMois] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const monthPickerRef = useRef(null);
   
   // États pour la notification de restauration
   const [showRestoreNotification, setShowRestoreNotification] = useState(false);
@@ -112,6 +120,32 @@ function VueJournaliereRH() {
     saveAs(blob, `vue_journaliere_${date}.xlsx`);
   };
 
+  const handleExportFichePresence = async () => {
+    try {
+      setExportingPresence(true);
+      const res = await axios.get(
+        `${API_BASE}/api/stats/rapports/export-presence?mois=${presenceMois}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          responseType: 'blob'
+        }
+      );
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const [annee, moisNum] = presenceMois.split('-');
+      const d = new Date(parseInt(annee), parseInt(moisNum) - 1, 1);
+      const moisFr = d.toLocaleDateString('fr-FR', { month: 'long' });
+      const moisCap = moisFr.charAt(0).toUpperCase() + moisFr.slice(1);
+      saveAs(blob, `Fiche_Presence_${moisCap}_${annee}.xlsx`);
+    } catch (err) {
+      console.error('Erreur export fiche de présence:', err);
+      alert('Erreur lors de l\'export de la fiche de présence');
+    } finally {
+      setExportingPresence(false);
+    }
+  };
+
   const fetchPointages = useCallback(async () => {
     try {
       const res = await axios.get(
@@ -132,89 +166,162 @@ function VueJournaliereRH() {
     fetchPointages();
   }, [fetchPointages]);
 
+  // Fermer le picker au clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    if (showMonthPicker) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMonthPicker]);
+
+  const moisLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+  const moisLabelLong = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
   return (
     <div className="bg-white p-3 sm:p-6 rounded-xl shadow-md border border-gray-100">
-      {/* Contrôles de navigation responsive */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Sélectionner une date :</label>
-          
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            {/* Sélecteur de date */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c]"
-              />
+      {/* Barre de navigation + exports */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+        {/* Gauche : Navigation date */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-medium text-gray-700 mr-1">Date :</span>
+          <button
+            onClick={() => {
+              const yesterday = new Date(date);
+              yesterday.setDate(yesterday.getDate() - 1);
+              setDate(getLocalDateString(yesterday));
+            }}
+            className="p-1.5 text-gray-400 hover:text-[#cf292c] hover:bg-gray-50 rounded transition"
+            title="Jour précédent"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] outline-none"
+          />
+          <button
+            onClick={() => {
+              const tomorrow = new Date(date);
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              setDate(getLocalDateString(tomorrow));
+            }}
+            className="p-1.5 text-gray-400 hover:text-[#cf292c] hover:bg-gray-50 rounded transition"
+            title="Jour suivant"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </button>
+          <button
+            onClick={() => {
+              setDate(getLocalDateString());
+              if (showRestoreNotification) setShowRestoreNotification(false);
+            }}
+            disabled={date === getLocalDateString()}
+            className={`ml-1 px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+              date === getLocalDateString()
+                ? 'bg-gray-100 text-gray-400 cursor-default'
+                : 'bg-[#cf292c] text-white hover:bg-[#cf292c]/90'
+            }`}
+          >
+            Aujourd'hui
+          </button>
+        </div>
+
+        {/* Droite : Exports alignés */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-2 bg-[#cf292c] text-white px-3.5 py-1.5 rounded-lg hover:bg-[#cf292c]/90 transition-colors text-sm font-medium"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Export du jour
+          </button>
+
+          <div className="w-px h-7 bg-gray-200" />
+
+          <div className="relative" ref={monthPickerRef}>
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={() => { setPickerYear(parseInt(presenceMois.split('-')[0])); setShowMonthPicker(!showMonthPicker); }}
+                className="inline-flex items-center gap-2 border border-gray-300 border-r-0 rounded-l-lg px-3 py-1.5 text-sm bg-white hover:bg-gray-50 transition text-gray-700 font-medium"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                {moisLabelLong[parseInt(presenceMois.split('-')[1]) - 1]} {presenceMois.split('-')[0]}
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 text-gray-400 transition-transform ${showMonthPicker ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              <button
+                onClick={handleExportFichePresence}
+                disabled={exportingPresence}
+                className="inline-flex items-center gap-2 bg-white text-[#cf292c] border border-[#cf292c] px-3.5 py-1.5 rounded-r-lg hover:bg-[#cf292c]/5 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {exportingPresence ? (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+                Fiche de présence
+              </button>
             </div>
 
-            {/* Boutons de navigation rapide */}
-            <div className="flex gap-1">
-              <button
-                onClick={() => {
-                  const yesterday = new Date(date);
-                  yesterday.setDate(yesterday.getDate() - 1);
-                  setDate(getLocalDateString(yesterday));
-                }}
-                className="flex-1 sm:flex-none px-3 py-2 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
-                title="Jour précédent"
-              >
-                <span className="hidden sm:inline">← Hier</span>
-                <span className="sm:hidden">←</span>
-              </button>
-              <button
-                onClick={() => {
-                  const today = new Date();
-                  setDate(getLocalDateString(today));
-                  // Nettoyer la notification si elle est affichée
-                  if (showRestoreNotification) {
-                    setShowRestoreNotification(false);
-                  }
-                }}
-                className={`flex-1 sm:flex-none px-3 py-2 text-xs rounded transition ${
-                  date === getLocalDateString()
-                    ? 'bg-gray-100 text-gray-500 cursor-default'
-                    : 'bg-[#cf292c] text-white hover:bg-[#cf292c]/90'
-                }`}
-                disabled={date === getLocalDateString()}
-              >
-                <span className="hidden sm:inline">Aujourd'hui</span>
-                <span className="sm:hidden">Auj.</span>
-              </button>
-              <button
-                onClick={() => {
-                  const tomorrow = new Date(date);
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  setDate(getLocalDateString(tomorrow));
-                }}
-                className="flex-1 sm:flex-none px-3 py-2 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition"
-                title="Jour suivant"
-              >
-                <span className="hidden sm:inline">Demain →</span>
-                <span className="sm:hidden">→</span>
-              </button>
-            </div>
+            {/* Dropdown calendrier mois */}
+            {showMonthPicker && (
+              <div className="absolute top-full mt-1.5 left-0 z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-3 w-[260px] animate-fade-in">
+                {/* Navigation année */}
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => setPickerYear(y => y - 1)}
+                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#cf292c] transition"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <span className="text-sm font-bold text-gray-800">{pickerYear}</span>
+                  <button
+                    onClick={() => setPickerYear(y => y + 1)}
+                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#cf292c] transition"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                </div>
+                {/* Grille mois */}
+                <div className="grid grid-cols-4 gap-1">
+                  {moisLabels.map((label, i) => {
+                    const moisVal = `${pickerYear}-${String(i + 1).padStart(2, '0')}`;
+                    const isSelected = presenceMois === moisVal;
+                    const now = new Date();
+                    const isCurrent = pickerYear === now.getFullYear() && i === now.getMonth();
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => { setPresenceMois(moisVal); setShowMonthPicker(false); }}
+                        className={`py-2 px-1 rounded-lg text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'bg-[#cf292c] text-white shadow-sm'
+                            : isCurrent
+                              ? 'bg-[#cf292c]/10 text-[#cf292c] font-semibold hover:bg-[#cf292c]/20'
+                              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        
-        {/* Bouton export responsive */}
-        <button
-          onClick={handleExportExcel}
-          className="w-full lg:w-auto bg-[#cf292c] text-white px-4 py-2 rounded-lg hover:bg-[#cf292c]/90 transition-colors flex items-center justify-center gap-2 text-sm"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <span className="hidden sm:inline">Exporter en Excel</span>
-          <span className="sm:hidden">Export</span>
-        </button>
       </div>
 
       {/* Cartes statistiques responsive */}

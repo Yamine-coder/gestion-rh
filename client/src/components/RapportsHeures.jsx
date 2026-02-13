@@ -1,6 +1,6 @@
 // src/components/RapportsHeures.jsx
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 // axios instance centralisée
 import api, { baseURL } from "../api/axiosInstance";
 import { 
@@ -27,12 +27,29 @@ const RapportsHeures = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const monthPickerRef = useRef(null);
   const [statsGlobales, setStatsGlobales] = useState({
     employesActifs: 0,
     heuresPrevues: 0,
     heuresTravaillees: 0,
     productivite: null
   });
+
+  // Fermer le picker au clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(e.target)) {
+        setShowMonthPicker(false);
+      }
+    };
+    if (showMonthPicker) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMonthPicker]);
+
+  const moisLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+  const moisLabelLong = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
   // Filtrer les employés selon le terme de recherche
   const filteredEmployes = employes.filter(employe => {
@@ -160,7 +177,7 @@ const RapportsHeures = () => {
       // Restaurer le bouton
       if (exportButton) {
         exportButton.disabled = false;
-        exportButton.innerHTML = '<svg class="lucide lucide-file-spreadsheet h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg><span class="hidden sm:inline ml-2">Excel + Navigo</span><span class="sm:hidden ml-2">Excel</span>';
+        exportButton.innerHTML = '<svg class="lucide lucide-file-spreadsheet h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg><span class="hidden sm:inline ml-2">Export mensuel & Navigo</span><span class="sm:hidden ml-2">Export</span>';
       }
 
       // Notification de succès
@@ -180,7 +197,7 @@ const RapportsHeures = () => {
       const exportButton = document.querySelector('[data-export-all]');
       if (exportButton) {
         exportButton.disabled = false;
-        exportButton.innerHTML = '<svg class="lucide lucide-file-spreadsheet h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg><span class="hidden sm:inline ml-2">Excel + Navigo</span><span class="sm:hidden ml-2">Excel</span>';
+        exportButton.innerHTML = '<svg class="lucide lucide-file-spreadsheet h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg><span class="hidden sm:inline ml-2">Export mensuel & Navigo</span><span class="sm:hidden ml-2">Export</span>';
       }
 
       alert(
@@ -236,19 +253,54 @@ const RapportsHeures = () => {
         </div>
         
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
-          {/* Sélecteur de mois uniquement */}
-          <div className="relative w-full sm:w-auto">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          {/* Sélecteur de mois custom */}
+          <div className="relative w-full sm:w-auto" ref={monthPickerRef}>
+            <button
+              type="button"
+              onClick={() => { setPickerYear(parseInt(moisSelectionne.split('-')[0])); setShowMonthPicker(!showMonthPicker); }}
+              className="w-full sm:w-auto inline-flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white hover:border-gray-400 transition-all shadow-sm text-gray-700 font-medium"
+            >
               <HiCalendar className="h-4 w-4 text-gray-400" />
-            </div>
-            <input
-              type="month"
-              value={moisSelectionne}
-              onChange={(e) => setMoisSelectionne(e.target.value)}
-              min="2020-01"
-              max={new Date().toISOString().slice(0, 7)}
-              className="w-full sm:w-auto pl-10 pr-4 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all shadow-sm"
-            />
+              {moisLabelLong[parseInt(moisSelectionne.split('-')[1]) - 1]} {moisSelectionne.split('-')[0]}
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 text-gray-400 transition-transform ${showMonthPicker ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+
+            {showMonthPicker && (
+              <div className="absolute top-full mt-1.5 left-0 z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-3 w-[260px]">
+                <div className="flex items-center justify-between mb-3">
+                  <button onClick={() => setPickerYear(y => y - 1)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#cf292c] transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  </button>
+                  <span className="text-sm font-bold text-gray-800">{pickerYear}</span>
+                  <button onClick={() => setPickerYear(y => y + 1)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-[#cf292c] transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  {moisLabels.map((label, i) => {
+                    const moisVal = `${pickerYear}-${String(i + 1).padStart(2, '0')}`;
+                    const isSelected = moisSelectionne === moisVal;
+                    const now = new Date();
+                    const isCurrent = pickerYear === now.getFullYear() && i === now.getMonth();
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => { setMoisSelectionne(moisVal); setShowMonthPicker(false); }}
+                        className={`py-2 px-1 rounded-lg text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'bg-[#cf292c] text-white shadow-sm'
+                            : isCurrent
+                              ? 'bg-[#cf292c]/10 text-[#cf292c] font-semibold hover:bg-[#cf292c]/20'
+                              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={exporterTousRapports}
@@ -256,8 +308,8 @@ const RapportsHeures = () => {
             className="w-full lg:w-auto bg-[#cf292c] text-white px-4 py-2.5 rounded-lg hover:bg-[#b82528] transition-colors flex items-center justify-center gap-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             <FileSpreadsheet className="h-4 w-4" />
-            <span className="hidden sm:inline">Excel + Navigo</span>
-            <span className="sm:hidden">Excel</span>
+            <span className="hidden sm:inline">Export mensuel & Navigo</span>
+            <span className="sm:hidden">Export</span>
           </button>
         </div>
       </div>
