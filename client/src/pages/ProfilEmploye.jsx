@@ -2428,7 +2428,11 @@ const ProfilEmploye = React.memo(() => {
                                 </div>
                               </div>
                               
-                              <label className={`flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border-2 border-dashed border-primary-300 dark:border-primary-700 bg-white dark:bg-slate-800/50 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-400 dark:hover:border-primary-600 transition-all ${navigoUploading ? 'opacity-50 cursor-wait' : ''}`}>
+                              <label className={`flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl border-2 transition-all ${
+                                navigoUploading
+                                  ? 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 cursor-wait'
+                                  : 'border-dashed border-primary-300 dark:border-primary-700 bg-white dark:bg-slate-800/50 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-400 dark:hover:border-primary-600'
+                              }`}>
                                 <input
                                   type="file"
                                   accept="image/jpeg,image/jpg,image/png,application/pdf"
@@ -2441,10 +2445,10 @@ const ProfilEmploye = React.memo(() => {
                                   className="hidden"
                                 />
                                 {navigoUploading ? (
-                                  <>
-                                    <div className="w-5 h-5 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin" />
+                                  <div className="flex items-center gap-2 py-0.5">
+                                    <div className="w-5 h-5 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin flex-shrink-0" />
                                     <span className="text-sm font-medium text-primary-600 dark:text-primary-400">Envoi en cours...</span>
-                                  </>
+                                  </div>
                                 ) : (
                                   <>
                                     <ArrowUpTrayIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
@@ -2883,10 +2887,12 @@ const ProfilEmploye = React.memo(() => {
                             </p>
                           )}
                           <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${
-                            canUpload
+                            navigoUploading
+                              ? 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 cursor-wait'
+                              : canUpload
                               ? 'border-dashed border-primary-300 dark:border-primary-700 bg-white dark:bg-slate-800 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-400'
                               : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 cursor-not-allowed opacity-50'
-                          } ${navigoUploading ? 'opacity-50 cursor-wait' : ''}`}>
+                          }`}>
                             <input
                               type="file"
                               accept="image/jpeg,image/jpg,image/png,application/pdf"
@@ -2895,10 +2901,10 @@ const ProfilEmploye = React.memo(() => {
                               className="hidden"
                             />
                             {navigoUploading ? (
-                              <>
-                                <div className="w-5 h-5 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin" />
+                              <div className="flex items-center gap-2 py-0.5">
+                                <div className="w-5 h-5 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin flex-shrink-0" />
                                 <span className="text-sm font-medium text-primary-600 dark:text-primary-400">Envoi en cours...</span>
-                              </>
+                              </div>
                             ) : (
                               <>
                                 <ArrowUpTrayIcon className={`w-5 h-5 ${canUpload ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400'}`} />
