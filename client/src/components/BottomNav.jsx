@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { HomeIcon, ClockIcon, CalendarIcon, UserIcon, QrCodeIcon, BellIcon, BoltIcon, HandThumbUpIcon } from "@heroicons/react/24/outline";
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect } from "react";
 import { QRCodeCanvas } from 'qrcode.react';
 import { X, QrCode, Smartphone, Sun, Ruler } from "lucide-react";
 import { ThemeContext } from '../context/ThemeContext';
@@ -22,6 +22,15 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
   const [showNotifications, setShowNotifications] = useState(false);
   const { theme } = useContext(ThemeContext); // eslint-disable-line no-unused-vars
   
+  // Synchroniser le theme-color de la status bar iOS/Android avec le thème
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const color = theme === 'dark' ? '#0f172a' : '#ffffff';
+      meta.setAttribute('content', color);
+    }
+  }, [theme]);
+
   // Hook centralisé pour les notifications
   const {
     notifications,
