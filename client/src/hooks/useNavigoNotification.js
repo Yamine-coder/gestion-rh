@@ -34,8 +34,15 @@ export function useNavigoNotification() {
     
     // Rafraîchir toutes les 2 minutes
     const interval = setInterval(fetchEnAttente, 120000);
+
+    // Écouter l'événement custom pour refresh immédiat après validation/refus
+    const handleNavigoUpdate = () => fetchEnAttente();
+    window.addEventListener('navigo-updated', handleNavigoUpdate);
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('navigo-updated', handleNavigoUpdate);
+    };
   }, [fetchEnAttente]);
 
   return {

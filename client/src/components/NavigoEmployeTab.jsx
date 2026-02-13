@@ -56,6 +56,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
       setMessage({ type: 'success', text: 'Justificatif validé avec succès' });
       fetchJustificatifsMensuels();
       if (onUpdate) onUpdate();
+      window.dispatchEvent(new Event('navigo-updated'));
     } catch (error) {
       console.error('Erreur validation:', error);
       setMessage({ type: 'error', text: 'Erreur lors de la validation' });
@@ -82,6 +83,7 @@ export default function NavigoEmployeTab({ employe, onUpdate }) {
       setMessage({ type: 'success', text: 'Justificatif refusé' });
       fetchJustificatifsMensuels();
       if (onUpdate) onUpdate();
+      window.dispatchEvent(new Event('navigo-updated'));
     } catch (error) {
       console.error('Erreur refus:', error);
       setMessage({ type: 'error', text: 'Erreur lors du refus' });

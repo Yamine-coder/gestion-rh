@@ -115,7 +115,7 @@ export default function TopNavAdmin({
       icon: Users, 
       short: "Employés",
       badge: navigoEnAttente > 0 ? navigoEnAttente : null,
-      badgeColor: "amber",
+      badgeColor: "red",
       priority: "high",
       description: navigoEnAttente > 0 ? `${navigoEnAttente} Navigo en attente` : "Gérer les employés"
     },
