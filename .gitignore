@@ -76,3 +76,5 @@ Thumbs.db
 _archives/
 .chrome-profile/
 debug-*.png
+.vercel
+.env*.local
