@@ -96,16 +96,24 @@ function calculateTimeGapMinutes(plannedTime, actualTime) {
   
   const [hActual, mActual] = actualTimeFormatted.split(':').map(Number);
   let minutesActual = hActual * 60 + mActual;
+  let minutesPlannedAdj = minutesPlanned;
 
   // Gestion du passage à minuit
-  if (minutesActual < 240 && minutesPlanned > 1200) { // Si actual < 4h et planned > 20h
-    minutesActual += 24 * 60; // Ajouter 24h à l'heure réelle
+  if (minutesActual < 240 && minutesPlannedAdj > 1200) {
+    // Cas 1: actual < 4h et planned > 20h → actual est après minuit
+    // Ex: planned 22:00, actual 01:30 → actual += 24h
+    minutesActual += 24 * 60;
+  } else if (minutesPlannedAdj < 240 && minutesActual > 1200) {
+    // Cas 2: planned < 4h (ex: 00:00) et actual > 20h (ex: 23:59)
+    // → planned est minuit (fin de journée), actual est avant minuit
+    // Ex: planned 00:00, actual 23:59 → planned += 24h (= 24:00)
+    minutesPlannedAdj += 24 * 60;
   }
 
   // Calcul : prévu - réel
   // Un écart positif signifie une arrivée anticipée (réel < prévu)
   // Un écart négatif signifie un retard (réel > prévu)
-  return minutesPlanned - minutesActual;
+  return minutesPlannedAdj - minutesActual;
 }
 
 /**
