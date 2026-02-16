@@ -14,7 +14,7 @@ import {
   TrendingUp, Activity, ClipboardCheck, Download, RefreshCw, ChevronRight, UserCheck, UserX, Hourglass, Percent, Plane,
   Gift, Tv, GraduationCap, Flag, Cake, TreePine, Snowflake, Sun, Flower2, ExternalLink, Moon,
   Package, UserCog, PhoneCall, UtensilsCrossed, FolderOpen, Flame, Pin, PinOff, MailPlus, Copy, Briefcase, AlarmClock,
-  Truck, User, MoreHorizontal, Edit3, Repeat, List, MapPin, Building2, ShoppingBag, BookOpen
+  Truck, User, MoreHorizontal, Edit3, Repeat, List, MapPin, Building2, ShoppingBag, BookOpen, ShieldCheck
 } from 'lucide-react';
 import { toLocalDateString, getCurrentDateString } from '../utils/parisTimeUtils';
 import DatePickerCustom from './DatePickerCustom';
@@ -2126,7 +2126,8 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
                       'Bar': Coffee, 'bar': Coffee, 'Service': Users, 'service': Users,
                       'Caisse': Package, 'caisse': Package, 'Caisse/Service': Package,
                       'Manager': UserCog, 'manager': UserCog,
-                      'Pastaiolo': UtensilsCrossed, 'Pizzaiolo': Flame, 'Entretien': ClipboardList, 'Autre': ClipboardList,
+                      'Pastaiolo': UtensilsCrossed, 'Pizzaiolo': Flame, 'Entretien': ClipboardList,
+                      'Securite': ShieldCheck, 'Assistant Direction': ClipboardList, 'Autre': ClipboardList,
                     };
                     
                     const categories = [...new Set(validShifts

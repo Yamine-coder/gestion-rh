@@ -12,6 +12,7 @@ const CATEGORIES_VALIDES = [
   'Caisse/Service',
   'Entretien',
   'Securite',
+  'Assistant Direction',
   'Direction',
   'RH',
   'Informatique',

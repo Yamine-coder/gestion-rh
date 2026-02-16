@@ -10,11 +10,12 @@ import {
   Star, 
   UsersRound, 
   Laptop,
-  List
+  List,
+  ClipboardList
 } from 'lucide-react';
 
 // Catégories d'emploi (opérationnels)
-export const CATEGORIES_EMPLOYES = ['Pizzaiolo', 'Pastaiolo', 'Caisse/Service', 'Entretien', 'Securite'];
+export const CATEGORIES_EMPLOYES = ['Pizzaiolo', 'Pastaiolo', 'Caisse/Service', 'Entretien', 'Securite', 'Assistant Direction'];
 // Service administratif
 export const CATEGORIES_ADMIN = ['Direction', 'RH', 'Informatique'];
 
@@ -26,6 +27,7 @@ export const CATEGORY_ICONS_LUCIDE = {
   'Caisse/Service': RefreshCw,
   Entretien: SprayCan,
   Securite: ShieldCheck,
+  'Assistant Direction': ClipboardList,
   Direction: Star,
   RH: UsersRound,
   Informatique: Laptop,
@@ -40,6 +42,7 @@ export const CATEGORY_ICONS = {
   'Caisse/Service': 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', // Clipboard
   Entretien: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z', // Wrench
   Securite: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', // Shield
+  'Assistant Direction': 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01', // ClipboardList
   Direction: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z', // Star
   RH: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75', // Users
   Informatique: 'M20 16V7a2 2 0 00-2-2H6a2 2 0 00-2 2v9m16 0H4m16 0l1.28 2.55a1 1 0 01-.9 1.45H3.62a1 1 0 01-.9-1.45L4 16' // Laptop
@@ -102,6 +105,15 @@ export const getCategorieEmploye = (employe) => {
     };
   }
   
+  // Assistant Direction
+  if (categorie.includes('assistant direction') || categorie.includes('assistant')) {
+    return { 
+      label: 'Assistant Direction', 
+      color: 'bg-teal-100 text-teal-800', 
+      Icon: ClipboardList
+    };
+  }
+  
   // Direction
   if (categorie.includes('direction') || categorie.includes('directeur')) {
     return { 
@@ -146,6 +158,7 @@ export const CATEGORIES = [
   { value: 'Caisse/Service', label: 'Caisse/Service', iconType: 'clipboard', color: 'bg-purple-100 text-purple-600' },
   { value: 'Entretien', label: 'Entretien', iconType: 'spray', color: 'bg-lime-100 text-lime-600' },
   { value: 'Securite', label: 'Sécurité', iconType: 'shield', color: 'bg-red-100 text-red-600' },
+  { value: 'Assistant Direction', label: 'Assistant Direction', iconType: 'clipboard-list', color: 'bg-teal-100 text-teal-600' },
   // Service administratif
   { value: 'Direction', label: 'Direction', iconType: 'star', color: 'bg-indigo-100 text-indigo-600' },
   { value: 'RH', label: 'RH', iconType: 'users', color: 'bg-pink-100 text-pink-600' },
@@ -199,6 +212,9 @@ export const getCategorieByName = (categorieName) => {
   }
   if (categorie.includes('sécurité') || categorie.includes('securite') || categorie.includes('security')) {
     return { label: 'Sécurité', color: 'bg-red-100 text-red-800', Icon: ShieldCheck };
+  }
+  if (categorie.includes('assistant direction') || categorie.includes('assistant')) {
+    return { label: 'Assistant Direction', color: 'bg-teal-100 text-teal-800', Icon: ClipboardList };
   }
   if (categorie.includes('direction') || categorie.includes('directeur')) {
     return { label: 'Direction', color: 'bg-indigo-100 text-indigo-800', Icon: Star };

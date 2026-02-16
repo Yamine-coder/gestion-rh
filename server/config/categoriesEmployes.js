@@ -48,6 +48,14 @@ const CATEGORIES_EMPLOYES = {
     description: 'Agents de sécurité'
   },
   
+  ASSISTANT_DIRECTION: {
+    code: 'Assistant Direction',
+    label: 'Assistant Direction',
+    icon: '📋',
+    color: 'teal',
+    description: 'Assistant(e) de direction'
+  },
+  
   // Service administratif
   DIRECTION: {
     code: 'Direction',
@@ -75,7 +83,7 @@ const CATEGORIES_EMPLOYES = {
 };
 
 // Catégories pour les employés (restaurant)
-const CATEGORIES_RESTAURANT = ['Pizzaiolo', 'Pastaiolo', 'Caisse/Service', 'Entretien', 'Securite'];
+const CATEGORIES_RESTAURANT = ['Pizzaiolo', 'Pastaiolo', 'Caisse/Service', 'Entretien', 'Securite', 'Assistant Direction'];
 
 // Catégories pour les admins
 const CATEGORIES_ADMIN = ['Direction', 'RH', 'Informatique'];

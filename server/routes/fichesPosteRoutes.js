@@ -187,6 +187,34 @@ const TEMPLATES_DEFAUT = {
     avantages: "Autonomie, remuneration attractive, primes sur objectifs"
   },
 
+  "Assistant Direction": {
+    titre: "Assistant(e) de Direction",
+    departement: "Direction",
+    rattachement: "Directeur(trice) / Gerant(e)",
+    horaires: "Temps plein - Horaires flexibles selon activite",
+    formation: "BTS Assistant de gestion, BTS SAM ou experience equivalente en restauration",
+    missions: [
+      "Assister le directeur dans la gestion quotidienne de l'etablissement",
+      "Coordonner les plannings et assurer le suivi des equipes",
+      "Gerer les appels, courriers et communications internes",
+      "Suivre les commandes fournisseurs et les livraisons",
+      "Preparer les documents administratifs et les tableaux de bord",
+      "Accueillir et orienter les interlocuteurs externes",
+      "Organiser les reunions et rediger les comptes-rendus",
+      "Assurer le relais entre la direction et les equipes operationnelles"
+    ],
+    competences: [
+      "Organisation et gestion des priorites",
+      "Maitrise des outils bureautiques (Excel, Word, logiciels metier)",
+      "Aisance relationnelle et sens de la communication",
+      "Discretion et confidentialite",
+      "Polyvalence et capacite d'adaptation",
+      "Rigueur administrative et sens du detail"
+    ],
+    conditionsTravail: "Poste polyvalent, rythme soutenu, contact permanent avec les equipes",
+    avantages: "Proximite avec la direction, responsabilites variees, evolution possible"
+  },
+
   "RH": {
     titre: "Responsable / Assistant(e) RH",
     departement: "Ressources Humaines",

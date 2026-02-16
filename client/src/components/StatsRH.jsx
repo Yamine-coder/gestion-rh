@@ -345,6 +345,7 @@ const StatsRH = ({ embedded = false }) => {
     'Caisse/Service': { bg: 'from-blue-50 to-blue-100/50', border: 'border-blue-200', text: 'text-blue-600', bar: 'bg-blue-600', barBg: 'bg-blue-200' },
     'Entretien': { bg: 'from-green-50 to-green-100/50', border: 'border-green-200', text: 'text-green-600', bar: 'bg-green-600', barBg: 'bg-green-200' },
     'Securite': { bg: 'from-purple-50 to-purple-100/50', border: 'border-purple-200', text: 'text-purple-600', bar: 'bg-purple-600', barBg: 'bg-purple-200' },
+    'Assistant Direction': { bg: 'from-teal-50 to-teal-100/50', border: 'border-teal-200', text: 'text-teal-600', bar: 'bg-teal-600', barBg: 'bg-teal-200' },
     // Catégories Admins
     'Direction': { bg: 'from-amber-50 to-amber-100/50', border: 'border-amber-200', text: 'text-amber-700', bar: 'bg-amber-600', barBg: 'bg-amber-200' },
     'RH': { bg: 'from-pink-50 to-pink-100/50', border: 'border-pink-200', text: 'text-pink-600', bar: 'bg-pink-600', barBg: 'bg-pink-200' },

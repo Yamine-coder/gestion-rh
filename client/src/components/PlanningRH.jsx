@@ -5877,6 +5877,7 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     pizza: Pizza,
     pasta: Soup,
     clipboard: ClipboardList,
+    'clipboard-list': ClipboardList,
     spray: SprayCan,
     shield: ShieldCheck,
     star: Star,
