@@ -747,7 +747,7 @@ const StatsRH = ({ embedded = false }) => {
               <UsersIcon className="w-4 h-4 text-slate-400" />
               <span className="text-sm font-medium text-gray-700">Évolution effectif</span>
             </div>
-            <span className="text-xs text-gray-400">6 derniers mois</span>
+            <span className="text-xs text-gray-400">{periode === 'annee' ? '12 derniers mois' : periode === 'trimestre' ? '6 derniers mois' : '5 derniers mois'}</span>
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={evolutionEffectif} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
@@ -1029,7 +1029,7 @@ const StatsRH = ({ embedded = false }) => {
           </div>
 
           {/* Graphique Évolution Effectif - Style Dashboard */}
-          <ChartSection title="Évolution de l'effectif sur 6 mois" icon={<HiUsers size={14} />}>
+          <ChartSection title={`Évolution de l'effectif sur ${periode === 'annee' ? '12' : periode === 'trimestre' ? '6' : '5'} mois`} icon={<HiUsers size={14} />}>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={evolutionEffectif} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />

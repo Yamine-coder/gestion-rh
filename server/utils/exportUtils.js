@@ -689,10 +689,13 @@ async function generateAllEmployeesExcel(rapportsEmployes, periode, dateDebut, d
       else if (['.xls', '.xlsx'].includes(extension)) iconText = '📊 Excel';
       else iconText = '📎 Fichier';
       
+      // Normaliser le tooltip pour éviter les problèmes d'encodage ExcelJS (accents mal rendus)
+      const tooltipText = `Telecharger ${fileName.normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`;
+      
       cell.value = {
         text: iconText,
         hyperlink: fileUrl,
-        tooltip: `Télécharger ${fileName}`
+        tooltip: tooltipText
       };
       
       cell.font = {

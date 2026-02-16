@@ -1137,9 +1137,10 @@ const getDashboardStats = async (req, res) => {
       });
     }
     
-    // 7. Évolution effectif (5 derniers mois) — Source : MouvementEffectif + User (fallback)
+    // 7. Évolution effectif — adapté à la période sélectionnée
+    const nbMoisEvolution = periode === 'annee' ? 12 : periode === 'trimestre' ? 6 : 5;
     const evolutionEffectif = [];
-    for (let i = 4; i >= 0; i--) {
+    for (let i = nbMoisEvolution - 1; i >= 0; i--) {
       const moisDate = new Date();
       moisDate.setMonth(moisDate.getMonth() - i);
       
