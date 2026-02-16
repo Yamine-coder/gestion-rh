@@ -5933,9 +5933,11 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     
     // Filtrer par cat�gorie
     if (categorieFilter !== "tous") {
+      const selectedCat = CATEGORIES.find(c => c.value === categorieFilter);
+      const filterLabel = selectedCat ? selectedCat.label : categorieFilter;
       filtered = filtered.filter(e => {
         const categorie = getCategorieEmploye(e);
-        return categorie.label.toLowerCase() === categorieFilter.toLowerCase();
+        return categorie.label === filterLabel;
       });
     }
     
