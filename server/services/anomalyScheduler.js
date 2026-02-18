@@ -419,14 +419,48 @@ class AnomalyScheduler {
   async checkPauseNonPrise(shift, entrees, sorties, dateStr) {
     const segments = parseSegments(shift.segments);
     
-    // Trouver les segments de pause prévus
-    const pauseSegments = segments.filter(seg => {
-      const segType = seg.type?.toLowerCase();
-      return segType === 'pause' || segType === 'break';
-    });
+    // Calculer les pauses prévues à partir des GAPS entre segments de travail
+    const workSegments = segments
+      .filter(seg => !seg.isExtra && (seg.start || seg.debut) && (seg.end || seg.fin))
+      .map(seg => ({
+        start: seg.start || seg.debut,
+        end: seg.end || seg.fin
+      }))
+      .sort((a, b) => a.start.localeCompare(b.start));
+    
+    // Calculer les gaps entre segments (= pauses prévues)
+    const pauseGaps = [];
+    for (let gi = 0; gi < workSegments.length - 1; gi++) {
+      const gapStart = workSegments[gi].end;
+      const gapEnd = workSegments[gi + 1].start;
+      const [endH, endM] = gapStart.split(':').map(Number);
+      const [startH, startM] = gapEnd.split(':').map(Number);
+      const gapMinutes = (startH * 60 + startM) - (endH * 60 + endM);
+      if (gapMinutes > 0) {
+        pauseGaps.push({ start: gapStart, end: gapEnd, dureeMinutes: gapMinutes });
+      }
+    }
+    
+    // Fallback: chercher des segments de type 'pause' explicite
+    if (pauseGaps.length === 0) {
+      const pauseSegments = segments.filter(seg => {
+        const segType = seg.type?.toLowerCase();
+        return segType === 'pause' || segType === 'break';
+      });
+      pauseSegments.forEach(seg => {
+        const pStart = seg.start || seg.debut;
+        const pEnd = seg.end || seg.fin;
+        if (pStart && pEnd) {
+          const [pStartH, pStartM] = pStart.split(':').map(Number);
+          const [pEndH, pEndM] = pEnd.split(':').map(Number);
+          const dur = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
+          if (dur > 0) pauseGaps.push({ start: pStart, end: pEnd, dureeMinutes: dur });
+        }
+      });
+    }
     
     // Si pas de pause prévue, rien à vérifier
-    if (pauseSegments.length === 0) return;
+    if (pauseGaps.length === 0) return;
     
     // Si l'employé n'a que 2 pointages (1 entrée + 1 sortie), il n'a probablement pas pris sa pause
     if (entrees.length === 1 && sorties.length === 1) {
@@ -436,26 +470,23 @@ class AnomalyScheduler {
       // Calculer la durée travaillée sans interruption
       const dureeMinutes = Math.round((sortie - entree) / (1000 * 60));
       
-      // Si travail > 6h sans pause, c'est une anomalie (droit du travail français)
-      // et si une pause était prévue dans le planning
-      const pausePrevue = pauseSegments[0];
-      const pauseDebut = pausePrevue.start || pausePrevue.debut;
-      const pauseFin = pausePrevue.end || pausePrevue.fin;
+      // Utiliser le premier gap comme pause principale
+      const pausePrincipale = pauseGaps[0];
+      const pauseDebut = pausePrincipale.start;
+      const pauseFin = pausePrincipale.end;
+      const pauseDureeMinutes = pauseGaps.reduce((acc, g) => acc + g.dureeMinutes, 0);
       
-      if (pauseDebut && pauseFin) {
-        // Calculer la durée de pause prévue
-        const [pStartH, pStartM] = pauseDebut.split(':').map(Number);
-        const [pEndH, pEndM] = pauseFin.split(':').map(Number);
-        const pauseDureeMinutes = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
-        
-        // Vérifier si l'employé a travaillé pendant la pause prévue
-        const pauseDebutDate = new Date(entree);
-        pauseDebutDate.setHours(pStartH, pStartM, 0, 0);
-        const pauseFinDate = new Date(entree);
-        pauseFinDate.setHours(pEndH, pEndM, 0, 0);
-        
-        // Si entrée avant pause ET sortie après pause = pause non prise
-        if (entree <= pauseDebutDate && sortie >= pauseFinDate) {
+      const [pStartH, pStartM] = pauseDebut.split(':').map(Number);
+      const [pEndH, pEndM] = pauseFin.split(':').map(Number);
+      
+      // Vérifier si l'employé a travaillé pendant la pause prévue
+      const pauseDebutDate = new Date(entree);
+      pauseDebutDate.setHours(pStartH, pStartM, 0, 0);
+      const pauseFinDate = new Date(entree);
+      pauseFinDate.setHours(pEndH, pEndM, 0, 0);
+      
+      // Si entrée avant pause ET sortie après pause = pause non prise
+      if (entree <= pauseDebutDate && sortie >= pauseFinDate) {
           await this.createAnomalieIfNotExists(shift.employeId, dateStr, 'pause_non_prise', {
             gravite: dureeMinutes > 360 ? 'haute' : 'moyenne', // >6h = grave (code du travail)
             shiftId: shift.id,

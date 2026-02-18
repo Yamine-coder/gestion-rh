@@ -213,27 +213,48 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         const finPause = horodatage;
         const dureePauseReelleMinutes = Math.round((finPause - debutPause) / 60000);
         
-        // Récupérer la durée de pause prévue depuis les segments du shift
+        // Récupérer la durée de pause prévue depuis les gaps entre segments de travail
         let pausePrevueMinutes = 60; // Défaut 1h si pas de pause définie
         const segments = shift.segments || [];
-        const pauseSegment = segments.find(seg => {
-          const segType = seg.type?.toLowerCase();
-          return segType === 'pause' || segType === 'break';
-        });
         
-        if (pauseSegment) {
-          const pauseStart = pauseSegment.start || pauseSegment.debut;
-          const pauseEnd = pauseSegment.end || pauseSegment.fin;
-          if (pauseStart && pauseEnd) {
-            const [pStartH, pStartM] = pauseStart.split(':').map(Number);
-            const [pEndH, pEndM] = pauseEnd.split(':').map(Number);
+        // Trier les segments de travail par heure de début pour trouver les gaps
+        const workSegments = segments
+          .filter(seg => !seg.isExtra && (seg.start || seg.debut) && (seg.end || seg.fin))
+          .map(seg => ({
+            start: seg.start || seg.debut,
+            end: seg.end || seg.fin
+          }))
+          .sort((a, b) => a.start.localeCompare(b.start));
+        
+        if (workSegments.length >= 2) {
+          // Calculer les gaps entre segments consécutifs (= pauses prévues)
+          let totalPauseMinutes = 0;
+          for (let gi = 0; gi < workSegments.length - 1; gi++) {
+            const [endH, endM] = workSegments[gi].end.split(':').map(Number);
+            const [startH, startM] = workSegments[gi + 1].start.split(':').map(Number);
+            const gapMinutes = (startH * 60 + startM) - (endH * 60 + endM);
+            if (gapMinutes > 0) totalPauseMinutes += gapMinutes;
+          }
+          if (totalPauseMinutes > 0) pausePrevueMinutes = totalPauseMinutes;
+        } else {
+          // Fallback: segment explicite de type pause (rare)
+          const pauseSegment = segments.find(seg => {
+            const segType = seg.type?.toLowerCase();
+            return segType === 'pause' || segType === 'break';
+          });
+          if (pauseSegment) {
+            const pauseStart = pauseSegment.start || pauseSegment.debut;
+            const pauseEnd = pauseSegment.end || pauseSegment.fin;
+            if (pauseStart && pauseEnd) {
+              const [pStartH, pStartM] = pauseStart.split(':').map(Number);
+              const [pEndH, pEndM] = pauseEnd.split(':').map(Number);
+              pausePrevueMinutes = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
+            }
+          } else if (shift.pauseDebut && shift.pauseFin) {
+            const [pStartH, pStartM] = shift.pauseDebut.split(':').map(Number);
+            const [pEndH, pEndM] = shift.pauseFin.split(':').map(Number);
             pausePrevueMinutes = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
           }
-        } else if (shift.pauseDebut && shift.pauseFin) {
-          // Fallback sur pauseDebut/pauseFin du shift
-          const [pStartH, pStartM] = shift.pauseDebut.split(':').map(Number);
-          const [pEndH, pEndM] = shift.pauseFin.split(':').map(Number);
-          pausePrevueMinutes = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
         }
         
         // Tolérance de 5 minutes
