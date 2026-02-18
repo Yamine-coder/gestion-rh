@@ -440,10 +440,11 @@ router.get('/mensuel/mes-justificatifs', authMiddleware, async (req, res) => {
     const justificatifs = await prisma.justificatifNavigo.findMany({
       where: { userId: parseInt(userId) },
       orderBy: [{ annee: 'desc' }, { mois: 'desc' }],
-      include: {
-        validateur: {
-          select: { id: true, nom: true, prenom: true }
-        }
+      select: {
+        id: true, mois: true, annee: true, statut: true,
+        dateUpload: true, dateValidation: true, motifRefus: true,
+        fichierNom: true, fichierMime: true, fichier: true,
+        validateur: { select: { id: true, nom: true, prenom: true } }
       }
     });
 
@@ -594,10 +595,10 @@ router.get('/mensuel/admin/en-attente', authMiddleware, async (req, res) => {
     const justificatifs = await prisma.justificatifNavigo.findMany({
       where: { statut: 'en_attente' },
       orderBy: [{ dateUpload: 'asc' }],
-      include: {
-        user: {
-          select: { id: true, nom: true, prenom: true, email: true, categorie: true }
-        }
+      select: {
+        id: true, mois: true, annee: true, statut: true,
+        dateUpload: true, fichierNom: true, fichierMime: true,
+        user: { select: { id: true, nom: true, prenom: true, email: true, categorie: true } }
       }
     });
 
@@ -711,13 +712,12 @@ router.get('/mensuel/admin/dashboard', authMiddleware, async (req, res) => {
         mois: moisInt,
         annee: anneeInt
       },
-      include: {
-        user: {
-          select: { id: true, nom: true, prenom: true }
-        },
-        validateur: {
-          select: { id: true, nom: true, prenom: true }
-        }
+      select: {
+        id: true, userId: true, mois: true, annee: true, statut: true,
+        dateUpload: true, dateValidation: true, motifRefus: true,
+        fichierNom: true, fichierMime: true,
+        user: { select: { id: true, nom: true, prenom: true } },
+        validateur: { select: { id: true, nom: true, prenom: true } }
       }
     });
 
@@ -777,10 +777,10 @@ router.put('/mensuel/admin/:id/statut', authMiddleware, async (req, res) => {
         dateValidation: new Date(),
         validePar: parseInt(adminId)
       },
-      include: {
-        user: {
-          select: { id: true, nom: true, prenom: true }
-        }
+      select: {
+        id: true, userId: true, mois: true, annee: true, statut: true,
+        dateUpload: true, dateValidation: true, motifRefus: true,
+        user: { select: { id: true, nom: true, prenom: true } }
       }
     });
 
@@ -840,7 +840,18 @@ router.get('/mensuel/admin/employe/:employeId', authMiddleware, async (req, res)
     const justificatifs = await prisma.justificatifNavigo.findMany({
       where: { userId: parseInt(employeId) },
       orderBy: [{ annee: 'desc' }, { mois: 'desc' }],
-      include: {
+      select: {
+        id: true,
+        mois: true,
+        annee: true,
+        statut: true,
+        dateUpload: true,
+        dateValidation: true,
+        motifRefus: true,
+        fichierNom: true,
+        fichierMime: true,
+        fichier: true,
+        // fichierData volontairement exclu (blob binaire lourd)
         validateur: {
           select: { id: true, nom: true, prenom: true }
         }

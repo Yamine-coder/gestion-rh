@@ -216,10 +216,9 @@ export default function AnomaliesManager({ embedded = false, onClose, showToast 
         throw new Error(errorData.error || 'Erreur traitement');
       }
 
-      const emoji = action === 'valider' ? '✅' : '❌';
       const label = action === 'valider' ? 'validée' : 'refusée';
       
-      if (showToast) showToast(`${emoji} Anomalie ${label}`, action === 'valider' ? 'success' : 'warning');
+      if (showToast) showToast(`Anomalie ${label}`, action === 'valider' ? 'success' : 'warning');
       await loadAnomalies();
     } catch (err) {
       console.error('Erreur action rapide:', err);

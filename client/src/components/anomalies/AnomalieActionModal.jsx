@@ -1,6 +1,6 @@
 // client/src/components/anomalies/AnomalieActionModal.jsx
 import React, { useState } from 'react';
-import { Check, X, Edit, AlertTriangle, FileText } from 'lucide-react';
+import { Check, X, Edit, AlertTriangle, FileText, CheckCircle, XCircle, Wrench, ShieldAlert, Banknote, Info } from 'lucide-react';
 import { useToast } from '../Toast';
 import { API_BASE } from '../../config/api';
 
@@ -58,15 +58,14 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
       const data = await response.json();
       
       // Message de succès simple et clair
-      const emoji = action === 'valider' ? '✅' : action === 'refuser' ? '❌' : '🔧';
       const actionLabel = action === 'valider' ? 'validée' : action === 'refuser' ? 'refusée' : 'corrigée';
       const toastType = action === 'refuser' ? 'error' : 'success';
       
-      let message = `${emoji} Anomalie ${actionLabel} avec succès !`;
+      let message = `Anomalie ${actionLabel} avec succès !`;
       
       if (action === 'valider') {
         if (data.payerHeuresManquantes && data.heuresARecuperer > 0) {
-          message += ` 💰 ${data.heuresARecuperer.toFixed(2)}h seront payées (justification acceptée).`;
+          message += ` ${data.heuresARecuperer.toFixed(2)}h seront payées (justification acceptée).`;
         } else {
           message += ' Justification acceptée.';
         }
@@ -222,13 +221,13 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                   <Check className="h-6 w-6 text-green-600" />
                 </div>
                 <div className="text-left flex-1">
-                  <div className="font-bold text-lg text-green-700 mb-1">✅ VALIDER</div>
+                  <div className="font-bold text-lg text-green-700 mb-1 flex items-center gap-1.5"><CheckCircle className="w-5 h-5" /> VALIDER</div>
                   <div className="text-sm text-gray-600 leading-relaxed">
                     La justification est acceptable (certificat médical, urgence familiale, etc.).
                     <strong className="text-green-700"> Option paiement heures disponible.</strong>
                   </div>
-                  <div className="mt-2 text-xs bg-white px-3 py-1 rounded inline-block border border-green-200">
-                    ❌ Shift NON modifié • ✅ Justification acceptée
+                  <div className="mt-2 text-xs bg-white px-3 py-1 rounded inline-flex items-center gap-1 border border-green-200">
+                    <XCircle className="w-3 h-3 text-red-500" /> Shift NON modifié • <CheckCircle className="w-3 h-3 text-green-500" /> Justification acceptée
                   </div>
                 </div>
               </button>
@@ -241,13 +240,13 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                   <X className="h-6 w-6 text-red-600" />
                 </div>
                 <div className="text-left flex-1">
-                  <div className="font-bold text-lg text-red-700 mb-1">❌ REFUSER</div>
+                  <div className="font-bold text-lg text-red-700 mb-1 flex items-center gap-1.5"><XCircle className="w-5 h-5" /> REFUSER</div>
                   <div className="text-sm text-gray-600 leading-relaxed">
                     Justification absente ou non recevable.
                     <strong className="text-red-700"> Alerte si ≥5 refus.</strong>
                   </div>
-                  <div className="mt-2 text-xs bg-white px-3 py-1 rounded inline-block border border-red-200">
-                    ❌ Shift NON modifié • ⚠️ Compteur anomalies refusées
+                  <div className="mt-2 text-xs bg-white px-3 py-1 rounded inline-flex items-center gap-1 border border-red-200">
+                    <XCircle className="w-3 h-3 text-red-500" /> Shift NON modifié • <AlertTriangle className="w-3 h-3 text-amber-500" /> Compteur anomalies refusées
                   </div>
                 </div>
               </button>
@@ -260,13 +259,13 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                   <Edit className="h-6 w-6 text-blue-600" />
                 </div>
                 <div className="text-left flex-1">
-                  <div className="font-bold text-lg text-blue-700 mb-1">🔧 CORRIGER</div>
+                  <div className="font-bold text-lg text-blue-700 mb-1 flex items-center gap-1.5"><Wrench className="w-5 h-5" /> CORRIGER</div>
                   <div className="text-sm text-gray-600 leading-relaxed">
                     Erreur administrative avérée (planning incorrect, formation oubliée, badge HS).
                     <strong className="text-blue-700"> Shift sera corrigé.</strong>
                   </div>
-                  <div className="mt-2 text-xs bg-white px-3 py-1 rounded inline-block border border-blue-200">
-                    ✅ Shift MODIFIÉ • 📝 Audit complet • 🔒 RH uniquement
+                  <div className="mt-2 text-xs bg-white px-3 py-1 rounded inline-flex items-center gap-1 border border-blue-200">
+                    <CheckCircle className="w-3 h-3 text-green-500" /> Shift MODIFIÉ • <FileText className="w-3 h-3 text-blue-500" /> Audit complet • <ShieldAlert className="w-3 h-3 text-slate-500" /> RH uniquement
                   </div>
                 </div>
               </button>
@@ -279,7 +278,7 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-yellow-800">
-                      <p className="font-bold mb-1">⚠️ ATTENTION - Action sensible</p>
+                      <p className="font-bold mb-1 flex items-center gap-1.5"><ShieldAlert className="w-4 h-4" /> ATTENTION - Action sensible</p>
                       <p>
                         Cette action va <strong>modifier définitivement le shift original</strong>. 
                         Utilisez cette option UNIQUEMENT pour les erreurs administratives avérées 
@@ -298,7 +297,7 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                     <div className="text-sm text-red-800">
-                      <p className="font-bold mb-1">⚠️ Refus d'anomalie</p>
+                      <p className="font-bold mb-1 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Refus d'anomalie</p>
                       <p>
                         L'anomalie sera marquée comme <strong>refusée</strong>.
                         Une alerte RH sera déclenchée si l'employé atteint 5 refus.
@@ -329,11 +328,11 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                       })}
                     >
                       <option value="">Sélectionner le type d'erreur...</option>
-                      <option value="erreur_admin">📝 Erreur de saisie administrative</option>
-                      <option value="changement_planning">📅 Changement planning non saisi</option>
-                      <option value="incident_technique">⚙️ Incident technique (badge, système)</option>
-                      <option value="formation">🎓 Formation non inscrite au planning</option>
-                      <option value="reunion">👥 Réunion/convocation non planifiée</option>
+                      <option value="erreur_admin">Erreur de saisie administrative</option>
+                      <option value="changement_planning">Changement planning non saisi</option>
+                      <option value="incident_technique">Incident technique (badge, système)</option>
+                      <option value="formation">Formation non inscrite au planning</option>
+                      <option value="reunion">Réunion/convocation non planifiée</option>
                     </select>
                   </div>
 
@@ -388,8 +387,8 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                       className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                     />
                     <div className="flex-1">
-                      <label htmlFor="payerHeures" className="font-medium text-green-900 cursor-pointer">
-                        💰 Payer les heures manquantes
+                      <label htmlFor="payerHeures" className="font-medium text-green-900 cursor-pointer flex items-center gap-1.5">
+                        <Banknote className="w-4 h-4 text-green-600" /> Payer les heures manquantes
                       </label>
                       <p className="text-sm text-green-700 mt-1">
                         L'employé a perdu <strong>{heuresManquantes.toFixed(2)}h</strong> ({Math.round(heuresManquantes * 60)} minutes).
@@ -397,12 +396,12 @@ export default function AnomalieActionModal({ anomalie, onClose, onSuccess }) {
                       </p>
                       <div className="mt-2 text-xs bg-white p-2 rounded border border-green-200">
                         {payerHeuresManquantes ? (
-                          <span className="text-green-800">
-                            ✅ Impact paie: <strong>Heures complètes payées</strong> (justification acceptée)
+                          <span className="text-green-800 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Impact paie: <strong>Heures complètes payées</strong> (justification acceptée)
                           </span>
                         ) : (
-                          <span className="text-gray-600">
-                            ℹ️ Impact paie: <strong>Heures réelles payées</strong> (retard déduit du salaire)
+                          <span className="text-gray-600 flex items-center gap-1">
+                            <Info className="w-3 h-3" /> Impact paie: <strong>Heures réelles payées</strong> (retard déduit du salaire)
                           </span>
                         )}
                       </div>

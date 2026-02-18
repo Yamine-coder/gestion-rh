@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
@@ -98,6 +98,31 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
   const [filtreRole, setFiltreRole] = useState('');
   const [filtreDateDebut, setFiltreDateDebut] = useState('');
   const [filtreDateFin, setFiltreDateFin] = useState('');
+  const [filtreNavigo, setFiltreNavigo] = useState('');
+  
+  // Dropdown open states pour filtres custom
+  const [catDropdownOpen, setCatDropdownOpen] = useState(false);
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [navigoDropdownOpen, setNavigoDropdownOpen] = useState(false);
+  const catDropdownRef = useRef(null);
+  const roleDropdownRef = useRef(null);
+  const navigoDropdownRef = useRef(null);
+  
+  // 🔧 Reset pagination quand un filtre change
+  useEffect(() => {
+    setPage(1);
+  }, [search, filtreStatut, filtreCategorie, filtreRole, filtreDateDebut, filtreDateFin, filtreNavigo]);
+  
+  // Fermer les dropdowns au clic extérieur
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (catDropdownRef.current && !catDropdownRef.current.contains(e.target)) setCatDropdownOpen(false);
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(e.target)) setRoleDropdownOpen(false);
+      if (navigoDropdownRef.current && !navigoDropdownRef.current.contains(e.target)) setNavigoDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   
   // 🆕 Mode d'affichage (liste ou grille)
   const [viewMode, setViewMode] = useState('list'); // 'list' ou 'grid'
@@ -791,6 +816,15 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
         if (dateCreation > dateFin) return false;
       }
       
+      // 4️⃣ Filtre par statut Navigo
+      if (filtreNavigo) {
+        const statut = navigoStatuts[e.id];
+        if (filtreNavigo === 'en_attente' && statut !== 'en_attente') return false;
+        if (filtreNavigo === 'valide' && statut !== 'valide') return false;
+        if (filtreNavigo === 'refuse' && statut !== 'refuse') return false;
+        if (filtreNavigo === 'manquant' && statut) return false;
+      }
+      
       return true;
     })
     // 🆕 3️⃣ Tri
@@ -1115,7 +1149,7 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
               <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  showFilters || filtreCategorie || filtreRole || filtreDateDebut || filtreDateFin
+                  showFilters || filtreCategorie || filtreRole || filtreDateDebut || filtreDateFin || filtreNavigo
                     ? 'bg-[#cf292c] text-white'
                     : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                 }`}
@@ -1200,63 +1234,186 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
 
         {/* Panneau filtres avancés */}
         {showFilters && (
-          <div className="mb-4 p-4 bg-gradient-to-br from-orange-50 to-white border border-orange-200 rounded-xl animate-fadeIn">
+          <div className="mb-4 p-4 bg-white border border-gray-100 rounded-xl animate-fadeIn shadow-sm relative z-30">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-gray-900">Filtres avancés</h4>
-              <button
-                onClick={() => {
-                  setFiltreCategorie('');
-                  setFiltreRole('');
-                  setFiltreDateDebut('');
-                  setFiltreDateFin('');
-                }}
-                className="text-xs text-orange-600 hover:text-orange-700 font-medium"
-              >
-                Réinitialiser
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Filtres</span>
+                {(filtreCategorie || filtreRole || filtreNavigo || filtreDateDebut || filtreDateFin) && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#cf292c] text-white text-[9px] font-bold">
+                    {[filtreCategorie, filtreRole, filtreNavigo, filtreDateDebut, filtreDateFin].filter(Boolean).length}
+                  </span>
+                )}
+              </div>
+              {(filtreCategorie || filtreRole || filtreNavigo || filtreDateDebut || filtreDateFin) && (
+                <button
+                  onClick={() => {
+                    setFiltreCategorie('');
+                    setFiltreRole('');
+                    setFiltreDateDebut('');
+                    setFiltreDateFin('');
+                    setFiltreNavigo('');
+                  }}
+                  className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-[#cf292c] font-medium transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  Tout effacer
+                </button>
+              )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Catégorie</label>
-                <select
-                  value={filtreCategorie}
-                  onChange={(e) => setFiltreCategorie(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+            <div className="flex flex-wrap items-start gap-2">
+              {/* Dropdown Catégorie */}
+              <div className="relative" ref={catDropdownRef}>
+                <button
+                  onClick={() => { setCatDropdownOpen(!catDropdownOpen); setRoleDropdownOpen(false); setNavigoDropdownOpen(false); }}
+                  className={`flex items-center gap-1.5 h-8 rounded-lg border px-2.5 text-xs transition-all ${
+                    filtreCategorie
+                      ? 'border-[#cf292c] bg-[#cf292c] text-white shadow-sm'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white'
+                  }`}
                 >
-                  <option value="">Toutes</option>
-                  {[...CATEGORIES_EMPLOYES, ...CATEGORIES_ADMIN].map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  <span className="font-medium truncate max-w-[100px]">{filtreCategorie || 'Catégorie'}</span>
+                  <svg className={`w-3 h-3 transition-transform flex-shrink-0 ${catDropdownOpen ? 'rotate-180' : ''} ${filtreCategorie ? 'text-white/70' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {catDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50">
+                    <div className="px-2.5 py-1.5 border-b border-gray-100">
+                      <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Catégorie</span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      <button
+                        onClick={() => { setFiltreCategorie(''); setCatDropdownOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-gray-50 transition-colors ${!filtreCategorie ? 'bg-red-50/50' : ''}`}
+                      >
+                        <span className={`flex-1 text-left ${!filtreCategorie ? 'font-medium text-[#cf292c]' : 'text-gray-600'}`}>Toutes</span>
+                        {!filtreCategorie && (
+                          <svg className="w-3.5 h-3.5 text-[#cf292c]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </button>
+                      {[...CATEGORIES_EMPLOYES, ...CATEGORIES_ADMIN].map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => { setFiltreCategorie(cat); setCatDropdownOpen(false); }}
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-gray-50 transition-colors ${filtreCategorie === cat ? 'bg-red-50/50' : ''}`}
+                        >
+                          <span className={`flex-1 text-left ${filtreCategorie === cat ? 'font-medium text-[#cf292c]' : 'text-gray-600'}`}>{cat}</span>
+                          {filtreCategorie === cat && (
+                            <svg className="w-3.5 h-3.5 text-[#cf292c]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Rôle</label>
-                <select
-                  value={filtreRole}
-                  onChange={(e) => setFiltreRole(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+
+              {/* Dropdown Rôle */}
+              <div className="relative" ref={roleDropdownRef}>
+                <button
+                  onClick={() => { setRoleDropdownOpen(!roleDropdownOpen); setCatDropdownOpen(false); setNavigoDropdownOpen(false); }}
+                  className={`flex items-center gap-1.5 h-8 rounded-lg border px-2.5 text-xs transition-all ${
+                    filtreRole
+                      ? 'border-[#cf292c] bg-[#cf292c] text-white shadow-sm'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white'
+                  }`}
                 >
-                  <option value="">Tous</option>
-                  <option value="employee">Employé</option>
-                  <option value="admin">Administrateur</option>
-                </select>
+                  <span className="font-medium truncate max-w-[100px]">{filtreRole === 'employee' ? 'Employé' : filtreRole === 'admin' ? 'Admin' : 'Rôle'}</span>
+                  <svg className={`w-3 h-3 transition-transform flex-shrink-0 ${roleDropdownOpen ? 'rotate-180' : ''} ${filtreRole ? 'text-white/70' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {roleDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50">
+                    <div className="px-2.5 py-1.5 border-b border-gray-100">
+                      <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Rôle</span>
+                    </div>
+                    {[{value: '', label: 'Tous'}, {value: 'employee', label: 'Employé'}, {value: 'admin', label: 'Administrateur'}].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { setFiltreRole(opt.value); setRoleDropdownOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-gray-50 transition-colors ${filtreRole === opt.value ? 'bg-red-50/50' : ''}`}
+                      >
+                        <span className={`flex-1 text-left ${filtreRole === opt.value ? 'font-medium text-[#cf292c]' : 'text-gray-600'}`}>{opt.label}</span>
+                        {filtreRole === opt.value && (
+                          <svg className="w-3.5 h-3.5 text-[#cf292c]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Date début</label>
+
+              {/* Dropdown Statut Navigo */}
+              <div className="relative" ref={navigoDropdownRef}>
+                <button
+                  onClick={() => { setNavigoDropdownOpen(!navigoDropdownOpen); setCatDropdownOpen(false); setRoleDropdownOpen(false); }}
+                  className={`flex items-center gap-1.5 h-8 rounded-lg border px-2.5 text-xs transition-all ${
+                    filtreNavigo
+                      ? 'border-[#cf292c] bg-[#cf292c] text-white shadow-sm'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white'
+                  }`}
+                >
+                  <Train className={`w-3 h-3 flex-shrink-0 ${filtreNavigo ? 'text-white/70' : 'text-gray-400'}`} />
+                  <span className="font-medium truncate max-w-[100px]">
+                    {filtreNavigo === 'en_attente' ? 'En attente' : filtreNavigo === 'valide' ? 'Validé' : filtreNavigo === 'refuse' ? 'Refusé' : filtreNavigo === 'manquant' ? 'Manquant' : 'Navigo'}
+                  </span>
+                  <svg className={`w-3 h-3 transition-transform flex-shrink-0 ${navigoDropdownOpen ? 'rotate-180' : ''} ${filtreNavigo ? 'text-white/70' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {navigoDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-50">
+                    <div className="px-2.5 py-1.5 border-b border-gray-100">
+                      <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Statut Navigo</span>
+                    </div>
+                    {[{value: '', label: 'Tous'}, {value: 'en_attente', label: 'En attente', dot: 'bg-amber-400'}, {value: 'valide', label: 'Validé', dot: 'bg-green-500'}, {value: 'refuse', label: 'Refusé', dot: 'bg-red-500'}, {value: 'manquant', label: 'Manquant', dot: 'bg-gray-300'}].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { setFiltreNavigo(opt.value); setNavigoDropdownOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-gray-50 transition-colors ${filtreNavigo === opt.value ? 'bg-red-50/50' : ''}`}
+                      >
+                        {opt.dot && <span className={`w-2 h-2 rounded-full ${opt.dot}`} />}
+                        <span className={`flex-1 text-left ${filtreNavigo === opt.value ? 'font-medium text-[#cf292c]' : 'text-gray-600'}`}>{opt.label}</span>
+                        {filtreNavigo === opt.value && (
+                          <svg className="w-3.5 h-3.5 text-[#cf292c]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Séparateur */}
+              <div className="w-px h-8 bg-gray-200 hidden sm:block" />
+
+              {/* Date début */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Du</label>
                 <input
                   type="date"
                   value={filtreDateDebut}
                   onChange={(e) => setFiltreDateDebut(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                  className={`h-8 px-2 rounded-lg border text-xs font-medium transition-all cursor-pointer outline-none ${
+                    filtreDateDebut
+                      ? 'border-[#cf292c] bg-[#cf292c] text-white shadow-sm'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white'
+                  }`}
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Date fin</label>
+
+              {/* Date fin */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Au</label>
                 <input
                   type="date"
                   value={filtreDateFin}
                   onChange={(e) => setFiltreDateFin(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                  className={`h-8 px-2 rounded-lg border text-xs font-medium transition-all cursor-pointer outline-none ${
+                    filtreDateFin
+                      ? 'border-[#cf292c] bg-[#cf292c] text-white shadow-sm'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-white'
+                  }`}
                 />
               </div>
             </div>

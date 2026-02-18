@@ -502,7 +502,7 @@ class AnomalyScheduler {
               shiftId: shift.id,
               dureeTravailContinuMinutes: dureeMinutes,
               seuilLegal: 360,
-              description: `⚠️ Violation code du travail - ${(dureeMinutes / 60).toFixed(1)}h de travail continu sans pause (max légal: 6h)`
+              description: `Violation code du travail - ${(dureeMinutes / 60).toFixed(1)}h de travail continu sans pause (max légal: 6h)`
             });
           }
           
@@ -569,16 +569,6 @@ class AnomalyScheduler {
           description
         }
       });
-
-      const emoji = type.includes('absence') ? '🚨' : 
-                    type.includes('retard') ? '⏰' : 
-                    type.includes('depart') || type.includes('premature') ? '🚪' :
-                    type.includes('missing') ? '❓' :
-                    type.includes('heures_sup') ? '⏱️' :
-                    type.includes('pause') ? '☕' :
-                    type.includes('hors_plage') ? '📍' :
-                    type.includes('conge') ? '🏖️' :
-                    type.includes('amplitude') || type.includes('depassement') ? '⚠️🔴' : '⚠️';
       
     }
   }
@@ -741,7 +731,7 @@ class AnomalyScheduler {
                     dureeEnCoursMinutes: dureeEnCours,
                     minutesApresFinShift,
                     heuresSupPotentielles,
-                    description: `⚠️ Sortie non pointée - "En cours" depuis ${(dureeEnCours / 60).toFixed(1)}h (fin prévue: ${shiftEnd}, ${heuresSupPotentielles}h sup potentielles)`
+                    description: `Sortie non pointée - "En cours" depuis ${(dureeEnCours / 60).toFixed(1)}h (fin prévue: ${shiftEnd}, ${heuresSupPotentielles}h sup potentielles)`
                   });
                   
                 }
@@ -857,7 +847,7 @@ class AnomalyScheduler {
             heurePrevueFin: heureFin,
             derniereEntree: derniereEntree.horodatage,
             heuresSupPotentielles: heuresSupp,
-            description: `🔒 Clôture automatique - Sortie jamais pointée (fin prévue: ${heureFin}, ${heuresSupp}h de travail non comptabilisées)`
+            description: `Clôture automatique - Sortie jamais pointée (fin prévue: ${heureFin}, ${heuresSupp}h de travail non comptabilisées)`
           });
           
           clotures++;

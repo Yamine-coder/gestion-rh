@@ -2306,9 +2306,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
                                         {count > 0 ? (
                                           <div className='flex flex-col gap-px'>
                                             {uniqueEmployes.slice(0, 4).map((emp, nIdx) => {
-                                              // Vérifier si c'est un double shift (plusieurs segments)
-                                              const hasMultipleSegments = emp.shift.segments && emp.shift.segments.length > 1;
-                                              
                                               return (
                                                 <div 
                                                   key={nIdx}
@@ -2316,8 +2313,7 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
                                                   style={{
                                                     backgroundColor: isPast ? '#f1f5f9' : isNow ? '#fef2f2' : '#ecfdf5',
                                                     color: isPast ? '#94a3b8' : isNow ? '#b91c1c' : '#047857',
-                                                    fontWeight: isNow ? 600 : 500,
-                                                    borderLeft: hasMultipleSegments ? '2px solid #f59e0b' : 'none'
+                                                    fontWeight: isNow ? 600 : 500
                                                   }}
                                                 >
                                                   <div className='truncate'>{emp.prenom.length > 7 ? emp.prenom.substring(0, 6) + '.' : emp.prenom}</div>
@@ -2358,9 +2354,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
                     </span>
                     <span className='flex items-center gap-1'>
                       <span className='w-2.5 h-2.5 rounded bg-emerald-50' /> À venir
-                    </span>
-                    <span className='flex items-center gap-1'>
-                      <span className='w-2.5 h-0.5 rounded' style={{ backgroundColor: '#f59e0b' }} /> Coupure
                     </span>
                   </div>
                 </>
