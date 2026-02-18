@@ -1249,8 +1249,23 @@ function CellDrop({
               let hasArriveeAnticipee = false; // 🆕
               let hasArriveeAnticipeeExtra = false; // >= 30 min → Extra à valider
               
+              // Détecter statuts spéciaux: en_cours et a_venir
+              let isEnCours = ecartsSegment.some(e => e.type === 'en_cours');
+              let isAVenir = ecartsSegment.some(e => e.type === 'a_venir');
+              
               if (showComparaison && !isFutureDate && !isExtraSegment) {
-                if (ecartsSegment.length === 0 && !hasRealData) {
+                if (isEnCours) {
+                  // Shift en cours → l'employé est présent
+                  statutSegment = 'en_cours';
+                  // Récupérer l'heure d'arrivée depuis l'écart en_cours
+                  const ecartEnCours = ecartsSegment.find(e => e.type === 'en_cours');
+                  if (ecartEnCours && ecartEnCours.heureArriveeReelle) {
+                    heureArriveeReelle = ecartEnCours.heureArriveeReelle;
+                  }
+                } else if (isAVenir) {
+                  // Segment pas encore commencé
+                  statutSegment = 'a_venir';
+                } else if (ecartsSegment.length === 0 && !hasRealData) {
                   // Pas de pointage trouvé = Absence (uniquement pour dates passées)
                   statutSegment = 'absent';
                   isAbsent = true;
@@ -1340,6 +1355,18 @@ function CellDrop({
                     borderLeftClass = 'border-l-4 border-l-emerald-400';
                     statusIcon = <CheckCircle className="w-3 h-3" strokeWidth={2.5} />;
                     statusLabel = 'OK';
+                    break;
+                  case 'en_cours':
+                    bgClass = 'bg-gradient-to-r from-emerald-400 to-green-500';
+                    borderLeftClass = 'border-l-4 border-l-green-400';
+                    statusIcon = <Clock className="w-3 h-3 animate-pulse" strokeWidth={2.5} />;
+                    statusLabel = 'En cours';
+                    break;
+                  case 'a_venir':
+                    bgClass = 'bg-gradient-to-r from-blue-400 to-blue-500';
+                    borderLeftClass = 'border-l-4 border-l-blue-300';
+                    statusIcon = <Clock className="w-3 h-3" strokeWidth={2.5} />;
+                    statusLabel = 'À venir';
                     break;
                   case 'absent':
                     bgClass = 'bg-gradient-to-r from-red-500 to-rose-600';
@@ -1594,6 +1621,21 @@ function CellDrop({
                             {soldeLabel}
                           </span>
                         )}
+                      </div>
+                    )}
+                    
+                    {/* Mode comparaison: Absent - pas pour les segments Extra */}
+                    {/* Mode comparaison: En cours - l'employé est présent */}
+                    {showComparaison && statutSegment === 'en_cours' && !isExtraSegment && (
+                      <div className="text-[9px] font-bold text-white/90 mt-0.5 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> En cours{heureArriveeReelle ? ` (${heureArriveeReelle})` : ''}
+                      </div>
+                    )}
+                    
+                    {/* Mode comparaison: À venir - segment pas encore commencé */}
+                    {showComparaison && statutSegment === 'a_venir' && !isExtraSegment && (
+                      <div className="text-[9px] font-medium text-white/70 mt-0.5 flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> À venir
                       </div>
                     )}
                     

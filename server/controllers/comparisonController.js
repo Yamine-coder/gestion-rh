@@ -607,15 +607,37 @@ function calculerEcarts(planifie, reel) {
           }
         }
         
+        // Déterminer si le segment est "en cours" ou "à venir" (aujourd'hui uniquement)
+        const now = new Date();
+        const nowParis = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+        const nowMinutes = nowParis.getHours() * 60 + nowParis.getMinutes();
+        const isToday = dateKey === toLocalDateString(now);
+        const [segDebutH, segDebutM] = segment.debut.split(':').map(Number);
+        const [segFinH, segFinM] = segment.fin.split(':').map(Number);
+        const segDebutMin = segDebutH * 60 + segDebutM;
+        let segFinMin = segFinH * 60 + segFinM;
+        if (segFinMin <= segDebutMin) segFinMin += 24 * 60; // shift de nuit
+        
         if (!arriveeCorrespondante && !departCorrespondant) {
-          // Absence totale sur ce segment
-          ecarts.push({
-            type: 'segment_non_pointe',
-            gravite: 'critique',
-            description: `🔴 Segment ${segment.originalIndex || (segIdx + 1)} (${segment.debut}-${segment.fin}) sans aucun pointage`,
-            prevu: `${segment.debut}-${segment.fin}`,
-            segment: segment.originalIndex || (segIdx + 1)
-          });
+          if (isToday && nowMinutes < segDebutMin) {
+            // Segment pas encore commencé → à venir
+            ecarts.push({
+              type: 'a_venir',
+              gravite: 'info',
+              description: `Segment ${segment.originalIndex || (segIdx + 1)} (${segment.debut}-${segment.fin}) à venir`,
+              prevu: `${segment.debut}-${segment.fin}`,
+              segment: segment.originalIndex || (segIdx + 1)
+            });
+          } else {
+            // Absence totale sur ce segment
+            ecarts.push({
+              type: 'segment_non_pointe',
+              gravite: 'critique',
+              description: `🔴 Segment ${segment.originalIndex || (segIdx + 1)} (${segment.debut}-${segment.fin}) sans aucun pointage`,
+              prevu: `${segment.debut}-${segment.fin}`,
+              segment: segment.originalIndex || (segIdx + 1)
+            });
+          }
         } else {
           // Absence partielle
           if (!arriveeCorrespondante) {
@@ -629,13 +651,25 @@ function calculerEcarts(planifie, reel) {
           }
           
           if (!departCorrespondant) {
-            ecarts.push({
-              type: 'missing_out',
-              gravite: 'critique',
-              description: `🔴 Départ manquant pour le segment ${segment.originalIndex || (segIdx + 1)} (fin prévue: ${segment.fin})`,
-              prevu: segment.fin,
-              segment: segment.originalIndex || (segIdx + 1)
-            });
+            if (isToday && nowMinutes < segFinMin) {
+              // Shift en cours → pas d'anomalie, juste info
+              ecarts.push({
+                type: 'en_cours',
+                gravite: 'info',
+                description: `🟢 Segment ${segment.originalIndex || (segIdx + 1)} en cours (arrivée: ${arriveeCorrespondante.arrivee})`,
+                prevu: segment.fin,
+                heureArriveeReelle: arriveeCorrespondante.arrivee,
+                segment: segment.originalIndex || (segIdx + 1)
+              });
+            } else {
+              ecarts.push({
+                type: 'missing_out',
+                gravite: 'critique',
+                description: `🔴 Départ manquant pour le segment ${segment.originalIndex || (segIdx + 1)} (fin prévue: ${segment.fin})`,
+                prevu: segment.fin,
+                segment: segment.originalIndex || (segIdx + 1)
+              });
+            }
           }
         }
       }

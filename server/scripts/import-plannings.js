@@ -209,6 +209,192 @@ const PLANNINGS = [
       [DIMANCHE]: [seg('19:00', '00:00')],
     }
   },
+
+  // ── PASTAIOLO ──
+  {
+    email: 'ademjadoui077@gmail.com', // ADAM
+    jours: {
+      [LUNDI]:    [seg('10:30', '17:00')],
+      [MARDI]:    null,
+      [MERCREDI]: [seg('10:30', '16:30')],
+      [JEUDI]:    [seg('10:30', '16:30')],
+      [VENDREDI]: [seg('10:30', '16:00')],
+      [SAMEDI]:   [seg('10:30', '14:00')],
+      [DIMANCHE]: [seg('10:30', '16:00'), seg('17:30', '23:30')],
+    }
+  },
+  {
+    email: 'rafiqulhaque119@gmail.com', // RAFIQUE
+    jours: {
+      [LUNDI]:    [seg('18:30', '23:30')],
+      [MARDI]:    [seg('18:30', '23:30')],
+      [MERCREDI]: [seg('18:30', '23:30')],
+      [JEUDI]:    [seg('18:30', '23:30')],
+      [VENDREDI]: [seg('18:30', '23:30')],
+      [SAMEDI]:   null,
+      [DIMANCHE]: null,
+    }
+  },
+  {
+    email: 'afjalhussen2002@gmail.com', // AFJAL
+    jours: {
+      [LUNDI]:    [seg('17:00', '00:00')],
+      [MARDI]:    [seg('16:30', '00:00')],
+      [MERCREDI]: [seg('16:30', '00:00')],
+      [JEUDI]:    [seg('16:30', '00:00')],
+      [VENDREDI]: [seg('16:30', '00:00')],
+      [SAMEDI]:   [seg('16:30', '00:00')],
+      [DIMANCHE]: null,
+    }
+  },
+  {
+    email: 'skouyate25@gmail.com', // SOULEYMAN
+    jours: {
+      [LUNDI]:    [seg('08:00', '16:00')],
+      [MARDI]:    [seg('08:00', '16:00')],
+      [MERCREDI]: null,
+      [JEUDI]:    null,
+      [VENDREDI]: [seg('16:00', '00:00')],
+      [SAMEDI]:   [seg('16:00', '00:00')],
+      [DIMANCHE]: [seg('16:00', '00:00')],
+    }
+  },
+
+  // ── PIZZAIOLO ──
+  {
+    email: 'shakilah2325@gmail.com', // CHAKIL/SHAKIL
+    jours: {
+      [LUNDI]:    [seg('11:00', '14:00'), seg('18:00', '23:45')],
+      [MARDI]:    [seg('11:00', '14:00'), seg('18:00', '23:45')],
+      [MERCREDI]: null,
+      [JEUDI]:    null,
+      [VENDREDI]: [seg('11:00', '14:00'), seg('18:00', '23:30')],
+      [SAMEDI]:   [seg('11:00', '14:00'), seg('18:00', '23:30')],
+      [DIMANCHE]: [seg('11:00', '14:00'), seg('18:00', '23:30')],
+    }
+  },
+  {
+    email: 'islammerashedul@gmail.com', // RACHID
+    jours: {
+      [LUNDI]:    [seg('12:00', '15:00'), seg('18:30', '23:00')],
+      [MARDI]:    [seg('12:00', '15:00'), seg('18:30', '22:00')],
+      [MERCREDI]: [seg('12:00', '14:00'), seg('18:00', '23:30')],
+      [JEUDI]:    null,
+      [VENDREDI]: null,
+      [SAMEDI]:   [seg('12:00', '15:00'), seg('18:00', '23:45')],
+      [DIMANCHE]: [seg('16:00', '23:30')],
+    }
+  },
+  {
+    email: 'meeralammurshed@gmail.com', // MURSHED
+    jours: {
+      [LUNDI]:    [seg('17:00', '00:00')],
+      [MARDI]:    [seg('17:00', '00:00')],
+      [MERCREDI]: [seg('17:00', '00:00')],
+      [JEUDI]:    [seg('12:00', '14:00'), seg('17:00', '00:00')],
+      [VENDREDI]: [seg('17:00', '00:00')],
+      [SAMEDI]:   [seg('17:00', '00:00')],
+      [DIMANCHE]: null,
+    }
+  },
+  {
+    email: 'mitunahmed01732240@gmail.com', // MITUN
+    jours: {
+      [LUNDI]:    null,
+      [MARDI]:    null,
+      [MERCREDI]: [seg('15:00', '23:45')],
+      [JEUDI]:    [seg('15:00', '23:45')],
+      [VENDREDI]: [seg('15:00', '23:00')],
+      [SAMEDI]:   [seg('10:00', '17:00')],
+      [DIMANCHE]: [seg('10:00', '15:00'), seg('18:00', '23:00')],
+    }
+  },
+  {
+    email: 'suhelfrance1985@gmail.com', // SUHEL
+    jours: {
+      [LUNDI]:    [seg('11:00', '15:00'), seg('19:30', '00:30')],
+      [MARDI]:    [seg('11:00', '15:00'), seg('19:30', '00:30')],
+      [MERCREDI]: [seg('11:00', '15:00'), seg('19:30', '00:30')],
+      [JEUDI]:    null,
+      [VENDREDI]: [seg('18:30', '00:30')],
+      [SAMEDI]:   [seg('19:30', '00:30')],
+      [DIMANCHE]: [seg('19:30', '00:30')],
+    }
+  },
+  {
+    email: 'sanwarhussain040@gmail.com', // HUSSAIN SANWAR
+    jours: {
+      [LUNDI]:    [seg('10:00', '17:00'), seg('19:00', '22:00')],
+      [MARDI]:    [seg('10:00', '17:00')],
+      [MERCREDI]: [seg('11:00', '17:00')],
+      [JEUDI]:    [seg('11:00', '17:00'), seg('18:00', '23:00')],
+      [VENDREDI]: [seg('12:00', '16:00')],
+      [SAMEDI]:   null,
+      [DIMANCHE]: null,
+    }
+  },
+  {
+    email: 'djibriltraore294@gmail.com', // DJIBRIL
+    jours: {
+      [LUNDI]:    null,
+      [MARDI]:    [seg('19:30', '23:00')],
+      [MERCREDI]: [seg('10:00', '13:00'), seg('19:30', '23:00')],
+      [JEUDI]:    [seg('10:00', '16:00'), seg('19:00', '00:30')],
+      [VENDREDI]: [seg('10:00', '15:00'), seg('19:00', '23:00')],
+      [SAMEDI]:   [seg('10:00', '16:00')],
+      [DIMANCHE]: [seg('10:00', '16:00')],
+    }
+  },
+  {
+    email: 'olidrahman87@gmail.com', // OLI (OLIUR)
+    jours: {
+      [LUNDI]:    [seg('15:00', '23:30')],
+      [MARDI]:    [seg('15:00', '23:30')],
+      [MERCREDI]: null,
+      [JEUDI]:    null,
+      [VENDREDI]: [seg('15:00', '23:30')],
+      [SAMEDI]:   [seg('15:00', '23:30')],
+      [DIMANCHE]: [seg('15:00', '23:30')],
+    }
+  },
+  {
+    email: 'raselahmed44823@gmail.com', // RASEL AHMED
+    jours: {
+      [LUNDI]:    null,
+      [MARDI]:    null,
+      [MERCREDI]: [seg('12:00', '15:00'), seg('19:00', '22:00')],
+      [JEUDI]:    [seg('12:00', '15:00'), seg('19:00', '23:45')],
+      [VENDREDI]: [seg('12:00', '15:00'), seg('18:00', '23:45')],
+      [SAMEDI]:   [seg('12:00', '15:00'), seg('18:00', '23:00')],
+      [DIMANCHE]: [seg('12:00', '16:00'), seg('18:00', '23:00')],
+    }
+  },
+  {
+    email: 'ahmednazimsyl00@gmail.com', // NAZIM AHMED
+    jours: {
+      [LUNDI]:    [seg('08:00', '15:00')],
+      [MARDI]:    null,
+      [MERCREDI]: [seg('08:00', '15:00')],
+      [JEUDI]:    [seg('08:00', '15:00')],
+      [VENDREDI]: [seg('08:00', '15:00')],
+      [SAMEDI]:   [seg('08:00', '15:00')],
+      [DIMANCHE]: [seg('08:00', '15:00')],
+    }
+  },
+
+  // ── ASSISTANT DIRECTION ──
+  {
+    email: 'malika.bhb@chezantoine.paris', // MALLIKA BEN HASSINE
+    jours: {
+      [LUNDI]:    [seg('10:00', '16:00')],
+      [MARDI]:    [seg('10:00', '16:00')],
+      [MERCREDI]: [seg('10:00', '16:00')],
+      [JEUDI]:    null,
+      [VENDREDI]: null,
+      [SAMEDI]:   null,
+      [DIMANCHE]: null,
+    }
+  },
 ];
 
 // ============================================
