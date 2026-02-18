@@ -254,7 +254,7 @@ const getPlanningVsRealite = async (req, res) => {
         // Pour les dates futures, pas d'écarts (pas encore de pointages attendus)
         comparaisonJour.ecarts = [];
       } else {
-        comparaisonJour.ecarts = calculerEcarts(comparaisonJour.planifie, comparaisonJour.reel);
+        comparaisonJour.ecarts = calculerEcarts(comparaisonJour.planifie, comparaisonJour.reel, dateKey);
       }
 
       comparaisons.push(comparaisonJour);
@@ -279,7 +279,7 @@ const getPlanningVsRealite = async (req, res) => {
 /**
  * Calcule les écarts entre planifié et réel
  */
-function calculerEcarts(planifie, reel) {
+function calculerEcarts(planifie, reel, dateKey) {
   const ecarts = [];
 
   // Cas spécial: Absence planifiée mais présence détectée (pointages)
