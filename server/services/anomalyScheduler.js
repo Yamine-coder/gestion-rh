@@ -524,7 +524,6 @@ class AnomalyScheduler {
             });
           }
         }
-      }
     }
   }
 
