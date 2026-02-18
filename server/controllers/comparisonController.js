@@ -14,6 +14,7 @@ const THRESHOLDS = {
     EARLY_AUTO_VALIDEES: 30,   // jusqu'à 30 min trop tôt => auto-validées
     EARLY_EXTRA_POTENTIEL: 90, // 30-90 min trop tôt => extra potentiel
     EARLY_HORS_PLAGE: 91,      // > 90 min trop tôt => hors plage IN critique
+    EARLY_ACCEPTABLE: 5,       // jusqu'à 5 min trop tôt => zone neutre (OK)
     RETARD_ACCEPTABLE: -5,     // jusqu'à -5 min (retard) acceptable
     RETARD_MODERE: -20         // jusqu'à -20 min retard modéré, au delà critique
   },
@@ -495,12 +496,13 @@ function calculerEcarts(planifie, reel, dateKey) {
           typeArrivee = 'arrivee_anticipee_extra';
           graviteArrivee = 'a_valider';
           descriptionArrivee = `Extra potentiel (arrivée): arrivé à ${pointage.arrivee}, ${minsArrivee} min en avance (prévu ${segment.debut}) → Validation managériale requise`;
-        } else if (ecartArrivee > 0) {
-          // 0-30 min trop tôt => auto-validé
+        } else if (ecartArrivee > THRESHOLDS.ARRIVEE.EARLY_ACCEPTABLE) {
+          // 5-30 min trop tôt => auto-validé
           typeArrivee = 'arrivee_anticipee_auto';
           graviteArrivee = 'info';
           descriptionArrivee = `Arrivée anticipée auto-validée: ${pointage.arrivee}, ${minsArrivee} min en avance (prévu ${segment.debut}) → Payées automatiquement`;
         } else if (ecartArrivee >= THRESHOLDS.ARRIVEE.RETARD_ACCEPTABLE) {
+          // -5 à +5 min => zone neutre, tout va bien
           typeArrivee = 'arrivee_acceptable';
           graviteArrivee = 'ok';
           descriptionArrivee = `Arrivée acceptable: ${pointage.arrivee} (prévu ${segment.debut}, écart ${ecartArrivee >= 0 ? '+' : ''}${ecartArrivee} min)`;
@@ -546,7 +548,8 @@ function calculerEcarts(planifie, reel, dateKey) {
           descriptionDepart = `Départ anticipé: parti à ${pointage.depart}, ${minsDepart} min trop tôt (prévu ${segment.fin})`;
         } else if (ecartDepart >= THRESHOLDS.DEPART.HEURES_SUP_AUTO_VALIDEES) {
           // Zone acceptable : départ à l'heure ou jusqu'à +30 min d'heures sup (auto-validées)
-          if (ecartDepart >= 0) {
+          if (ecartDepart >= -5) {
+            // -5 à +15 min => zone neutre, tout va bien
             typeDepart = 'depart_acceptable';
             graviteDepart = 'ok';
             descriptionDepart = `Départ acceptable: ${pointage.depart} (prévu ${segment.fin}, écart ${ecartDepart >= 0 ? '+' : ''}${ecartDepart} min)`;
