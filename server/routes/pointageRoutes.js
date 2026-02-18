@@ -9,6 +9,25 @@ const { toLocalDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
 const scoringService = require('../services/scoringService');
 const { BUSINESS_DAY_CUTOFF_HOUR, getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
+
+// 🔒 Mutex par userId pour empêcher les requêtes simultanées (triple-tap tablette)
+const userPointageLocks = new Map();
+const LOCK_TIMEOUT_MS = 10000; // Auto-libération après 10s max
+async function acquireUserLock(userId) {
+  while (userPointageLocks.has(userId)) {
+    await new Promise(r => setTimeout(r, 100));
+    // Libérer si le verrou est trop ancien (safety net)
+    const lockTime = userPointageLocks.get(userId);
+    if (lockTime && Date.now() - lockTime > LOCK_TIMEOUT_MS) {
+      userPointageLocks.delete(userId);
+      break;
+    }
+  }
+  userPointageLocks.set(userId, Date.now());
+}
+function releaseUserLock(userId) {
+  userPointageLocks.delete(userId);
+}
 const {
   getMesPointages,
   getMesPointagesAujourdhui,
@@ -677,7 +696,7 @@ router.post('/auto', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Pointage impossible à déterminer." });
     }
 
-    // 🛡️ Protection anti-doublon renforcée (même type dans les 5 dernières secondes)
+    // 🛡️ Protection anti-doublon renforcée
     // DÉSACTIVÉ en mode test pour permettre les simulations rapides
     if (!testTime) {
       // 🚫 SÉCURITÉ : Rejeter les pointages futurs (au-delà de 1 minute)
@@ -690,37 +709,41 @@ router.post('/auto', authenticateToken, async (req, res) => {
         });
       }
     
-      // Protection anti-spam : 30 secondes entre chaque pointage
-      const limiteAntiDoublon = new Date(now.getTime() - 30000); // 30 secondes avant
+      // Protection anti-spam : 2 minutes entre chaque pointage (TOUS types confondus)
+      // Empêche le double/triple-tap accidentel sur la tablette
+      const limiteAntiDoublon = new Date(now.getTime() - 120000); // 2 minutes avant
 
-      // ✅ CORRIGÉ: Utiliser isEntree/isSortie pour chercher les pointages récents du même type logique
-      const pointageRecentIdentique = await prisma.pointage.findFirst({
+      const pointageRecent = await prisma.pointage.findFirst({
         where: {
           userId,
-          type: {
-            in: isEntree(type) ? ['arrivee', 'arrivée', 'ENTRÉE', 'entrée'] : ['depart', 'départ', 'SORTIE', 'sortie']
-          },
           horodatage: {
             gte: limiteAntiDoublon
           }
         }
       });
 
-      if (pointageRecentIdentique) {
+      if (pointageRecent) {
         return res.status(409).json({ 
           message: "Veuillez patienter",
-          details: `Un ${type === TYPE_CANONIQUE_ENTREE ? 'arrivée' : 'départ'} a déjà été enregistré récemment. Attendez 30 secondes.`
+          details: `Un pointage a déjà été enregistré il y a moins de 2 minutes. Patientez avant de rebadger.`
         });
       }
     }
 
-    const nouveau = await prisma.pointage.create({
-      data: {
-        userId,
-        type,
-        horodatage: maintenant
-      }
-    });
+    // 🔒 Mutex par userId : empêche les requêtes simultanées (triple-tap tablette)
+    await acquireUserLock(userId);
+    let nouveau;
+    try {
+      nouveau = await prisma.pointage.create({
+        data: {
+          userId,
+          type,
+          horodatage: maintenant
+        }
+      });
+    } finally {
+      releaseUserLock(userId);
+    }
 
     // 🔥 DÉTECTION TEMPS RÉEL - Best practice apps RH pro
     // Analyse immédiate au moment du pointage (comme Factorial, PayFit, Lucca)
