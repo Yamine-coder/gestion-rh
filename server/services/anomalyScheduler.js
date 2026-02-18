@@ -156,13 +156,11 @@ class AnomalyScheduler {
       // 🕐 Calculer les bornes UTC pour la journée Paris
       const { startUTC, endUTC } = getParisDateBoundsUTC(today);
       
-      // Récupérer tous les shifts de travail du jour (en UTC ajusté pour Paris)
+      // Récupérer tous les shifts de travail du jour
+      // ✅ Chercher par date EXACTE (les shifts sont stockés à 00:00Z, pas dans les bounds 04:00Z)
       const shiftsToday = await prisma.shift.findMany({
         where: {
-          date: {
-            gte: startUTC,
-            lt: endUTC
-          },
+          date: new Date(`${today}T00:00:00.000Z`),
           type: { in: ['travail', 'présence', 'presence'] }
         },
         include: {
@@ -599,12 +597,10 @@ class AnomalyScheduler {
       // 🕐 Bornes Paris
       const { startUTC, endUTC } = getParisDateBoundsUTC(today);
       
+      // ✅ Chercher par date EXACTE (les shifts sont stockés à 00:00Z, pas dans les bounds 04:00Z)
       const shiftsToday = await prisma.shift.findMany({
         where: {
-          date: {
-            gte: startUTC,
-            lt: endUTC
-          },
+          date: new Date(`${today}T00:00:00.000Z`),
           type: { in: ['travail', 'présence', 'presence'] }
         },
         include: {
@@ -706,13 +702,11 @@ class AnomalyScheduler {
           const dureeEnCours = currentMinutes - minutesEntree;
           
           // Récupérer le shift de cet employé
+          // ✅ Date exacte (les shifts sont stockés à 00:00Z, pas dans les bounds 04:00Z)
           const shift = await prisma.shift.findFirst({
             where: {
               employeId: userIdInt,
-              date: {
-                gte: startUTC,
-                lt: endUTC
-              },
+              date: new Date(`${dateStr}T00:00:00.000Z`),
               type: { in: ['travail', 'présence', 'presence'] }
             }
           });
@@ -818,13 +812,11 @@ class AnomalyScheduler {
           const derniereEntree = entrees[entrees.length - 1];
           
           // Récupérer le shift
+          // ✅ Date exacte (les shifts sont stockés à 00:00Z, pas dans les bounds 04:00Z)
           const shift = await prisma.shift.findFirst({
             where: {
               employeId: userIdInt,
-              date: {
-                gte: startUTC,
-                lt: endUTC
-              },
+              date: new Date(`${dateHier}T00:00:00.000Z`),
               type: { in: ['travail', 'présence', 'presence'] }
             }
           });
@@ -937,18 +929,22 @@ class AnomalyScheduler {
         }
 
         // 🎯 LOGIQUE SIRH : Récupérer les shifts de J et J-1
+        // ✅ IMPORTANT: Les shifts sont stockés avec date = "YYYY-MM-DDT00:00:00.000Z" (minuit UTC)
+        // Il faut chercher par date EXACTE, PAS par business day bounds (04:00Z → 03:59Z)
+        // car minuit UTC < 04:00Z → le shift de J tombait dans les bounds de J-1
+        // Les business day bounds restent corrects pour les POINTAGES (fin de shift après minuit)
         const [shiftsToday, shiftsHier] = await Promise.all([
           prisma.shift.findMany({
             where: {
               employeId: userIdInt,
-              date: { gte: boundsToday.startUTC, lt: boundsToday.endUTC },
+              date: new Date(`${realToday}T00:00:00.000Z`),
               type: { in: ['travail', 'présence', 'presence'] }
             }
           }),
           prisma.shift.findMany({
             where: {
               employeId: userIdInt,
-              date: { gte: boundsHier.startUTC, lt: boundsHier.endUTC },
+              date: new Date(`${hierStr}T00:00:00.000Z`),
               type: { in: ['travail', 'présence', 'presence'] }
             }
           })
