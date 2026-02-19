@@ -197,10 +197,11 @@ const Parametres = () => {
   const handleTestAlert = async () => {
     try {
       setAlertsLoading(true);
-      await api.post(`/api/avis/test-alert`);
-      toast.success('Email de test envoyé !');
+      const res = await api.post(`/api/avis/test-alert`);
+      toast.success(res.data?.message || 'Email de test envoyé !');
     } catch (err) {
-      toast.error('Erreur lors de l\'envoi');
+      const msg = err.response?.data?.error || 'Erreur lors de l\'envoi';
+      toast.error(msg);
     } finally {
       setAlertsLoading(false);
     }
@@ -1023,7 +1024,7 @@ const Parametres = () => {
                   </p>
                   <button
                     onClick={handleTestAlert}
-                    disabled={alertsLoading || !currentRecipients?.some(r => r.active)}
+                    disabled={alertsLoading}
                     className="flex items-center gap-1.5 px-4 py-2 bg-[#cf292c] text-white rounded text-sm hover:bg-[#b91c1c] transition-colors disabled:opacity-50"
                   >
                     <Send size={14} />

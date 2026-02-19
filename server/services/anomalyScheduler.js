@@ -75,6 +75,35 @@ function parisTimeToMinutes(timeStr) {
   return h * 60 + m;
 }
 
+/**
+ * ✅ Ajuste les minutes de fin pour les shifts traversant minuit.
+ * Si fin < début du segment → le shift passe minuit → on ajoute 24h (1440 min).
+ * Ex: 17:00→00:00 → endMinutes 0 → ajusté à 1440
+ * Ex: 22:00→01:30 → endMinutes 90 → ajusté à 1530
+ */
+function adjustEndForMidnight(endMinutes, segmentStart) {
+  if (!segmentStart) return endMinutes;
+  const [sH, sM] = segmentStart.split(':').map(Number);
+  const startMinutes = sH * 60 + sM;
+  if (endMinutes <= startMinutes) {
+    return endMinutes + 24 * 60;
+  }
+  return endMinutes;
+}
+
+/**
+ * ✅ Ajuste l'heure d'un pointage pour les shifts traversant minuit.
+ * Si le shift traverse minuit et le pointage est "petit" (< début segment),
+ * c'est un pointage post-minuit → on ajoute 24h.
+ * Ex: pointage 00:15 (15 min) pour shift 17:00→00:30 → 15 + 1440 = 1455
+ */
+function adjustPointageForMidnight(pointageMinutes, segmentStartMinutes, crossesMidnight) {
+  if (crossesMidnight && pointageMinutes < segmentStartMinutes) {
+    return pointageMinutes + 24 * 60;
+  }
+  return pointageMinutes;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class AnomalyScheduler {
@@ -206,7 +235,10 @@ class AnomalyScheduler {
 
         // Vérifier si le shift vient de se terminer (dans les 2 dernières minutes)
         const [endH, endM] = shiftEnd.split(':').map(Number);
-        const shiftEndMinutes = endH * 60 + endM;
+        const shiftStartStr = lastSegment.start || lastSegment.debut;
+        let shiftEndMinutes = endH * 60 + endM;
+        // ✅ FIX: Ajuster pour les shifts traversant minuit (ex: 17:00→00:00)
+        shiftEndMinutes = adjustEndForMidnight(shiftEndMinutes, shiftStartStr);
         // currentMinutes déjà calculé au début (avec ajustement si après minuit)
         const minutesSinceEnd = currentMinutes - shiftEndMinutes;
 
@@ -337,8 +369,14 @@ class AnomalyScheduler {
       const entreeMinutes = entreeH * 60 + entreeM;
       const avanceMinutes = shiftStartMinutes - entreeMinutes;
       
+      // ✅ FIX: Si le shift a plusieurs segments (ex: 12:00-14:00 + 17:00-00:00),
+      // la première entrée peut appartenir à un segment antérieur (extra ou autre)
+      // → Ne pas créer d'extra "arrivée en avance" si l'entrée est manifestement
+      //   liée à un autre segment (trop loin du premier segment effectif, > 4h)
+      const avanceExcessive = avanceMinutes > 240; // > 4h d'avance = probablement un autre créneau
+      
       // Seuil 45 min : en dessous on ne paie pas d'extra
-      if (avanceMinutes >= 45) {
+      if (avanceMinutes >= 45 && !avanceExcessive) {
         const avanceHeures = Math.floor(avanceMinutes / 60);
         const avanceMin = avanceMinutes % 60;
         const tempsExtra = avanceHeures > 0 
@@ -387,31 +425,71 @@ class AnomalyScheduler {
     if (sorties.length > 0 && shiftEnd) {
       const derniereSortie = new Date(sorties[sorties.length - 1].horodatage);
       const [endH, endM] = shiftEnd.split(':').map(Number);
-      const shiftEndMinutes = endH * 60 + endM;
+      let shiftEndMinutes = endH * 60 + endM;
+      // ✅ FIX: Ajuster pour les shifts traversant minuit (ex: 17:00→00:00)
+      const lastSegStart = lastSegment?.start || lastSegment?.debut;
+      shiftEndMinutes = adjustEndForMidnight(shiftEndMinutes, lastSegStart);
+      const crossesMidnight = shiftEndMinutes >= 24 * 60;
       // IMPORTANT: Utiliser l'heure PARIS, pas UTC
       const sortieParisStr = derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
       const [sortieH, sortieM] = sortieParisStr.split(':').map(Number);
-      const sortieMinutes = sortieH * 60 + sortieM;
-      const retardMinutes = sortieMinutes - shiftEndMinutes;
+      let sortieMinutes = sortieH * 60 + sortieM;
+
+      // ✅ FIX BUG 8: Si des segments extra existent APRÈS le dernier work segment,
+      // utiliser la fin du dernier extra comme référence pour le départ tardif
+      // (l'employé qui travaille un créneau extra planifié ne fait pas d'heures sup)
+      let effectiveShiftEndMinutes = shiftEndMinutes;
+      if (extraSegments.length > 0) {
+        const lastExtra = extraSegments[extraSegments.length - 1];
+        const extraEnd = lastExtra.end || lastExtra.fin;
+        const extraStart = lastExtra.start || lastExtra.debut;
+        if (extraEnd) {
+          const [exEndH, exEndM] = extraEnd.split(':').map(Number);
+          let extraEndMinutes = exEndH * 60 + exEndM;
+          extraEndMinutes = adjustEndForMidnight(extraEndMinutes, extraStart);
+          // Utiliser la fin la plus tardive entre work et extra
+          if (extraEndMinutes > effectiveShiftEndMinutes) {
+            effectiveShiftEndMinutes = extraEndMinutes;
+          }
+        }
+      }
+
+      // ✅ FIX: Pour les shifts de nuit (crossesMidnight), vérifier que la sortie
+      // appartient bien à ce segment. Si la sortie est en plein jour (≥ 5h)
+      // et AVANT le début du segment de nuit, c'est un pointage d'un AUTRE créneau
+      // (ex: sortie 14:07 d'un segment 12:00-14:00, PAS un extra du shift 17:00-00:00)
+      const lastSegStartMinutes = lastSegStart ? parisTimeToMinutes(lastSegStart) : 0;
+      const sortieEstJour = sortieMinutes >= BUSINESS_DAY_CUTOFF_HOUR * 60; // ≥ 5h = heure de jour
+      const sortieAvantSegment = sortieMinutes < lastSegStartMinutes;
       
-      // Seuil 45 min : en dessous on ne paie pas d'extra
-      if (retardMinutes >= 45) {
-        const retardHeures = Math.floor(retardMinutes / 60);
-        const retardMin = retardMinutes % 60;
-        const tempsExtra = retardHeures > 0 
-          ? (retardMin > 0 ? `${retardHeures}h${retardMin}min` : `${retardHeures}h`)
-          : `${retardMinutes}min`;
-        const heurePointage = sortieParisStr;
+      if (crossesMidnight && sortieEstJour && sortieAvantSegment) {
+        // La sortie est pendant le jour, AVANT le début du segment de nuit
+        // → C'est un pointage d'un autre créneau, PAS un départ tardif post-minuit
+        // → Ne pas créer d'extra_potentiel pour ce segment
+      } else {
+        // Cas normal : appliquer l'ajustement minuit si nécessaire
+        sortieMinutes = adjustPointageForMidnight(sortieMinutes, lastSegStartMinutes, crossesMidnight);
+        const retardMinutes = sortieMinutes - effectiveShiftEndMinutes;
         
-        await this.createAnomalieIfNotExists(employeId, dateStr, 'extra_potentiel', {
-          gravite: 'a_valider',
-          shiftId: shift.id,
-          heurePrevueFin: shiftEnd,
-          heureReelleDepart: heurePointage,
-          minutesApres: retardMinutes,
-          raison: 'depart_tardif',
-          description: `Départ ${tempsExtra} après la fin - Extra potentiel à valider (${heurePointage} au lieu de ${shiftEnd})`
-        });
+        // Seuil 45 min : en dessous on ne paie pas d'extra
+        if (retardMinutes >= 45) {
+          const retardHeures = Math.floor(retardMinutes / 60);
+          const retardMin = retardMinutes % 60;
+          const tempsExtra = retardHeures > 0 
+            ? (retardMin > 0 ? `${retardHeures}h${retardMin}min` : `${retardHeures}h`)
+            : `${retardMinutes}min`;
+          const heurePointage = sortieParisStr;
+          
+          await this.createAnomalieIfNotExists(employeId, dateStr, 'extra_potentiel', {
+            gravite: 'a_valider',
+            shiftId: shift.id,
+            heurePrevueFin: shiftEnd,
+            heureReelleDepart: heurePointage,
+            minutesApres: retardMinutes,
+            raison: 'depart_tardif',
+            description: `Départ ${tempsExtra} après la fin - Extra potentiel à valider (${heurePointage} au lieu de ${shiftEnd})`
+          });
+        }
       }
     }
   }
@@ -484,13 +562,20 @@ class AnomalyScheduler {
       const [pEndH, pEndM] = pauseFin.split(':').map(Number);
       
       // Vérifier si l'employé a travaillé pendant la pause prévue
-      const pauseDebutDate = new Date(entree);
-      pauseDebutDate.setHours(pStartH, pStartM, 0, 0);
-      const pauseFinDate = new Date(entree);
-      pauseFinDate.setHours(pEndH, pEndM, 0, 0);
+      // ✅ FIX BUG 7: Comparer en minutes Paris au lieu de Date avec setHours (timezone-safe)
+      const entreeParisStr = entree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
+      const [entH, entMin] = entreeParisStr.split(':').map(Number);
+      const entreeMinutesParis = entH * 60 + entMin;
+      
+      const sortieParisStr = sortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
+      const [sorH, sorMin] = sortieParisStr.split(':').map(Number);
+      const sortieMinutesParis = sorH * 60 + sorMin;
+      
+      const pauseDebutMinutes = pStartH * 60 + pStartM;
+      const pauseFinMinutes = pEndH * 60 + pEndM;
       
       // Si entrée avant pause ET sortie après pause = pause non prise
-      if (entree <= pauseDebutDate && sortie >= pauseFinDate) {
+      if (entreeMinutesParis <= pauseDebutMinutes && sortieMinutesParis >= pauseFinMinutes) {
           await this.createAnomalieIfNotExists(shift.employeId, dateStr, 'pause_non_prise', {
             gravite: dureeMinutes > 360 ? 'haute' : 'moyenne', // >6h = grave (code du travail)
             shiftId: shift.id,
@@ -540,15 +625,27 @@ class AnomalyScheduler {
     // 🕐 Utiliser les bornes Paris
     const { startUTC, endUTC } = getParisDateBoundsUTC(dateStr);
     
+    // ✅ FIX BUG 4: Pour extra_potentiel, dédupliquer par raison
+    // (arrivee_avance, depart_tardif, pause_non_prise sont 3 anomalies distinctes)
+    let whereClause = {
+      employeId,
+      date: {
+        gte: startUTC,
+        lt: endUTC
+      },
+      type
+    };
+    
+    // Pour extra_potentiel, ajouter la raison dans le filtre JSON
+    if (type === 'extra_potentiel' && details.raison) {
+      whereClause.details = {
+        path: ['raison'],
+        equals: details.raison
+      };
+    }
+    
     const anomalieExistante = await prisma.anomalie.findFirst({
-      where: {
-        employeId,
-        date: {
-          gte: startUTC,
-          lt: endUTC
-        },
-        type
-      }
+      where: whereClause
     });
 
     if (!anomalieExistante) {
@@ -610,9 +707,10 @@ class AnomalyScheduler {
         if (shift.employe?.statut !== 'actif') continue;
 
         const segments = parseSegments(shift.segments);
+        // ✅ FIX BUG 6: Filtrer aussi les segments extra (isExtra) en plus des pauses
         const workSegments = segments.filter(seg => {
           const segType = seg.type?.toLowerCase();
-          return segType !== 'pause' && segType !== 'break';
+          return segType !== 'pause' && segType !== 'break' && !seg.isExtra;
         });
 
         if (!workSegments.length) continue;
@@ -622,7 +720,10 @@ class AnomalyScheduler {
         if (!shiftEnd) continue;
 
         const [endH, endM] = shiftEnd.split(':').map(Number);
-        const shiftEndMinutes = endH * 60 + endM;
+        const shiftStartStr = lastSegment.start || lastSegment.debut;
+        let shiftEndMinutes = endH * 60 + endM;
+        // ✅ FIX: Ajuster pour les shifts traversant minuit (ex: 17:00→00:00)
+        shiftEndMinutes = adjustEndForMidnight(shiftEndMinutes, shiftStartStr);
 
         // Le shift est terminé (avec marge de 5 minutes)
         if (currentMinutes > shiftEndMinutes + 5) {
@@ -697,7 +798,12 @@ class AnomalyScheduler {
           // IMPORTANT: Utiliser l'heure PARIS, pas UTC
           const entreeParisStr2 = heureEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
           const [eH2, eM2] = entreeParisStr2.split(':').map(Number);
-          const minutesEntree = eH2 * 60 + eM2;
+          let minutesEntree = eH2 * 60 + eM2;
+          // ✅ FIX BUG 1: Si currentMinutes est ajusté pour après-minuit (>1440),
+          // ajuster aussi minutesEntree pour les pointages post-minuit (< 5h = cutoff)
+          if (currentMinutes >= 24 * 60 && minutesEntree < BUSINESS_DAY_CUTOFF_HOUR * 60) {
+            minutesEntree += 24 * 60;
+          }
           const dureeEnCours = currentMinutes - minutesEntree;
           
           // Récupérer le shift de cet employé
@@ -713,9 +819,10 @@ class AnomalyScheduler {
           if (shift) {
             // Extraire l'heure de fin du shift
             const segments = parseSegments(shift.segments);
+            // ✅ FIX BUG 5: Filtrer les segments extra (isExtra) en plus des pauses
             const workSegments = segments.filter(seg => {
               const segType = seg.type?.toLowerCase();
-              return segType !== 'pause' && segType !== 'break';
+              return segType !== 'pause' && segType !== 'break' && !seg.isExtra;
             });
             
             if (workSegments.length > 0) {
@@ -724,7 +831,12 @@ class AnomalyScheduler {
               
               if (shiftEnd) {
                 const [endH, endM] = shiftEnd.split(':').map(Number);
-                const shiftEndMinutes = endH * 60 + endM;
+                let shiftEndMinutes = endH * 60 + endM;
+                
+                // ✅ FIX: Utiliser adjustEndForMidnight pour cohérence
+                const shiftStart = lastSegment.start || lastSegment.debut;
+                shiftEndMinutes = adjustEndForMidnight(shiftEndMinutes, shiftStart);
+                
                 const minutesApresFinShift = currentMinutes - shiftEndMinutes;
                 
                 // Si plus de 60 minutes après la fin du shift sans pointer le départ
@@ -835,13 +947,14 @@ class AnomalyScheduler {
               const shiftEnd = lastSegment.end || lastSegment.fin;
               
               if (shiftEnd) {
-                // Calculer les heures sup (de fin shift à 6h du matin)
+                // ✅ FIX BUG 2: Utiliser adjustEndForMidnight pour les shifts traversant minuit
                 const [endH, endM] = shiftEnd.split(':').map(Number);
-                const shiftEndMinutes = endH * 60 + endM;
+                const lastSegStart = lastSegment.start || lastSegment.debut;
+                const shiftEndMinutes = adjustEndForMidnight(endH * 60 + endM, lastSegStart);
                 const clotureMinutes = 6 * 60 + 24 * 60; // 6h le lendemain = 30h
                 
-                // Si le shift finissait avant minuit
-                if (shiftEndMinutes < 24 * 60) {
+                // Calculer heures sup entre fin de shift et clôture (6h)
+                if (shiftEndMinutes < clotureMinutes) {
                   heuresSupp = ((clotureMinutes - shiftEndMinutes) / 60).toFixed(1);
                 }
                 heureFin = shiftEnd;
@@ -886,10 +999,12 @@ class AnomalyScheduler {
       const paris = getParisTime();
       const realToday = paris.dateStr;
       
-      // Calculer hier
-      const hier = new Date();
-      hier.setDate(hier.getDate() - 1);
-      const hierStr = `${hier.getFullYear()}-${String(hier.getMonth() + 1).padStart(2, '0')}-${String(hier.getDate()).padStart(2, '0')}`;
+      // ✅ FIX BUG 3: Calculer hier en heure PARIS (pas UTC)
+      // Utiliser la date Paris et soustraire un jour correctement
+      const [tY, tM, tD] = realToday.split('-').map(Number);
+      const hierDate = new Date(tY, tM - 1, tD); // Date locale
+      hierDate.setDate(hierDate.getDate() - 1);
+      const hierStr = `${hierDate.getFullYear()}-${String(hierDate.getMonth() + 1).padStart(2, '0')}-${String(hierDate.getDate()).padStart(2, '0')}`;
       
       // Bornes pour aujourd'hui et hier
       const boundsToday = getParisDateBoundsUTC(realToday);
@@ -1089,3 +1204,13 @@ class AnomalyScheduler {
 // Export d'une instance unique (singleton)
 const scheduler = new AnomalyScheduler();
 module.exports = scheduler;
+
+// Export des utilitaires pour les tests
+module.exports._testHelpers = {
+  adjustEndForMidnight,
+  adjustPointageForMidnight,
+  parisTimeToMinutes,
+  getParisTime,
+  getParisDateBoundsUTC,
+  AnomalyScheduler
+};

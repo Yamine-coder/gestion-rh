@@ -9,6 +9,7 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 const { generateAIResponse, isAIConfigured } = require('./avisResponseGeneratorService');
+const notifConfigService = require('./notificationConfigService');
 
 // Chemin du fichier de configuration
 const CONFIG_PATH = path.join(__dirname, '../config/avisAlertConfig.json');
@@ -337,16 +338,25 @@ async function sendNegativeReviewAlert(review, restaurant) {
  * Récupère la liste des destinataires pour les alertes
  */
 function getAlertRecipients() {
-  const config = loadAlertConfig();
+  // 1. D'abord vérifier la config unifiée (notificationsConfig.json → avisGoogle)
+  try {
+    const unifiedRecipients = notifConfigService.getRecipients('avisGoogle');
+    if (unifiedRecipients && unifiedRecipients.length > 0) {
+      return unifiedRecipients.map(r => typeof r === 'string' ? r : r.email);
+    }
+  } catch (e) {
+    // Fallback si le service n'est pas dispo
+  }
   
-  // Si des destinataires sont configurés dans le fichier JSON
+  // 2. Ensuite la config legacy (avisAlertConfig.json)
+  const config = loadAlertConfig();
   if (config.recipients && config.recipients.length > 0) {
     return config.recipients
       .filter(r => r.active)
       .map(r => r.email);
   }
   
-  // Fallback: variable d'env
+  // 3. Fallback: variable d'env
   const alertEmails = process.env.AVIS_ALERT_EMAILS || process.env.EMAIL_USER;
   return alertEmails ? alertEmails.split(',').map(e => e.trim()) : [];
 }
@@ -446,6 +456,16 @@ async function sendDailyReport(reviews, restaurant, analysis) {
  * Teste l'envoi d'email
  */
 async function testAlertEmail() {
+  const recipients = getAlertRecipients();
+  if (!recipients.length) {
+    throw new Error('Aucun destinataire configuré. Ajoutez au moins un email dans les paramètres de notifications Avis Google.');
+  }
+
+  // Vérifier que les credentials email sont configurés
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    throw new Error('Les identifiants email ne sont pas configurés (EMAIL_USER / EMAIL_PASSWORD).');
+  }
+
   const testReview = {
     author: 'Test Client',
     rating: 2,
@@ -462,7 +482,7 @@ async function testAlertEmail() {
   };
 
   await sendNegativeReviewAlert(testReview, testRestaurant);
-  return true;
+  return { sent: true, recipients };
 }
 
 module.exports = {

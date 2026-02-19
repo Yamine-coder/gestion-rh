@@ -205,11 +205,11 @@ router.post('/generate-response', async (req, res) => {
  */
 router.post('/test-alert', async (req, res) => {
   try {
-    await avisAlerts.testAlertEmail();
-    res.json({ success: true, message: 'Email de test envoyé !' });
+    const result = await avisAlerts.testAlertEmail();
+    res.json({ success: true, message: `Email de test envoyé à ${result.recipients.join(', ')}` });
   } catch (err) {
     console.error('Erreur test-alert:', err.message);
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.status(500).json({ error: err.message || 'Erreur serveur' });
   }
 });
 
