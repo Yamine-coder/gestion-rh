@@ -5,7 +5,7 @@ const scoringService = require('../services/scoringService');
 const { sendAnomalieUrgente } = require('../services/notificationEmailService');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntree, calculerHeuresReelles, TYPES_ENTREE, TYPES_SORTIE, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
 const { parseSegments } = require('../utils/segmentUtils');
-const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
+const { getBusinessDayBoundsUTC, horodatageToParisMinutes, horodatageToParisHHMM } = require('../utils/businessDayUtils');
 
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
@@ -86,7 +86,7 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
 
       for (const p of pointages) {
         const pDate = new Date(p.horodatage);
-        const pMinutes = pDate.getHours() * 60 + pDate.getMinutes();
+        const pMinutes = horodatageToParisMinutes(pDate);
 
         // Vérifier si le pointage est dans la plage du segment (avec tolérance)
         const estDansPlage = pMinutes >= (segmentDebutMinutes - tolerance) && 
@@ -109,10 +109,10 @@ const mettreAJourPaiementsExtrasApresPointage = async (userId, datePointage) => 
         const heuresPrevues = parseFloat(paiement.heuresPrevues) || parseFloat(paiement.heures);
         const ecartHeures = Math.round((heuresReelles - heuresPrevues) * 100) / 100;
 
-        const arriveeH = arrivee.getHours().toString().padStart(2, '0');
-        const arriveeM = arrivee.getMinutes().toString().padStart(2, '0');
-        const departH = depart.getHours().toString().padStart(2, '0');
-        const departM = depart.getMinutes().toString().padStart(2, '0');
+        const arriveeHHMM = horodatageToParisHHMM(arrivee);
+        const [arriveeH, arriveeM] = arriveeHHMM.split(':');
+        const departHHMM = horodatageToParisHHMM(depart);
+        const [departH, departM] = departHHMM.split(':');
 
         // Mettre à jour le montant si les heures ont changé
         const tauxHoraire = parseFloat(paiement.tauxHoraire);
@@ -191,7 +191,7 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
 
   if (!workSegments.length) return;
 
-  const heurePointage = horodatage.getHours() * 60 + horodatage.getMinutes();
+  const heurePointage = horodatageToParisMinutes(horodatage);
   const TOLERANCE_MINUTES = 5; // Tolérance de 5 minutes
 
   // ===== DÉTECTION RETARD (sur ENTRÉE) =====
@@ -221,7 +221,7 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
         const ecartMinutes = heurePointage - planMinutes;
 
         if (ecartMinutes > TOLERANCE_MINUTES) {
-          const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
+          const heureReelle = horodatageToParisHHMM(horodatage);
           // Log informatif seulement - pas de création d'anomalie
         }
       }
@@ -241,7 +241,7 @@ const detecterEtCreerAnomalie = async (userId, pointage, type) => {
       const ecartMinutes = planMinutes - heurePointage;
 
       if (ecartMinutes > TOLERANCE_MINUTES) {
-        const heureReelle = `${String(horodatage.getHours()).padStart(2, '0')}:${String(horodatage.getMinutes()).padStart(2, '0')}`;
+        const heureReelle = horodatageToParisHHMM(horodatage);
         // Log informatif seulement - pas de création d'anomalie
       }
     }

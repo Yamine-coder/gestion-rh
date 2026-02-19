@@ -8,7 +8,7 @@ const { getWorkDayBounds } = require('../config/workDayConfig');
 const { toLocalDateString } = require('../utils/dateUtils');
 const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPE_CANONIQUE_ENTREE, TYPE_CANONIQUE_SORTIE } = require('../utils/pointageTypeUtils');
 const scoringService = require('../services/scoringService');
-const { BUSINESS_DAY_CUTOFF_HOUR, getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
+const { BUSINESS_DAY_CUTOFF_HOUR, getBusinessDayBoundsUTC, getBusinessDay, horodatageToParisMinutes } = require('../utils/businessDayUtils');
 
 // 🔒 Mutex par userId pour empêcher les requêtes simultanées (triple-tap tablette)
 const userPointageLocks = new Map();
@@ -82,45 +82,42 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
   
   try {
     // Déterminer quelle date de shift chercher
-    // Avant 6h du matin = on cherche d'abord le shift de la veille (journée de travail en cours)
-    const heurePointage = horodatage.getHours();
-    let dateJour;
+    // Utilise l'heure PARIS (pas UTC) pour déterminer le jour business
+    // Avant 5h du matin Paris = jour business de la veille (shift nocturne en cours)
+    const heureParisMinutes = horodatageToParisMinutes(horodatage);
+    const heurePointageParis = Math.floor(heureParisMinutes / 60);
     
-    if (heurePointage < BUSINESS_DAY_CUTOFF_HOUR) {
-      // Avant 6h : chercher le shift de la veille d'abord
-      const hier = new Date(horodatage);
-      hier.setDate(hier.getDate() - 1);
-      dateJour = toLocalDateString(hier);
-    } else {
-      // Après 6h : chercher le shift du jour calendaire
-      dateJour = toLocalDateString(horodatage);
-    }
+    // getBusinessDay utilise le cutoff 05:00 Paris pour déterminer le jour business
+    let dateJour = getBusinessDay(horodatage);
     
-    // Chercher le shift
+    // Chercher le shift sur le jour business
     let shift = await prisma.shift.findFirst({
       where: {
         employeId: userId,
-        date: new Date(dateJour)
+        date: new Date(dateJour + 'T00:00:00.000Z')
       },
       include: {
         employe: { select: { nom: true, prenom: true } }
       }
     });
     
-    // Si pas de shift trouvé et avant 6h, essayer aussi la date du jour (cas edge)
-    if (!shift && heurePointage < BUSINESS_DAY_CUTOFF_HOUR) {
-      const dateAujourdhui = toLocalDateString(horodatage);
-      shift = await prisma.shift.findFirst({
-        where: {
-          employeId: userId,
-          date: new Date(dateAujourdhui)
-        },
-        include: {
-          employe: { select: { nom: true, prenom: true } }
+    // Si pas de shift trouvé sur le jour business, essayer le jour calendaire Paris
+    // (cas edge: pointage à 00:30 Paris, shift créé pour le 19 fév au lieu du 18)
+    if (!shift && heurePointageParis < BUSINESS_DAY_CUTOFF_HOUR) {
+      const dateCalendaire = toLocalDateString(horodatage);
+      if (dateCalendaire !== dateJour) {
+        shift = await prisma.shift.findFirst({
+          where: {
+            employeId: userId,
+            date: new Date(dateCalendaire + 'T00:00:00.000Z')
+          },
+          include: {
+            employe: { select: { nom: true, prenom: true } }
+          }
+        });
+        if (shift) {
+          dateJour = dateCalendaire;
         }
-      });
-      if (shift) {
-        dateJour = dateAujourdhui;
       }
     }
     
@@ -128,7 +125,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     // IMPORTANT: Pour les pointages avant 6h (fin de shift nocturne), on vérifie
     // le congé sur la date de la VEILLE (date réelle de travail), pas la date calendaire.
     // Ex: Sortie à 00:16 le 11/02 = fin du shift du 10/02, pas un pointage le 11.
-    const dateCongeVerif = (heurePointage < BUSINESS_DAY_CUTOFF_HOUR) 
+    const dateCongeVerif = (heurePointageParis < BUSINESS_DAY_CUTOFF_HOUR) 
       ? toLocalDateString(new Date(horodatage.getTime() - 24 * 60 * 60 * 1000))
       : dateJour;
     
@@ -752,13 +749,17 @@ router.post('/auto', authenticateToken, async (req, res) => {
     // 🎯 SCORING - Attribuer/retirer des points selon ponctualité
     if (isEntree(type)) {
       try {
+        // Utiliser le jour business Paris (pas UTC) pour trouver le bon shift
+        const businessDay = getBusinessDay(maintenant);
         const shift = await prisma.shift.findFirst({
-          where: { employeId: userId, date: new Date(maintenant.toISOString().slice(0, 10) + 'T00:00:00.000Z') }
+          where: { employeId: userId, date: new Date(businessDay + 'T00:00:00.000Z') }
         });
         if (shift && shift.segments && shift.segments.length > 0) {
-          const heurePointage = maintenant.toTimeString().slice(0, 5);
+          // Heure Paris du pointage pour le scoring
+          const parisMinutes = horodatageToParisMinutes(maintenant);
+          const heurePointage = `${String(Math.floor(parisMinutes / 60)).padStart(2, '0')}:${String(parisMinutes % 60).padStart(2, '0')}`;
           await scoringService.onPointage(
-            { id: nouveau.id, employe_id: userId, type, heure: heurePointage, date: maintenant.toISOString().split('T')[0] },
+            { id: nouveau.id, employe_id: userId, type, heure: heurePointage, date: businessDay },
             { start: shift.segments[0].start, end: shift.segments[0].end }
           );
         }

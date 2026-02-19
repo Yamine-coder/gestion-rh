@@ -146,6 +146,7 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
     // Calculer les heures prévues et travaillées
     let totalHeuresPrevues = 0;
     let totalHeuresTravaillees = 0;
+    let heuresPrevuesAvecPointage = 0; // Seulement les shifts qui ont des pointages
     const aujourdhuiGlobales = getCurrentDateString();
 
     shifts.forEach(shift => {
@@ -165,7 +166,8 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
       }
       if (!Array.isArray(segments)) segments = [];
 
-      // Calculer les heures prévues (sauf si congé ou futur)
+      // Calculer durée prévue de ce shift
+      let dureeShift = 0;
       if (!isConge && !estFuturGlobal) {
         segments.forEach(segment => {
           if (segment.start && segment.end && !segment.isExtra) {
@@ -173,22 +175,27 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
             if (segType === 'work' || segType === 'travail' || !segment.type) {
               const [sh, sm] = segment.start.split(':').map(Number);
               const [eh, em] = segment.end.split(':').map(Number);
-              totalHeuresPrevues += (eh + em / 60) - (sh + sm / 60);
+              let duree = (eh + em / 60) - (sh + sm / 60);
+              if (duree < 0) duree += 24;
+              dureeShift += duree;
             }
           }
         });
+        totalHeuresPrevues += dureeShift;
       }
 
       // Calculer les heures travaillées
-      const pointageKey = `${shift.employeId}_${dateKey}`;
-      const pointagesJour = pointagesParEmployeJour.get(pointageKey) || [];
-      if (pointagesJour.length >= 2) {
-        // Calculer par paires entrée/sortie
-        const sorted = pointagesJour.sort((a, b) => new Date(a.horodatage) - new Date(b.horodatage));
-        for (let i = 0; i < sorted.length - 1; i += 2) {
-          if (sorted[i] && sorted[i + 1]) {
-            const diff = (new Date(sorted[i + 1].horodatage) - new Date(sorted[i].horodatage)) / (1000 * 60 * 60);
-            totalHeuresTravaillees += diff;
+      if (!isConge && !estFuturGlobal) {
+        const pointageKey = `${shift.employeId}_${dateKey}`;
+        const pointagesJour = pointagesParEmployeJour.get(pointageKey) || [];
+        if (pointagesJour.length >= 2) {
+          heuresPrevuesAvecPointage += dureeShift;
+          const sorted = pointagesJour.sort((a, b) => new Date(a.horodatage) - new Date(b.horodatage));
+          for (let i = 0; i < sorted.length - 1; i += 2) {
+            if (sorted[i] && sorted[i + 1]) {
+              const diff = (new Date(sorted[i + 1].horodatage) - new Date(sorted[i].horodatage)) / (1000 * 60 * 60);
+              totalHeuresTravaillees += diff;
+            }
           }
         }
       }
@@ -196,8 +203,9 @@ router.get('/globales', authenticateToken, isAdmin, async (req, res) => {
 
     res.json({
       employesActifs,
-      heuresPrevues: Math.round(totalHeuresPrevues * 100) / 100,
+      heuresPrevues: Math.round(heuresPrevuesAvecPointage * 100) / 100,
       heuresTravaillees: Math.round(totalHeuresTravaillees * 100) / 100,
+      totalHeuresPlanifiees: Math.round(totalHeuresPrevues * 100) / 100,
       periode: { debut: dateDebut, fin: dateFin }
     });
 

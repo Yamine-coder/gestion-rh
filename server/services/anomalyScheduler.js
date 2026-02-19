@@ -331,7 +331,10 @@ class AnomalyScheduler {
       const premiereEntree = new Date(entrees[0].horodatage);
       const [startH, startM] = shiftStart.split(':').map(Number);
       const shiftStartMinutes = startH * 60 + startM;
-      const entreeMinutes = premiereEntree.getHours() * 60 + premiereEntree.getMinutes();
+      // IMPORTANT: Utiliser l'heure PARIS, pas UTC
+      const entreeParisStr = premiereEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
+      const [entreeH, entreeM] = entreeParisStr.split(':').map(Number);
+      const entreeMinutes = entreeH * 60 + entreeM;
       const avanceMinutes = shiftStartMinutes - entreeMinutes;
       
       // Seuil 45 min : en dessous on ne paie pas d'extra
@@ -341,7 +344,7 @@ class AnomalyScheduler {
         const tempsExtra = avanceHeures > 0 
           ? (avanceMin > 0 ? `${avanceHeures}h${avanceMin}min` : `${avanceHeures}h`)
           : `${avanceMinutes}min`;
-        const heurePointage = `${String(premiereEntree.getHours()).padStart(2,'0')}:${String(premiereEntree.getMinutes()).padStart(2,'0')}`;
+        const heurePointage = entreeParisStr;
         
         await this.createAnomalieIfNotExists(employeId, dateStr, 'extra_potentiel', {
           gravite: 'a_valider',
@@ -385,7 +388,10 @@ class AnomalyScheduler {
       const derniereSortie = new Date(sorties[sorties.length - 1].horodatage);
       const [endH, endM] = shiftEnd.split(':').map(Number);
       const shiftEndMinutes = endH * 60 + endM;
-      const sortieMinutes = derniereSortie.getHours() * 60 + derniereSortie.getMinutes();
+      // IMPORTANT: Utiliser l'heure PARIS, pas UTC
+      const sortieParisStr = derniereSortie.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
+      const [sortieH, sortieM] = sortieParisStr.split(':').map(Number);
+      const sortieMinutes = sortieH * 60 + sortieM;
       const retardMinutes = sortieMinutes - shiftEndMinutes;
       
       // Seuil 45 min : en dessous on ne paie pas d'extra
@@ -395,7 +401,7 @@ class AnomalyScheduler {
         const tempsExtra = retardHeures > 0 
           ? (retardMin > 0 ? `${retardHeures}h${retardMin}min` : `${retardHeures}h`)
           : `${retardMinutes}min`;
-        const heurePointage = `${String(derniereSortie.getHours()).padStart(2,'0')}:${String(derniereSortie.getMinutes()).padStart(2,'0')}`;
+        const heurePointage = sortieParisStr;
         
         await this.createAnomalieIfNotExists(employeId, dateStr, 'extra_potentiel', {
           gravite: 'a_valider',
@@ -688,7 +694,10 @@ class AnomalyScheduler {
         if (entrees.length > sorties.length) {
           const derniereEntree = entrees[entrees.length - 1];
           const heureEntree = new Date(derniereEntree.horodatage);
-          const minutesEntree = heureEntree.getHours() * 60 + heureEntree.getMinutes();
+          // IMPORTANT: Utiliser l'heure PARIS, pas UTC
+          const entreeParisStr2 = heureEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
+          const [eH2, eM2] = entreeParisStr2.split(':').map(Number);
+          const minutesEntree = eH2 * 60 + eM2;
           const dureeEnCours = currentMinutes - minutesEntree;
           
           // Récupérer le shift de cet employé
@@ -965,7 +974,10 @@ class AnomalyScheduler {
         for (const pointage of entreesPointages) {
           const pointageDate = new Date(pointage.horodatage);
           const pointageDateStr = pointageDate.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-          const pointageMinutes = pointageDate.getHours() * 60 + pointageDate.getMinutes();
+          // IMPORTANT: Utiliser l'heure PARIS, pas UTC (serveur Render = UTC)
+          const pointageParisStr = pointageDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
+          const [ptH, ptM] = pointageParisStr.split(':').map(Number);
+          const pointageMinutes = ptH * 60 + ptM;
           
           // Chercher le meilleur shift
           let bestShift = null;

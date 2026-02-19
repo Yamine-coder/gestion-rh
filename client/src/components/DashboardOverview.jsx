@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { HiUsers } from 'react-icons/hi';
 import axios from 'axios';
 import { computeKPIs } from '../utils/kpiHelpers';
@@ -568,6 +569,7 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
   const [showMemoForm, setShowMemoForm] = useState(false);
   const [editingTask, setEditingTask] = useState(null); // Tâche en cours d'édition
   const [showReminderPopup, setShowReminderPopup] = useState(false);
+  const reminderCooldownRef = useRef(false); // Anti re-trigger
   const [currentReminder, setCurrentReminder] = useState(null);
   const [userEmail, setUserEmail] = useState(() => {
     try {
@@ -946,24 +948,16 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
     setEditingTask(null);
   };
   
-  // Snooze un rappel (reporter de X minutes)
-  const snoozeReminder = (taskId, minutes = 15) => {
-    const newReminderTime = new Date(Date.now() + minutes * 60 * 1000).toISOString().slice(0, 16);
-    setMemoTasks(prev => prev.map(t => 
-      t.id === taskId ? { ...t, reminder: newReminderTime, reminderTriggered: false } : t
-    ));
-    setShowReminderPopup(false);
-    setCurrentReminder(null);
-  };
-  
-  // Marquer le rappel comme vu
-  const dismissReminder = (taskId) => {
+  // Fermer le rappel (marquer comme vu)
+  const dismissReminder = useCallback((taskId) => {
+    reminderCooldownRef.current = true;
     setMemoTasks(prev => prev.map(t => 
       t.id === taskId ? { ...t, reminderTriggered: true } : t
     ));
     setShowReminderPopup(false);
     setCurrentReminder(null);
-  };
+    setTimeout(() => { reminderCooldownRef.current = false; }, 2000);
+  }, []);
   
   // Ajouter/modifier un rappel sur une tâche existante
   const setTaskReminder = (taskId, reminderDateTime) => {
@@ -1096,6 +1090,9 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
   // Vérifier les rappels toutes les 30 secondes
   useEffect(() => {
     const checkReminders = async () => {
+      // Si cooldown actif (on vient de snooze/dismiss), ne pas re-checker
+      if (reminderCooldownRef.current) return;
+      
       const now = new Date();
       const pendingReminder = memoTasks.find(t => {
         if (t.done || !t.reminder || t.reminderTriggered) return false;
@@ -1104,11 +1101,6 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
       });
       
       if (pendingReminder && !showReminderPopup) {
-        // Marquer comme triggered avant d'envoyer l'email
-        setMemoTasks(prev => prev.map(t => 
-          t.id === pendingReminder.id ? { ...t, reminderTriggered: true } : t
-        ));
-        
         // Envoyer l'email à l'admin connecté
         const emailTo = userEmail || localStorage.getItem('userEmail');
         if (emailTo) {
@@ -2860,116 +2852,95 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
         </div>
       )}
 
-      {/* Popup de Rappel */}
-      {showReminderPopup && currentReminder && (
-        <div className='fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4'>
-          <div className='bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-pulse'>
-            {/* Header */}
-            <div className='px-5 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white'>
-              <div className='flex items-center justify-between'>
-                <div className='flex items-center gap-3'>
-                  <div className='p-2.5 bg-white/20 rounded-xl animate-bounce'>
-                    <BellRing className='w-6 h-6' />
+      {/* Popup de Rappel - Portal pour couvrir toute la page y compris la navbar */}
+      {showReminderPopup && currentReminder && ReactDOM.createPortal(
+        <div className='fixed inset-0 z-[9999]'>
+          {/* Backdrop */}
+          <div
+            className='absolute inset-0 bg-black/40'
+            onClick={(e) => { e.stopPropagation(); dismissReminder(currentReminder.id); }}
+          />
+          {/* Modal */}
+          <div className='absolute inset-0 flex items-center justify-center p-4 pointer-events-none'>
+            <div className='bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 pointer-events-auto relative'>
+              {/* Header */}
+              <div className='px-5 py-4 bg-gradient-to-r from-[#cf292c] to-[#e74c3c] text-white'>
+                <div className='flex items-center justify-between'>
+                  <div className='flex items-center gap-3'>
+                    <div className='w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center'>
+                      <BellRing className='w-5 h-5' />
+                    </div>
+                    <div>
+                      <h3 className='font-bold text-base'>Rappel</h3>
+                      <p className='text-[11px] text-white/70'>Tâche à traiter</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className='font-bold text-lg'>⏰ Rappel !</h3>
-                    <p className='text-xs text-white/80'>Il est l'heure...</p>
-                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); dismissReminder(currentReminder.id); }}
+                    className='w-8 h-8 flex items-center justify-center hover:bg-white/20 rounded-lg transition-colors cursor-pointer'
+                  >
+                    <X className='w-4 h-4' />
+                  </button>
                 </div>
+              </div>
+              
+              {/* Contenu */}
+              <div className='p-5'>
+                <div className='p-4 bg-gray-50 border border-gray-200 rounded-xl'>
+                  <p className='text-gray-800 font-medium text-sm leading-relaxed'>
+                    {currentReminder.text}
+                  </p>
+                  {currentReminder.dueDate && (
+                    <div className='flex items-center gap-2 mt-3 text-xs text-[#cf292c] font-medium'>
+                      <Calendar className='w-3.5 h-3.5' />
+                      {new Date(currentReminder.dueDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </div>
+                  )}
+                  {currentReminder.category && (
+                    <div className='flex items-center gap-2 mt-2 text-xs text-gray-500'>
+                      {(() => {
+                        const cat = MEMO_CATEGORIES.find(c => c.value === currentReminder.category);
+                        if (cat) {
+                          const CatIcon = cat.icon;
+                          return (
+                            <>
+                              <CatIcon className='w-3.5 h-3.5' />
+                              {cat.label}
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Actions */}
+              <div className='px-5 py-4 bg-gray-50 border-t border-gray-100 flex gap-2'>
                 <button
-                  onClick={() => dismissReminder(currentReminder.id)}
-                  className='p-2 hover:bg-white/10 rounded-lg transition-colors'
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleMemoTask(currentReminder.id);
+                    dismissReminder(currentReminder.id);
+                  }}
+                  className='flex-1 px-4 py-2.5 bg-emerald-500 text-white text-sm font-medium rounded-xl hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 shadow-sm cursor-pointer'
                 >
-                  <X className='w-5 h-5' />
+                  <Check className='w-4 h-4' />
+                  Terminé
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); dismissReminder(currentReminder.id); }}
+                  className='flex-1 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center justify-center gap-2 cursor-pointer'
+                >
+                  <BellOff className='w-4 h-4 text-gray-400' />
+                  Fermer
                 </button>
               </div>
             </div>
-            
-            {/* Contenu */}
-            <div className='p-5'>
-              <div className='p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl'>
-                <p className='text-gray-800 font-medium text-sm leading-relaxed'>
-                  {currentReminder.text}
-                </p>
-                {currentReminder.dueDate && (
-                  <div className='flex items-center gap-2 mt-3 text-xs text-amber-700'>
-                    <Calendar className='w-4 h-4' />
-                    Échéance: {new Date(currentReminder.dueDate).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  </div>
-                )}
-                {currentReminder.category && (
-                  <div className='flex items-center gap-2 mt-2 text-xs text-gray-500'>
-                    {(() => {
-                      const cat = MEMO_CATEGORIES.find(c => c.value === currentReminder.category);
-                      if (cat) {
-                        const CatIcon = cat.icon;
-                        return (
-                          <>
-                            <CatIcon className='w-4 h-4' />
-                            {cat.label}
-                          </>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                )}
-              </div>
-              
-              {/* Boutons Reporter */}
-              <div className='mt-4'>
-                <p className='text-xs text-gray-500 mb-2'>Reporter de :</p>
-                <div className='flex gap-2'>
-                  <button
-                    onClick={() => snoozeReminder(currentReminder.id, 5)}
-                    className='flex-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors'
-                  >
-                    5 min
-                  </button>
-                  <button
-                    onClick={() => snoozeReminder(currentReminder.id, 15)}
-                    className='flex-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors'
-                  >
-                    15 min
-                  </button>
-                  <button
-                    onClick={() => snoozeReminder(currentReminder.id, 30)}
-                    className='flex-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors'
-                  >
-                    30 min
-                  </button>
-                  <button
-                    onClick={() => snoozeReminder(currentReminder.id, 60)}
-                    className='flex-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition-colors'
-                  >
-                    1h
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            {/* Actions principales */}
-            <div className='px-5 py-4 bg-slate-50 border-t border-slate-100 flex gap-2'>
-              <button
-                onClick={() => {
-                  toggleMemoTask(currentReminder.id);
-                  dismissReminder(currentReminder.id);
-                }}
-                className='flex-1 px-4 py-2.5 bg-emerald-500 text-white text-sm font-medium rounded-xl hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2'
-              >
-                <Check className='w-4 h-4' />
-                Marquer terminé
-              </button>
-              <button
-                onClick={() => dismissReminder(currentReminder.id)}
-                className='flex-1 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-medium rounded-xl hover:from-amber-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2'
-              >
-                <BellOff className='w-4 h-4' />
-                C'est noté !
-              </button>
-            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal création/édition consigne - Version modernisée */}

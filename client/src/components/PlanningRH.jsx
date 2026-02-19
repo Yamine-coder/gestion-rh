@@ -5900,16 +5900,16 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
   useEffect(() => {
     localStorage.setItem('planningRH_viewType', viewType);
   }, [viewType]);
-  
+
   const [employes, setEmployes] = useState([]);
   const [shifts, setShifts] = useState([]);
   // Barre de recherche employ�s
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => sessionStorage.getItem('planningRH_searchTerm') || "");
   // �tat pour le menu mobile responsive
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Filtrage par cat�gorie d'employ�
-  const [categorieFilter, setCategorieFilter] = useState("tous");
+  const [categorieFilter, setCategorieFilter] = useState(() => sessionStorage.getItem('planningRH_categorieFilter') || "tous");
   const [categorieDropdownOpen, setCategorieDropdownOpen] = useState(false);
   const categorieDropdownRef = useRef(null);
   
@@ -6040,8 +6040,19 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [creationRapideModalOpen, setCreationRapideModalOpen] = useState(false);
-  const [showComparaison, setShowComparaison] = useState(false); // Nouvel �tat pour la comparaison
-  const [updateTrigger, setUpdateTrigger] = useState(0); // Forcer le rafra�chissement des composants
+  const [showComparaison, setShowComparaison] = useState(() => sessionStorage.getItem('planningRH_showComparaison') === 'true');
+  const [updateTrigger, setUpdateTrigger] = useState(0); // Forcer le rafraîchissement des composants
+
+  // Persistance des états de vue dans sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('planningRH_showComparaison', showComparaison ? 'true' : 'false');
+  }, [showComparaison]);
+  useEffect(() => {
+    sessionStorage.setItem('planningRH_categorieFilter', categorieFilter);
+  }, [categorieFilter]);
+  useEffect(() => {
+    sessionStorage.setItem('planningRH_searchTerm', searchTerm);
+  }, [searchTerm]);
   // Mode compact supprim� - affichage unique optimis�
   const [expandedEmployees, setExpandedEmployees] = useState(new Set()); // lignes agrandies
   const [showFloatingToolbar, setShowFloatingToolbar] = useState(false); // Barre flottante
@@ -7149,6 +7160,14 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
     };
     fetchData();
   }, [token]);
+
+  // Auto-charger les comparaisons si le mode écart était actif (restauré depuis sessionStorage)
+  useEffect(() => {
+    if (showComparaison && employes.length > 0) {
+      loadComparaisons();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employes.length > 0]);
 
   useEffect(() => {
     if (viewType === "jour") setDates(generateDayDates(dateCourante));

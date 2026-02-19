@@ -689,6 +689,80 @@ const AvisGoogle = ({ compact = false, onViewAll }) => {
     return `"${parts.join(' ')}"`;
   };
 
+  // === RÉPONSE POUR AVIS POSITIFS (4-5 étoiles) ===
+  const generatePositiveResponse = (review) => {
+    const text = (review.text || '').toLowerCase();
+    const fullName = review.author || 'Cher client';
+    const firstName = fullName.split(' ')[0];
+    const rating = review.rating;
+    
+    let parts = [];
+    
+    // Accroche
+    if (rating === 5) {
+      parts.push(`Bonjour ${firstName}, un grand merci pour cette superbe note ! 🌟`);
+    } else {
+      parts.push(`Bonjour ${firstName}, merci beaucoup pour votre avis positif !`);
+    }
+    
+    // Détection plats mentionnés
+    const detect = {
+      pizza: /pizza/i.test(text),
+      pates: /pâte|pasta|penne|spaghetti|carbonara|bolognaise/i.test(text),
+      tiramisu: /tiramisu/i.test(text),
+      burrata: /burrata/i.test(text),
+      truffe: /truffe/i.test(text),
+      salade: /salade|césar/i.test(text),
+      dessert: /dessert|mi.?cuit|nutella/i.test(text),
+      service: /service|serveur|serveuse|accueil|sympathique|souriant|agréable|gentil/i.test(text),
+      cadre: /cadre|décor|ambiance|terrasse|salle/i.test(text),
+      rapport: /rapport.*qualité|qualité.*prix|prix/i.test(text),
+      livraison: /livr|emporter|uber|deliveroo/i.test(text),
+    };
+    
+    // Réponse contextuelle
+    if (detect.pizza) {
+      parts.push(`Ravi(e) que nos pizzas vous aient plu ! Elles sont préparées à la minute avec notre pâte maison.`);
+    } else if (detect.pates) {
+      parts.push(`Nos pâtes fraîches préparées à la minute ont fait leur effet, c'est un plaisir !`);
+    } else if (detect.tiramisu) {
+      parts.push(`Notre tiramisu fait maison est une de nos fiertés, content(e) qu'il vous ait régalé !`);
+    } else if (detect.burrata) {
+      parts.push(`La burrata est un de nos incontournables, merci de l'apprécier !`);
+    }
+    
+    if (detect.service) {
+      parts.push(`Votre retour sur l'accueil fera très plaisir à toute l'équipe.`);
+    }
+    
+    if (detect.cadre) {
+      parts.push(`Nous sommes heureux que le cadre vous ait plu.`);
+    }
+    
+    if (detect.rapport) {
+      parts.push(`Proposer le meilleur rapport qualité-prix est une priorité chez Antoine depuis 1970.`);
+    }
+    
+    if (detect.livraison) {
+      parts.push(`Merci d'avoir commandé chez nous ! Nous espérons que l'expérience en salle vous plaira tout autant.`);
+    }
+    
+    // Si aucun sujet spécifique détecté
+    if (!detect.pizza && !detect.pates && !detect.tiramisu && !detect.burrata && !detect.service && !detect.cadre && !detect.rapport && !detect.livraison) {
+      if (text.length > 10) {
+        parts.push(`Votre retour nous touche et motive toute l'équipe à maintenir ce niveau de qualité.`);
+      } else {
+        parts.push(`Merci pour cette belle note, ça nous fait chaud au cœur !`);
+      }
+    }
+    
+    // Conclusion
+    parts.push(`Au plaisir de vous revoir bientôt chez Antoine !`);
+    parts.push(`\n— L'équipe Chez Antoine 🍕`);
+    
+    return `"${parts.join(' ')}"`;
+  };
+
   if (loading && !data) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -712,10 +786,10 @@ const AvisGoogle = ({ compact = false, onViewAll }) => {
   const negativeInPeriod = reviewsInPeriod.filter(r => r.isNegative || r.rating <= 3);
   const positiveInPeriod = reviewsInPeriod.filter(r => r.rating >= 4);
 
-  // Ouvrir le modal de réponse rapide
+  // Ouvrir le modal de réponse rapide (positif ET négatif)
   const openQuickResponse = (review) => {
     setQuickResponseReview(review);
-    const response = aiResponses[review.time] || generateSmartResponse(review);
+    const response = aiResponses[review.time] || (review.rating >= 4 ? generatePositiveResponse(review) : generateSmartResponse(review));
     setQuickResponseText(response);
     setShowQuickResponse(true);
   };
@@ -1401,26 +1475,26 @@ const AvisGoogle = ({ compact = false, onViewAll }) => {
                       </div>
                     )}
 
-                    {/* ── Bloc 5 : Avis récents ── */}
+                    {/* ── Bloc 5 : Tous les avis avec bouton Répondre ── */}
                     <div className="bg-white rounded-xl border border-slate-200 p-3">
                       <div className="flex items-center gap-2 mb-2.5">
                         <div className="w-5 h-5 bg-slate-100 rounded flex items-center justify-center">
                           <MessageCircle className="w-3 h-3 text-gray-500" />
                         </div>
-                        <span className="text-xs font-semibold text-gray-900">Avis récents</span>
+                        <span className="text-xs font-semibold text-gray-900">Tous les avis</span>
                         <span className="text-[11px] text-gray-400">({reviewsInPeriod.length})</span>
                       </div>
 
                       {reviewsInPeriod.length > 0 ? (
                         <div className="space-y-1.5">
-                          {reviewsInPeriod.slice(0, 8).map((review, idx) => (
-                            <div key={idx} className={`flex items-start gap-2.5 p-2.5 rounded-lg border transition-colors ${
+                          {reviewsInPeriod.slice(0, 10).map((review, idx) => (
+                            <div key={idx} className={`flex items-center gap-2.5 p-2.5 rounded-lg border transition-colors ${
                               review.rating >= 4 
                                 ? 'bg-white border-slate-100 hover:border-slate-200' 
                                 : 'bg-red-50/30 border-red-100'
                             }`}>
                               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0 ${
-                                review.rating >= 4 ? 'bg-slate-100 text-slate-600' : 'bg-red-100 text-red-600'
+                                review.rating >= 4 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
                               }`}>
                                 {review.author?.[0]?.toUpperCase() || '?'}
                               </div>
@@ -1438,11 +1512,25 @@ const AvisGoogle = ({ compact = false, onViewAll }) => {
                                   {review.text || <span className="italic text-gray-400">Pas de commentaire</span>}
                                 </p>
                               </div>
+                              <button
+                                onClick={() => {
+                                  openQuickResponse(review);
+                                  setShowFullView(false);
+                                }}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg transition-colors flex-shrink-0 ${
+                                  review.rating >= 4
+                                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                                    : 'bg-[#cf292c] text-white hover:bg-red-700'
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                Répondre
+                              </button>
                             </div>
                           ))}
-                          {reviewsInPeriod.length > 8 && (
+                          {reviewsInPeriod.length > 10 && (
                             <p className="text-[11px] text-center text-gray-400 pt-1">
-                              +{reviewsInPeriod.length - 8} autres avis
+                              +{reviewsInPeriod.length - 10} autres avis
                             </p>
                           )}
                         </div>

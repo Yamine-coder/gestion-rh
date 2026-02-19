@@ -437,34 +437,36 @@ function calculerEcarts(planifie, reel, dateKey) {
     // Cas 3.1: Mapping intelligent avec correspondance d'index quand possible
     if (segmentsValides.length > 0) {
       
-      // NOUVEL ALGORITHME D'APPARIEMENT
-      // 1. Premièrement, on essaie de faire correspondre les pointages complets
+      // ALGORITHME D'APPARIEMENT BEST-FIRST (optimal global)
+      // Au lieu d'assigner greedily segment par segment (qui peut mal matcher
+      // quand le 1er segment capte un pointage destiné au 2e), on calcule
+      // TOUS les scores puis on assigne les meilleures paires en premier.
       const assignations = new Map(); // segment_index -> pointage_index
       
-      // On parcourt les segments dans l'ordre et on essaie de trouver le pointage complet le plus proche
+      // 1. Calculer toutes les paires possibles avec leur score
+      const toutesLesPaires = [];
       for (let segIdx = 0; segIdx < segmentsValides.length; segIdx++) {
         const segment = segmentsValides[segIdx];
-        let meilleurFit = null;
-        let meilleurScore = Infinity;
-        
         for (let ptIdx = 0; ptIdx < pointagesComplets.length; ptIdx++) {
-          // Vérifier si ce pointage n'est pas déjà assigné
-          if ([...assignations.values()].includes(ptIdx)) continue;
-          
           const pointage = pointagesComplets[ptIdx];
           const scoreArrivee = Math.abs(calculateTimeGapMinutes(segment.debut, pointage.arrivee));
           const scoreDepart = Math.abs(calculateTimeGapMinutes(segment.fin, pointage.depart));
           const scoreTotal = scoreArrivee + scoreDepart;
-          
-          if (scoreTotal < meilleurScore) {
-            meilleurScore = scoreTotal;
-            meilleurFit = { ptIdx, scoreArrivee, scoreDepart };
-          }
+          toutesLesPaires.push({ segIdx, ptIdx, scoreTotal });
         }
-        
-        if (meilleurFit) {
-          assignations.set(segIdx, meilleurFit.ptIdx);
-        }
+      }
+      
+      // 2. Trier par score croissant (meilleure correspondance d'abord)
+      toutesLesPaires.sort((a, b) => a.scoreTotal - b.scoreTotal);
+      
+      // 3. Assigner greedily en partant des meilleures paires
+      const segmentsAssignes = new Set();
+      const pointagesAssignes = new Set();
+      for (const paire of toutesLesPaires) {
+        if (segmentsAssignes.has(paire.segIdx) || pointagesAssignes.has(paire.ptIdx)) continue;
+        assignations.set(paire.segIdx, paire.ptIdx);
+        segmentsAssignes.add(paire.segIdx);
+        pointagesAssignes.add(paire.ptIdx);
       }
       
       // 2. Traiter les segments avec pointages complets assignés
