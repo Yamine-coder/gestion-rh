@@ -5,23 +5,14 @@
  * Inclut : l'avis, une suggestion de réponse IA, lien pour répondre
  */
 
-const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 const { generateAIResponse, isAIConfigured } = require('./avisResponseGeneratorService');
 const notifConfigService = require('./notificationConfigService');
+const { sendMailWithRetry } = require('../utils/emailService');
 
 // Chemin du fichier de configuration
 const CONFIG_PATH = path.join(__dirname, '../config/avisAlertConfig.json');
-
-// Configuration du transporteur email
-const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
 
 // Cache des avis déjà alertés (pour éviter les doublons)
 let alertedReviews = new Set();
@@ -331,7 +322,7 @@ async function sendNegativeReviewAlert(review, restaurant) {
     html
   };
 
-  await transporter.sendMail(mailOptions);
+  await sendMailWithRetry(mailOptions);
 }
 
 /**
@@ -443,7 +434,7 @@ async function sendDailyReport(reviews, restaurant, analysis) {
 </html>
 `;
 
-  await transporter.sendMail({
+  await sendMailWithRetry({
     from: `"🍕 Chez Antoine - Rapport" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
     to: recipients.join(', '),
     subject: `📊 Rapport avis du ${today.toLocaleDateString('fr-FR')} - ${last24h.length} avis, ${negativeCount} négatif(s)`,
