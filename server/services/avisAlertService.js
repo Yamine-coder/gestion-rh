@@ -1,7 +1,7 @@
 /**
- * 📧 Service d'alertes Email pour les avis négatifs
+ * Service d'alertes Email pour les avis négatifs
  * 
- * Envoie un email immédiatement quand un avis ≤3⭐ est détecté
+ * Envoie un email immédiatement quand un avis ≤3 étoiles est détecté
  * Inclut : l'avis, une suggestion de réponse IA, lien pour répondre
  */
 
@@ -151,7 +151,7 @@ async function sendNegativeReviewAlert(review, restaurant) {
     }
   }
 
-  const stars = '⭐'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
+  const stars = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#facc15" stroke="#facc15" stroke-width="1" style="vertical-align: middle;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'.repeat(review.rating) + '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1" style="vertical-align: middle;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'.repeat(5 - review.rating);
   
   // Configuration urgence selon la note
   const urgencyConfig = {
@@ -191,12 +191,12 @@ async function sendNegativeReviewAlert(review, restaurant) {
                 <tr>
                   <td>
                     <h1 style="color: #ffffff; margin: 0; font-size: 18px; font-weight: 600;">
-                      🍕 ${restaurantName}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px;"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/><path d="M5.71 17.11a17.04 17.04 0 0 1 11.4-11.4"/></svg>${restaurantName}
                     </h1>
                   </td>
                   <td style="text-align: right;">
                     <span style="background: rgba(255,255,255,0.2); color: white; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600;">
-                      ⚠️ ${urgency.text}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>${urgency.text}
                     </span>
                   </td>
                 </tr>
@@ -241,7 +241,7 @@ async function sendNegativeReviewAlert(review, restaurant) {
               <!-- Suggestion IA -->
               <div style="background: #f0fdf4; border-radius: 8px; padding: 16px; border-left: 4px solid #22c55e; margin-bottom: 24px;">
                 <p style="margin: 0 0 8px 0; font-weight: 600; color: #166534; font-size: 13px;">
-                  💡 Suggestion de réponse (IA)
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>Suggestion de réponse (IA)
                 </p>
                 <p style="color: #166534; font-size: 13px; line-height: 1.6; margin: 0;">
                   ${suggestedResponse}
@@ -252,7 +252,7 @@ async function sendNegativeReviewAlert(review, restaurant) {
               <!-- Bouton principal -->
               <div style="text-align: center; margin: 28px 0;">
                 <a href="${googleMapsUrl}" style="display: inline-block; background: #cf292c; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">
-                  📍 Répondre sur Google Maps
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px;"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>Répondre sur Google Maps
                 </a>
               </div>
               
@@ -291,7 +291,7 @@ async function sendNegativeReviewAlert(review, restaurant) {
                     </p>
                   </td>
                   <td style="text-align: right;">
-                    <a href="tel:${supportPhone.replace(/\s/g, '')}" style="color: #cf292c; text-decoration: none; font-size: 12px;">📞 ${supportPhone}</a>
+                    <a href="tel:${supportPhone.replace(/\s/g, '')}" style="color: #cf292c; text-decoration: none; font-size: 12px;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${supportPhone}</a>
                   </td>
                 </tr>
               </table>
@@ -318,7 +318,7 @@ async function sendNegativeReviewAlert(review, restaurant) {
   const mailOptions = {
     from: `"${restaurantName}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
     to: recipients.join(', '),
-    subject: `⚠️ Avis ${review.rating}⭐ - ${review.author || 'Client'} | ${restaurantName}`,
+    subject: `Alerte Avis ${review.rating}/5 - ${review.author || 'Client'} | ${restaurantName}`,
     html
   };
 
@@ -394,7 +394,7 @@ async function sendDailyReport(reviews, restaurant, analysis) {
 <body>
   <div class="container">
     <div class="header">
-      <h1>📊 Rapport Avis - ${today.toLocaleDateString('fr-FR')}</h1>
+      <h1><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 6px;"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Rapport Avis - ${today.toLocaleDateString('fr-FR')}</h1>
       <p>${restaurant?.name || 'Chez Antoine'}</p>
     </div>
     <div class="content">
@@ -418,7 +418,7 @@ async function sendDailyReport(reviews, restaurant, analysis) {
       </div>
       
       ${negativeCount > 0 ? `
-      <h3>⚠️ Avis négatifs à traiter :</h3>
+      <h3><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Avis négatifs à traiter :</h3>
       <div class="review-list">
         ${last24h.filter(r => r.rating <= 3).map(r => `
           <div class="review-item">
@@ -427,7 +427,7 @@ async function sendDailyReport(reviews, restaurant, analysis) {
           </div>
         `).join('')}
       </div>
-      ` : '<p style="color: #16a34a; text-align: center;">✅ Aucun avis négatif aujourd\'hui !</p>'}
+      ` : '<p style="color: #16a34a; text-align: center;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 4px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>Aucun avis négatif aujourd\'hui !</p>'}
     </div>
   </div>
 </body>
@@ -435,9 +435,9 @@ async function sendDailyReport(reviews, restaurant, analysis) {
 `;
 
   await sendMailWithRetry({
-    from: `"🍕 Chez Antoine - Rapport" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+    from: `"Chez Antoine - Rapport" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
     to: recipients.join(', '),
-    subject: `📊 Rapport avis du ${today.toLocaleDateString('fr-FR')} - ${last24h.length} avis, ${negativeCount} négatif(s)`,
+    subject: `Rapport avis du ${today.toLocaleDateString('fr-FR')} - ${last24h.length} avis, ${negativeCount} négatif(s)`,
     html
   });
 
