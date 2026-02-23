@@ -5,7 +5,7 @@ const { authMiddleware: authenticateToken, adminMiddleware } = require('../middl
 const { generateQRCode } = require('../controllers/qrController');
 const isAdmin = require('../middlewares/isAdminMiddleware');
 const { getTousLesConges, marquerCongesCommeVus, getDemandesNonVues } = require('../controllers/congeController');
-const { creerEmploye, modifierEmploye, marquerDepart, annulerDepart, supprimerEmploye } = require('../controllers/adminController');
+const { creerEmploye, modifierEmploye, marquerDepart, annulerDepart, supprimerEmploye, reinviterEmploye } = require('../controllers/adminController');
 const { getTousLesEmployes } = require('../controllers/employeController');
 const { getDashboardStats } = require('../controllers/adminController');
 const { getAllPointages } = require('../controllers/statsController');
@@ -27,6 +27,9 @@ router.get('/employes', authenticateToken, isAdmin, getTousLesEmployes);
 
 // Route pour envoyer les identifiants par email - IMPORTANT: cette route doit être avant les routes avec :id
 router.post('/employes/envoyer-identifiants', authenticateToken, isAdmin, envoyerIdentifiantsParEmail);
+
+// Route pour réinviter un employé existant (nouveau mot de passe + email optionnel)
+router.post('/employes/:id/reinviter', authenticateToken, isAdmin, reinviterEmploye);
 
 router.get('/employes/:id', authenticateToken, isAdmin, async (req, res) => {
   try {

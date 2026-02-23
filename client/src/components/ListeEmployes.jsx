@@ -76,6 +76,12 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
     onConfirm: () => {}
   });
   
+  // 🔄 Modal réinvitation
+  const [reinviteEmploye, setReinviteEmploye] = useState(null);
+  const [reinviteEmail, setReinviteEmail] = useState('');
+  const [reinviteLoading, setReinviteLoading] = useState(false);
+  const [reinviteResult, setReinviteResult] = useState(null); // { success, motDePasseTemporaire, email, emailEnvoye, message }
+  
   // Filtre actifs/partis
   const [filtreStatut, setFiltreStatut] = useState('actifs'); // 'actifs' ou 'partis'
   
@@ -772,6 +778,58 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
         }
       }
     });
+  };
+
+  // 🔄 Réinviter un employé (nouveau mot de passe + envoi email)
+  const handleOpenReinvite = (employe) => {
+    setReinviteEmploye(employe);
+    setReinviteEmail(employe.email || '');
+    setReinviteResult(null);
+    setReinviteLoading(false);
+  };
+
+  const handleReinviter = async () => {
+    if (!reinviteEmploye) return;
+    setReinviteLoading(true);
+    setReinviteResult(null);
+
+    try {
+      const body = {};
+      // Si l'email a changé, l'envoyer
+      if (reinviteEmail.trim() && reinviteEmail.trim().toLowerCase() !== reinviteEmploye.email?.toLowerCase()) {
+        body.nouvelEmail = reinviteEmail.trim();
+      }
+
+      const response = await axios.post(
+        `${API_BASE}/admin/employes/${reinviteEmploye.id}/reinviter`,
+        body,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setReinviteResult(response.data);
+      
+      if (response.data.emailEnvoye) {
+        toast.success(`Invitation envoyée à ${response.data.email}`);
+      } else {
+        toast.warning(response.data.message || "Mot de passe réinitialisé (email non envoyé)");
+      }
+
+      // Rafraîchir la liste si l'email a changé
+      if (body.nouvelEmail) {
+        fetchEmployes();
+      }
+    } catch (err) {
+      console.error("Erreur réinvitation :", err);
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || "Erreur lors de la réinvitation";
+      toast.error(errorMsg);
+      
+      // Si throttled mais on a quand même le mdp
+      if (err.response?.data?.motDePasseTemporaire) {
+        setReinviteResult(err.response.data);
+      }
+    } finally {
+      setReinviteLoading(false);
+    }
   };
 
   const filteredEmployes = employes
@@ -1832,6 +1890,15 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                             )}
                           </div>
                         )}
+                        
+                        {/* 📧 Réinviter - Vue grille */}
+                        <button
+                          onClick={() => handleOpenReinvite(e)}
+                          className="p-2 rounded-lg text-xs font-medium bg-primary-50 text-primary-600 hover:bg-primary-100 border border-primary-200 transition-all"
+                          title="Renvoyer invitation / identifiants"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </button>
                       </>
                     ) : (
                       // 🔴 EMPLOYÉ PARTI - Vue grille
@@ -2097,6 +2164,15 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                               </div>
                             )}
 
+                            {/* 📧 Bouton Réinviter */}
+                            <button
+                              onClick={() => handleOpenReinvite(e)}
+                              className="p-2 rounded-lg text-xs font-medium bg-primary-50 text-primary-600 hover:bg-primary-100 border border-primary-200 transition-all"
+                              title="Renvoyer invitation / identifiants"
+                            >
+                              <Mail className="h-4 w-4" />
+                            </button>
+
                             {/* Bouton Marquer le départ */}
                             {e.role === 'employee' && (
                               <button
@@ -2270,6 +2346,15 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                           )}
                         </div>
                       )}
+
+                      {/* 📧 Réinviter - Version mobile */}
+                      <button
+                        onClick={() => handleOpenReinvite(e)}
+                        className="flex-1 px-3 py-2 rounded-lg text-xs font-medium bg-primary-50 text-primary-600 hover:bg-primary-100 border border-primary-200 transition-all"
+                        title="Renvoyer invitation"
+                      >
+                        <Mail className="h-4 w-4 mx-auto" />
+                      </button>
 
                       {e.role === 'employee' && (
                         <button
@@ -3090,6 +3175,136 @@ function ListeEmployes({ onRegisterRefresh, onCreateClick }) {
                 employe={navigoEmploye}
                 onUpdate={() => { fetchEmployes(); fetchNavigoStatuts(); }}
               />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 🔄 Modal Réinvitation */}
+      {reinviteEmploye && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-[#cf292c] to-[#e84447] text-white px-6 py-4 flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-xl">
+                <Mail className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold">Renvoyer invitation</h2>
+                <p className="text-sm text-white/80">{reinviteEmploye.prenom} {reinviteEmploye.nom}</p>
+              </div>
+              <button
+                onClick={() => { setReinviteEmploye(null); setReinviteResult(null); }}
+                className="p-2 rounded-lg hover:bg-white/20 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {!reinviteResult ? (
+                <>
+                  <p className="text-sm text-gray-600">
+                    Un nouveau mot de passe temporaire sera généré et envoyé par email. 
+                    L'employé devra le changer à sa prochaine connexion.
+                  </p>
+
+                  {/* Champ email modifiable */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Adresse email
+                    </label>
+                    <input
+                      type="email"
+                      value={reinviteEmail}
+                      onChange={(e) => setReinviteEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      placeholder="email@exemple.com"
+                    />
+                    {reinviteEmail.trim().toLowerCase() !== reinviteEmploye.email?.toLowerCase() && reinviteEmail.trim() && (
+                      <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        L'email sera mis à jour dans le profil
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Boutons */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => { setReinviteEmploye(null); setReinviteResult(null); }}
+                      className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all"
+                      disabled={reinviteLoading}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={handleReinviter}
+                      disabled={reinviteLoading || !reinviteEmail.trim()}
+                      className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 rounded-xl transition-all flex items-center justify-center gap-2"
+                    >
+                      {reinviteLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Envoi...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="w-4 h-4" />
+                          Envoyer
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                /* Résultat de la réinvitation */
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-xl ${reinviteResult.emailEnvoye ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                    <div className="flex items-start gap-3">
+                      {reinviteResult.emailEnvoye ? (
+                        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                      )}
+                      <div>
+                        <p className={`text-sm font-medium ${reinviteResult.emailEnvoye ? 'text-green-800' : 'text-amber-800'}`}>
+                          {reinviteResult.emailEnvoye ? 'Invitation envoyée !' : 'Mot de passe réinitialisé'}
+                        </p>
+                        <p className={`text-xs mt-1 ${reinviteResult.emailEnvoye ? 'text-green-600' : 'text-amber-600'}`}>
+                          {reinviteResult.message}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Identifiants à communiquer */}
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Identifiants de connexion</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Email :</span>
+                        <span className="text-sm font-mono font-medium text-gray-900">{reinviteResult.email}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">Mot de passe :</span>
+                        <span className="text-sm font-mono font-bold text-primary-700 bg-primary-50 px-3 py-1 rounded-lg">{reinviteResult.motDePasseTemporaire}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-3 italic">
+                      L'employé devra changer ce mot de passe à la première connexion.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => { setReinviteEmploye(null); setReinviteResult(null); }}
+                    className="w-full px-4 py-2.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-xl transition-all"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>,

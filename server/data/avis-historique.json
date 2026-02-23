@@ -1,6 +1,39 @@
 {
   "reviews": [
     {
+      "author": "Guettoyouv Aion",
+      "rating": 5,
+      "text": "⭐⭐⭐⭐⭐\nSuper expérience dans ce restaurant ! L’accueil est chaleureux, le service rapide et très agréable. Les plats sont délicieux, et on sent que les produits sont de qualité. Très bon rapport qualité-prix. Je recommande sans hésiter ! 🍽️",
+      "time": 1770639519000,
+      "relativeTime": "il y a 2 semaines",
+      "profilePhoto": "https://lh3.googleusercontent.com/a-/ALV-UjWdU9u0eVldDmiOQwkTYBuVYl0kZ07W8wbMUpcNl6ixhd66loc=s128-c0x00000000-cc-rp-mo",
+      "isNegative": false,
+      "addedAt": 1771849976624,
+      "month": "2026-02"
+    },
+    {
+      "author": "marcelle touré",
+      "rating": 3,
+      "text": "Victime de son succès, trop d'attente, pâte à pizza 🍕 pas terrible, la pâte au bord de la pizza est trop compacte a mon goût, pas assez aérée.\nPour ce qui concerne le soit disant tiramisu (Nutella..), il a tout faux, biscuit à l'intérieur sec, aucun goût de café, la crème occupe la moitié du pot 😩.",
+      "time": 1770149789000,
+      "relativeTime": "il y a 2 semaines",
+      "profilePhoto": "https://lh3.googleusercontent.com/a/ACg8ocLU9mQ0gKwWy3XSUmwxfitP6Jzu_jxo8d9vA460PNLytbvm6g=s128-c0x00000000-cc-rp-mo-ba3",
+      "isNegative": true,
+      "addedAt": 1771849976624,
+      "month": "2026-02"
+    },
+    {
+      "author": "Camille",
+      "rating": 1,
+      "text": "Expérience très désagréable avec un mauvais accueil , un service décalé de minimum 10 min entre chaque plats ce qui n’est pas normal dans un restaurant, l’hygiène est également pas appliqué avec la dame qui jette les miettes par terre , les bornes me font vaguement penser au Mcdo , le personnel cris sans arrêt le numéro des commandes, les pizzas sont bonnes mais on peut confondre le fromage et le papier disposé sous la pizza . Pas de service, préférez une pizza de quartier !!!",
+      "time": 1769953460000,
+      "relativeTime": "il y a 3 semaines",
+      "profilePhoto": "https://lh3.googleusercontent.com/a/ACg8ocK1yuyzdhTI9oCu_-Bs1pnsfKUdBE7nmGuen4-SOroY2hNdLw=s128-c0x00000000-cc-rp-mo",
+      "isNegative": true,
+      "addedAt": 1771849976624,
+      "month": "2026-02"
+    },
+    {
       "author": "Lyrecoo75",
       "rating": 3,
       "text": "La cuisine est très bonne le rapport qualité prix est imbattable et les portions sont généreuses , seul bémol aucun chauffage n’est allumé à l’intérieur du restaurant, en hiver on dois manger avec la doudoune sur nous comme sur la photo , à part ça au top",
@@ -167,5 +200,5 @@
     }
   ],
   "snapshots": [],
-  "lastUpdate": 1771514385463
+  "lastUpdate": 1771849976624
 }

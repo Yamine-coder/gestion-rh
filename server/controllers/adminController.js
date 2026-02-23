@@ -8,6 +8,7 @@ const { isEntree, isSortie, filtrerEntrees, filtrerSorties, TYPES_ENTREE } = req
 const { invalidateStatusCache } = require('../middlewares/authMiddleware');
 const { parseSegments } = require('../utils/segmentUtils');
 const { getBusinessDayBoundsUTC } = require('../utils/businessDayUtils');
+const { envoyerIdentifiants } = require('../utils/emailService');
 
 const creerEmploye = async (req, res) => {
   // Support des catégories multiples : 'categories' (array) OU 'categorie' (string legacy)
@@ -1535,11 +1536,141 @@ const genererDonneesDemo = () => {
   };
 };
 
+// 🔄 REINVITER : Régénérer un mot de passe temporaire et renvoyer les identifiants
+const reinviterEmploye = async (req, res) => {
+  const { id } = req.params;
+  const { nouvelEmail } = req.body; // Optionnel : mettre à jour l'email
+
+  try {
+    const employeId = parseInt(id);
+    if (isNaN(employeId)) {
+      return res.status(400).json({ error: "ID employé invalide" });
+    }
+
+    // Vérifier que l'employé existe
+    const employe = await prisma.user.findUnique({
+      where: { id: employeId },
+      select: {
+        id: true,
+        email: true,
+        nom: true,
+        prenom: true,
+        categorie: true,
+        categories: true,
+        statut: true,
+        firstLoginDone: true
+      }
+    });
+
+    if (!employe) {
+      return res.status(404).json({ error: "Employé non trouvé" });
+    }
+
+    if (employe.statut !== 'actif') {
+      return res.status(400).json({ error: "Impossible de réinviter un employé inactif" });
+    }
+
+    // Déterminer l'email à utiliser
+    let emailCible = employe.email;
+    if (nouvelEmail && nouvelEmail.trim()) {
+      const normalizedNewEmail = nouvelEmail.toLowerCase().trim();
+
+      // Vérifier que le nouvel email n'est pas déjà utilisé par un autre employé
+      if (normalizedNewEmail !== employe.email) {
+        const existant = await prisma.user.findUnique({ where: { email: normalizedNewEmail } });
+        if (existant) {
+          return res.status(400).json({ error: "Cet email est déjà utilisé par un autre compte" });
+        }
+      }
+      emailCible = normalizedNewEmail;
+    }
+
+    // Générer un nouveau mot de passe temporaire
+    const motDePasseTemporaire = genererMotDePasseListible();
+    const hashedPassword = await bcrypt.hash(motDePasseTemporaire, 10);
+
+    // Mettre à jour l'employé : nouveau password, reset onboarding, email si changé
+    const updateData = {
+      password: hashedPassword,
+      firstLoginDone: false, // Forcer l'onboarding à la prochaine connexion
+      codeActivation: null,
+    };
+
+    if (emailCible !== employe.email) {
+      updateData.email = emailCible;
+    }
+
+    await prisma.user.update({
+      where: { id: employeId },
+      data: updateData
+    });
+
+    // Récupérer les catégories pour l'email
+    let categoriesArray = [];
+    if (employe.categories) {
+      categoriesArray = parseCategories(employe.categories);
+    } else if (employe.categorie) {
+      categoriesArray = [employe.categorie];
+    }
+
+    // Envoyer l'email avec les nouveaux identifiants
+    const resultatEnvoi = await envoyerIdentifiants(
+      emailCible,
+      employe.nom,
+      employe.prenom,
+      motDePasseTemporaire,
+      categoriesArray
+    );
+
+    if (!resultatEnvoi.success) {
+      console.error('❌ Erreur envoi email réinvitation:', resultatEnvoi.error);
+      
+      if (resultatEnvoi.code === 'THROTTLED') {
+        return res.status(429).json({
+          success: false,
+          error: resultatEnvoi.error,
+          message: "Email déjà envoyé récemment. Patientez quelques minutes.",
+          motDePasseTemporaire // On le renvoie quand même pour affichage admin
+        });
+      }
+
+      // L'email a échoué mais le password a été changé → renvoyer le mdp quand même
+      return res.status(200).json({
+        success: true,
+        emailEnvoye: false,
+        message: "Mot de passe réinitialisé mais l'email n'a pas pu être envoyé. Communiquez les identifiants manuellement.",
+        motDePasseTemporaire,
+        email: emailCible
+      });
+    }
+
+    console.log(`✅ Réinvitation envoyée à ${emailCible} pour ${employe.prenom} ${employe.nom}`);
+
+    res.status(200).json({
+      success: true,
+      emailEnvoye: true,
+      message: `Invitation renvoyée à ${emailCible}`,
+      motDePasseTemporaire,
+      email: emailCible
+    });
+
+  } catch (err) {
+    console.error("❌ Erreur réinvitation employé :", err);
+    
+    if (err.code === 'P2002') {
+      return res.status(400).json({ error: "Cet email est déjà utilisé par un autre utilisateur" });
+    }
+    
+    res.status(500).json({ error: "Erreur serveur lors de la réinvitation" });
+  }
+};
+
 module.exports = {
   creerEmploye,
   modifierEmploye,
   marquerDepart,
   annulerDepart,
   supprimerEmploye,
+  reinviterEmploye,
   getDashboardStats,
 };
