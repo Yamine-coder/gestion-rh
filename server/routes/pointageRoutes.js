@@ -768,6 +768,39 @@ router.post('/auto', authenticateToken, async (req, res) => {
     // Analyse immédiate au moment du pointage (comme Factorial, PayFit, Lucca)
     const anomaliesDetectees = await detecterAnomaliesTempsReel(userId, type, maintenant);
 
+    // ✅ AUTO-RÉSOLUTION: Si c'est un départ, résoudre les anomalies missing_out existantes
+    // Car le scheduler peut les créer dès la fin du shift (avant que l'employé ait pointé sa sortie)
+    if (isSortie(type)) {
+      try {
+        const businessDay = getBusinessDay(maintenant);
+        const { start: dayStart, end: dayEnd } = getBusinessDayBoundsUTC(businessDay);
+        
+        const anomaliesResolues = await prisma.anomalie.updateMany({
+          where: {
+            employeId: userId,
+            type: { in: ['missing_out', 'missing_out_prolonge'] },
+            statut: 'en_attente',
+            date: {
+              gte: dayStart,
+              lt: dayEnd
+            }
+          },
+          data: {
+            statut: 'auto_resolue',
+            commentaire: `Auto-résolu: sortie pointée à ${maintenant.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}`,
+            traiteAt: new Date()
+          }
+        });
+        
+        if (anomaliesResolues.count > 0) {
+          console.log(`✅ [AUTO-RÉSOLUTION] ${anomaliesResolues.count} anomalie(s) missing_out résolue(s) pour employé ${userId}`);
+        }
+      } catch (resolveErr) {
+        console.error('⚠️ [AUTO-RÉSOLUTION] Erreur:', resolveErr.message);
+        // Non bloquant - le pointage est déjà enregistré
+      }
+    }
+
     // 🎯 SCORING - Attribuer/retirer des points selon ponctualité
     if (isEntree(type)) {
       try {

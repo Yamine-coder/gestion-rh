@@ -404,14 +404,31 @@ class AnomalyScheduler {
     }
 
     // ===== CAS 3: MISSING OUT (entrée sans sortie) =====
+    // ✅ FIX: Ajouter un délai de grâce de 45 min après la fin du shift
+    // Beaucoup d'employés pointent leur sortie quelques minutes après la fin du shift
+    // → Ne pas créer de fausse anomalie si le shift vient juste de se terminer
     if (entrees.length > sorties.length) {
-      await this.createAnomalieIfNotExists(employeId, dateStr, 'missing_out', {
-        gravite: 'moyenne',
-        shiftId: shift.id,
-        heurePrevueFin: shiftEnd,
-        derniereEntree: entrees[entrees.length - 1].horodatage,
-        description: `Sortie manquante - Pointage d'entrée sans pointage de sortie`
-      });
+      const paris = getParisTime();
+      let currentMinutes = paris.hour * 60 + paris.minute;
+      if (paris.hour < BUSINESS_DAY_CUTOFF_HOUR) {
+        currentMinutes += 24 * 60;
+      }
+      const [_endH, _endM] = (shiftEnd || '00:00').split(':').map(Number);
+      let shiftEndMin = _endH * 60 + _endM;
+      const _shiftStartStr = lastSegment?.start || lastSegment?.debut;
+      shiftEndMin = adjustEndForMidnight(shiftEndMin, _shiftStartStr);
+      const minutesDepuisFin = currentMinutes - shiftEndMin;
+      
+      // Seulement créer l'anomalie si >45 min depuis la fin du shift
+      if (minutesDepuisFin >= 45) {
+        await this.createAnomalieIfNotExists(employeId, dateStr, 'missing_out', {
+          gravite: 'moyenne',
+          shiftId: shift.id,
+          heurePrevueFin: shiftEnd,
+          derniereEntree: entrees[entrees.length - 1].horodatage,
+          description: `Sortie manquante - Pointage d'entrée sans pointage de sortie`
+        });
+      }
     }
 
     // ===== CAS 3b: MISSING IN (sortie sans entrée) =====
@@ -423,6 +440,32 @@ class AnomalyScheduler {
         premiereSortie: sorties[0].horodatage,
         description: `Entrée manquante - Pointage de sortie sans pointage d'entrée préalable`
       });
+    }
+
+    // ===== CAS 3c: AUTO-RÉSOLUTION si l'employé a finalement pointé sa sortie =====
+    // Si entrees == sorties (pointages équilibrés), résoudre les missing_out existantes
+    if (entrees.length > 0 && entrees.length <= sorties.length) {
+      const { startUTC: dayStart, endUTC: dayEnd } = getParisDateBoundsUTC(dateStr);
+      try {
+        const resolved = await prisma.anomalie.updateMany({
+          where: {
+            employeId,
+            type: { in: ['missing_out', 'missing_out_prolonge'] },
+            statut: 'en_attente',
+            date: { gte: dayStart, lt: dayEnd }
+          },
+          data: {
+            statut: 'auto_resolue',
+            commentaire: `Auto-résolu: sortie détectée après vérification`,
+            traiteAt: new Date()
+          }
+        });
+        if (resolved.count > 0) {
+          console.log(`✅ [SCHEDULER] Auto-résolu ${resolved.count} missing_out pour employé ${employeId} (${dateStr})`);
+        }
+      } catch (err) {
+        // Non bloquant
+      }
     }
 
     // ===== CAS 4: DÉPART ANTICIPÉ - INDICATEUR SEULEMENT (stats) =====

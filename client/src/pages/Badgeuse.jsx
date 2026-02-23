@@ -341,6 +341,25 @@ const Badgeuse = () => {
   useEffect(() => {
     let mounted = true;
 
+    const startWithConfig = async (scanner, cameraIdOrConfig) => {
+      await scanner.start(
+        cameraIdOrConfig,
+        {
+          fps: 15,
+          disableFlip: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+          }
+        },
+        (decodedText) => {
+          if (handleScanRef.current) {
+            handleScanRef.current(decodedText);
+          }
+        },
+        () => {} // QR non trouvé dans le frame - ignoré
+      );
+    };
+
     const initScanner = async () => {
       try {
         const scanner = new Html5Qrcode('qr-reader', {
@@ -349,22 +368,61 @@ const Badgeuse = () => {
         });
         scannerRef.current = scanner;
 
-        await scanner.start(
-          { facingMode: 'user' },
-          {
-            fps: 15,
-            disableFlip: false,
-            experimentalFeatures: {
-              useBarCodeDetectorIfSupported: true
+        // Stratégie robuste : essayer facingMode d'abord, puis fallback par device ID
+        let started = false;
+
+        // Tentative 1 : facingMode 'user' (caméra frontale)
+        try {
+          await startWithConfig(scanner, { facingMode: 'user' });
+          started = true;
+          console.log('✅ Scanner démarré avec facingMode: user');
+        } catch (e1) {
+          console.warn('⚠️ facingMode user échoué:', e1?.message || e1);
+        }
+
+        // Tentative 2 : énumérer les caméras et trouver la frontale par son label
+        if (!started) {
+          try {
+            const cameras = await Html5Qrcode.getCameras();
+            console.log('📷 Caméras disponibles:', cameras.map(c => `${c.id} (${c.label})`));
+            if (cameras.length > 0) {
+              // Chercher la caméra frontale par label
+              const frontCam = cameras.find(c => 
+                /front|user|avant|selfie|facing front/i.test(c.label)
+              );
+              const cam = frontCam || cameras[0]; // Fallback : première caméra
+              console.log(`📷 Utilisation de: ${cam.label || cam.id}`);
+              await startWithConfig(scanner, cam.id);
+              started = true;
             }
-          },
-          (decodedText) => {
-            if (handleScanRef.current) {
-              handleScanRef.current(decodedText);
-            }
-          },
-          () => {} // QR non trouvé dans le frame - ignoré
-        );
+          } catch (e2) {
+            console.warn('⚠️ Énumération caméras échouée:', e2?.message || e2);
+          }
+        }
+
+        // Tentative 3 : facingMode 'environment' (caméra arrière en dernier recours)
+        if (!started) {
+          try {
+            await startWithConfig(scanner, { facingMode: 'environment' });
+            started = true;
+            console.log('✅ Scanner démarré avec facingMode: environment (fallback)');
+          } catch (e3) {
+            console.warn('⚠️ facingMode environment échoué:', e3?.message || e3);
+          }
+        }
+
+        if (!started) {
+          throw new Error('Aucune caméra disponible');
+        }
+
+        // Maintenant que le scanner a lu clientWidth, on peut passer en absolute
+        // pour superposer la vidéo sur les overlays (coins, états, etc.)
+        const qrEl = document.getElementById('qr-reader');
+        if (qrEl) {
+          qrEl.style.position = 'absolute';
+          qrEl.style.top = '0';
+          qrEl.style.left = '0';
+        }
 
         // Forcer l'autofocus continu si supporté
         try {
@@ -637,6 +695,14 @@ const Badgeuse = () => {
       scannerRef.current = null;
     }
 
+    // Remettre en flow normal pour que clientWidth soit lisible
+    const qrEl = document.getElementById('qr-reader');
+    if (qrEl) {
+      qrEl.style.position = '';
+      qrEl.style.top = '';
+      qrEl.style.left = '';
+    }
+
     try {
       const scanner = new Html5Qrcode('qr-reader', {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
@@ -644,22 +710,68 @@ const Badgeuse = () => {
       });
       scannerRef.current = scanner;
 
-      await scanner.start(
-        { facingMode: 'user' },
-        {
-          fps: 15,
-          disableFlip: false,
-          experimentalFeatures: {
-            useBarCodeDetectorIfSupported: true
+      const startWith = async (cameraIdOrConfig) => {
+        await scanner.start(
+          cameraIdOrConfig,
+          {
+            fps: 15,
+            disableFlip: false,
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            }
+          },
+          (decodedText) => {
+            if (handleScanRef.current) {
+              handleScanRef.current(decodedText);
+            }
+          },
+          () => {}
+        );
+      };
+
+      let started = false;
+
+      // Tentative 1 : facingMode 'user'
+      try {
+        await startWith({ facingMode: 'user' });
+        started = true;
+      } catch (e1) {
+        console.warn('⚠️ Retry facingMode user échoué:', e1?.message);
+      }
+
+      // Tentative 2 : par device ID
+      if (!started) {
+        try {
+          const cameras = await Html5Qrcode.getCameras();
+          if (cameras.length > 0) {
+            const frontCam = cameras.find(c => /front|user|avant|selfie|facing front/i.test(c.label));
+            await startWith((frontCam || cameras[0]).id);
+            started = true;
           }
-        },
-        (decodedText) => {
-          if (handleScanRef.current) {
-            handleScanRef.current(decodedText);
-          }
-        },
-        () => {}
-      );
+        } catch (e2) {
+          console.warn('⚠️ Retry énumération échouée:', e2?.message);
+        }
+      }
+
+      // Tentative 3 : facingMode 'environment'
+      if (!started) {
+        try {
+          await startWith({ facingMode: 'environment' });
+          started = true;
+        } catch (e3) {
+          console.warn('⚠️ Retry environment échoué:', e3?.message);
+        }
+      }
+
+      if (!started) throw new Error('Aucune caméra disponible');
+
+      // Positionner en absolute après que le scanner a lu clientWidth
+      const qrEl = document.getElementById('qr-reader');
+      if (qrEl) {
+        qrEl.style.position = 'absolute';
+        qrEl.style.top = '0';
+        qrEl.style.left = '0';
+      }
 
       setCameraReady(true);
       setCameraError('');
@@ -762,10 +874,13 @@ const Badgeuse = () => {
         <div className="w-full max-w-3xl rounded-2xl sm:rounded-3xl overflow-hidden border-2 sm:border-4 border-white/20 shadow-2xl shadow-black/50 bg-slate-800" style={{ flex: '1 1 0%', minHeight: 0, position: 'relative' }}>
               
               {/* Scanner vidéo - toujours dans le DOM pour html5-qrcode */}
+              {/* IMPORTANT: Pas de position:absolute ici au rendu initial, sinon clientWidth=0
+                  et html5-qrcode crée une vidéo de 0px de large.
+                  On passe en absolute APRÈS le démarrage du scanner via JS. */}
               <div id="qr-reader" style={{ 
-                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-                opacity: cameraReady && !cameraError ? 1 : 0,
-                pointerEvents: cameraReady && !cameraError ? 'auto' : 'none'
+                width: '100%', 
+                height: '100%',
+                visibility: cameraReady && !cameraError ? 'visible' : 'hidden'
               }} />
 
               {cameraChecking ? (
@@ -1020,11 +1135,28 @@ const Badgeuse = () => {
           from { width: 100%; }
           to { width: 0%; }
         }
-        /* html5-qrcode : forcer le vidéo à couvrir tout le conteneur */
+        /*
+         * html5-qrcode DOM structure (after .start()):
+         *   #qr-reader                     ← position:relative (set by lib)
+         *     video                         ← inline width=Xpx, display:block
+         *     canvas                        ← hidden (display:none), used for decoding
+         *     div × 4 (shading elements)    ← border overlays (if qrbox enabled)
+         *     div (scannerPausedUiElement)   ← display:none by default
+         *
+         * Strategy: 
+         *   - #qr-reader fills its parent via CSS
+         *   - video is made to cover the entire area
+         *   - all shading/UI elements are hidden
+         *   - NO display:none on intermediate divs (breaks rendering)
+         */
         #qr-reader {
+          /* position est géré en JS (absolute après init, pour que clientWidth > 0 au démarrage) */
+          width: 100% !important;
+          height: 100% !important;
           border: none !important;
           overflow: hidden !important;
         }
+        /* Video: cover entire container */
         #qr-reader video {
           object-fit: cover !important;
           width: 100% !important;
@@ -1033,31 +1165,24 @@ const Badgeuse = () => {
           top: 0 !important;
           left: 0 !important;
         }
-        /* Cacher TOUS les éléments UI par défaut de html5-qrcode */
-        #qr-reader img,
-        #qr-reader br,
+        /* Hide ALL non-video children: canvas, shading divs, paused UI, images, spans */
+        #qr-reader > canvas,
+        #qr-reader > img,
+        #qr-reader > br,
         #qr-reader > span,
-        #qr-reader canvas,
-        #qr-reader svg,
+        #qr-reader > svg {
+          display: none !important;
+        }
+        /* Shading divs (4 border overlays) - make invisible but don't remove from DOM */
+        #qr-reader > div {
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+        /* Dashboard/status elements from html5-qrcode-scanner (if accidentally used) */
         #qr-reader__status_span,
         #qr-reader__dashboard_section,
         #qr-reader__dashboard_section_swaplink,
         #qr-reader__header_message {
-          display: none !important;
-        }
-        /* Tous les divs internes = remplir le conteneur */
-        #qr-reader > div {
-          width: 100% !important;
-          height: 100% !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          border: none !important;
-          box-shadow: none !important;
-          background: transparent !important;
-        }
-        /* La zone ombrée de scan = la cacher */
-        #qr-reader > div > div {
           display: none !important;
         }
       `}</style>
