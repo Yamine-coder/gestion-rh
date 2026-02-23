@@ -1570,6 +1570,11 @@ const reinviterEmploye = async (req, res) => {
       return res.status(400).json({ error: "Impossible de réinviter un employé inactif" });
     }
 
+    // 🔒 Bloquer si l'employé a déjà activé son compte
+    if (employe.firstLoginDone) {
+      return res.status(400).json({ error: "Cet employé a déjà activé son compte. Utilisez la réinitialisation de mot de passe à la place." });
+    }
+
     // Déterminer l'email à utiliser
     let emailCible = employe.email;
     if (nouvelEmail && nouvelEmail.trim()) {

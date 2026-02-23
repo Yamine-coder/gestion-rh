@@ -18,6 +18,7 @@ const getTousLesEmployes = async (req, res) => {
         categories: true, // ✅ Ajout du champ catégories multiples
         statut: true,
         createdAt: true,
+        firstLoginDone: true, // Pour savoir si l'employé a déjà activé son compte
         // Champs de départ pour le turnover
         dateSortie: true,
         motifDepart: true,
