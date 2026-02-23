@@ -367,7 +367,14 @@ class AnomalyScheduler {
       const entreeParisStr = premiereEntree.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Paris' });
       const [entreeH, entreeM] = entreeParisStr.split(':').map(Number);
       const entreeMinutes = entreeH * 60 + entreeM;
-      const avanceMinutes = shiftStartMinutes - entreeMinutes;
+      let avanceMinutes = shiftStartMinutes - entreeMinutes;
+      
+      // ✅ FIX MIDNIGHT: Si le shift commence après minuit (00:00-05:59) et que
+      // l'employé pointe avant minuit (20:00+), la soustraction donne un résultat
+      // très négatif au lieu de la vraie avance (ex: shift 00:30, arrivée 23:50 → -1400 au lieu de +40)
+      if (avanceMinutes < -720 && shiftStartMinutes < BUSINESS_DAY_CUTOFF_HOUR * 60) {
+        avanceMinutes += 24 * 60;
+      }
       
       // ✅ FIX: Si le shift a plusieurs segments (ex: 12:00-14:00 + 17:00-00:00),
       // la première entrée peut appartenir à un segment antérieur (extra ou autre)
@@ -446,7 +453,15 @@ class AnomalyScheduler {
         if (extraEnd) {
           const [exEndH, exEndM] = extraEnd.split(':').map(Number);
           let extraEndMinutes = exEndH * 60 + exEndM;
-          extraEndMinutes = adjustEndForMidnight(extraEndMinutes, extraStart);
+          // ✅ FIX: Pour les segments extra post-minuit (00:00-05:59) quand le shift
+          // principal traverse minuit, utiliser le contexte du shift au lieu du segment.
+          // Ex: shift 17:00→00:00 + extra 00:00→01:00 → extraEnd doit être 25h (1500min)
+          const extraStartMinutes = parisTimeToMinutes(extraStart);
+          if (crossesMidnight && extraStartMinutes < BUSINESS_DAY_CUTOFF_HOUR * 60) {
+            extraEndMinutes += 24 * 60;
+          } else {
+            extraEndMinutes = adjustEndForMidnight(extraEndMinutes, extraStart);
+          }
           // Utiliser la fin la plus tardive entre work et extra
           if (extraEndMinutes > effectiveShiftEndMinutes) {
             effectiveShiftEndMinutes = extraEndMinutes;
@@ -492,6 +507,10 @@ class AnomalyScheduler {
         }
       }
     }
+
+    // ===== CAS 6: PAUSE NON PRISE =====
+    // Vérifier si l'employé a travaillé sans prendre sa pause prévue
+    await this.checkPauseNonPrise(shift, entrees, sorties, dateStr);
   }
 
   /**
