@@ -246,17 +246,21 @@ export default function ModalTraiterAnomalie({
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
-      // Récupérer les pointages du jour pour l'employé concerné
+      // Récupérer les pointages du jour pour l'employé concerné via bilan-journalier
       const empId = anomalie?.employeId || anomalie?.employe?.id;
       let pointages = [];
       if (empId) {
         try {
-          const pointagesResponse = await axios.get(
-            `${API_URL}/api/pointages?userId=${empId}&date=${dateStr}`,
+          const bilanResponse = await axios.get(
+            `${API_URL}/api/anomalies/bilan-journalier/${empId}/${dateStr}`,
             { headers: { Authorization: `Bearer ${token}` } }
           );
-          pointages = pointagesResponse.data || [];
+          pointages = (bilanResponse.data?.pointages || []).map(p => ({
+            type: p.type,
+            horodatage: p.horodatage
+          }));
         } catch (e) {
+          console.error('Erreur fetch pointages contexte:', e);
         }
       }
       

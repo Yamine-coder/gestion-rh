@@ -2245,6 +2245,19 @@ const getBilanJournalier = async (req, res) => {
       success: true,
       employeId: parseInt(employeId),
       date,
+      // Pointages bruts pour le contexte du jour
+      pointages: pointages.map(p => ({
+        id: p.id,
+        type: p.type,
+        horodatage: p.horodatage
+      })),
+      // Shift prévu
+      shift: shift ? {
+        id: shift.id,
+        type: shift.type,
+        motif: shift.motif,
+        segments: segments
+      } : null,
       // NOUVEAU: Calcul basé sur temps travaillé réel
       calcul: {
         methode: 'temps_travaille_net',
