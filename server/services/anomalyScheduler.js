@@ -1082,6 +1082,21 @@ class AnomalyScheduler {
           return h * 60 + m;
         };
         
+        // Fonction pour obtenir l'heure de FIN d'un shift en minutes
+        const getShiftEndMinutes = (shift) => {
+          const segments = parseSegments(shift.segments);
+          const workSegments = segments.filter(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
+          if (!workSegments.length) return null;
+          
+          // Prendre la fin du dernier segment
+          const lastSegment = workSegments[workSegments.length - 1];
+          const endTime = lastSegment.end || lastSegment.fin;
+          if (!endTime) return null;
+          
+          const [h, m] = endTime.split(':').map(Number);
+          return h * 60 + m;
+        };
+        
         // Pour chaque pointage d'entrée, trouver le shift le plus proche
         // ✅ CORRIGÉ: Utiliser le helper centralisé pour filtrer les entrées
         const entreesPointages = filtrerEntrees(userPointages);
@@ -1101,16 +1116,30 @@ class AnomalyScheduler {
           for (const shift of allShifts) {
             const shiftStart = getShiftStartMinutes(shift);
             if (shiftStart === null) continue;
+            const shiftEnd = getShiftEndMinutes(shift);
             
-            // Calculer la distance
+            // Calculer la distance (au plus proche entre début et fin du shift)
             let distance;
             if (shift.shiftDate === pointageDateStr) {
-              // Même jour : distance simple
-              distance = Math.abs(pointageMinutes - shiftStart);
+              // Même jour : distance au plus proche (début ou fin du shift)
+              const distToStart = Math.abs(pointageMinutes - shiftStart);
+              const distToEnd = shiftEnd !== null ? Math.abs(pointageMinutes - shiftEnd) : Infinity;
+              distance = Math.min(distToStart, distToEnd);
             } else if (shift.shiftDate === hierStr && pointageDateStr === realToday) {
               // Shift d'hier, pointage aujourd'hui (shift de nuit)
-              // Le pointage est après minuit, le shift a commencé hier soir
-              distance = pointageMinutes + (1440 - shiftStart); // minutes depuis le début du shift
+              // Le shift se termine après minuit → comparer l'heure du pointage avec la fin du shift
+              // Cas typique: shift 16:00-00:00, pointage à 00:00 → distance = 0
+              const shiftEndNormalized = shiftEnd !== null && shiftEnd <= shiftStart 
+                ? shiftEnd  // La fin est après minuit (ex: 00:00, 01:00) → comparer directement
+                : null;
+              
+              if (shiftEndNormalized !== null) {
+                // Comparer le pointage (après minuit) avec la fin du shift (aussi après minuit)
+                distance = Math.abs(pointageMinutes - shiftEndNormalized);
+              } else {
+                // Shift classique d'hier qui ne franchit pas minuit → distance depuis le début
+                distance = pointageMinutes + (1440 - shiftStart);
+              }
             } else {
               continue; // Pas pertinent
             }
