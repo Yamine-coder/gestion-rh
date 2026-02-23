@@ -230,7 +230,8 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         const dureePauseReelleMinutes = Math.round((finPause - debutPause) / 60000);
         
         // Récupérer la durée de pause prévue depuis les gaps entre segments de travail
-        let pausePrevueMinutes = 60; // Défaut 1h si pas de pause définie
+        let pausePrevueMinutes = 0; // ✅ FIX: 0 par défaut (pas de pause = pas de vérification)
+        let hasPausePrevue = false;
         const segments = shift.segments || [];
         
         // Trier les segments de travail par heure de début pour trouver les gaps
@@ -248,10 +249,15 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
           for (let gi = 0; gi < workSegments.length - 1; gi++) {
             const [endH, endM] = workSegments[gi].end.split(':').map(Number);
             const [startH, startM] = workSegments[gi + 1].start.split(':').map(Number);
-            const gapMinutes = (startH * 60 + startM) - (endH * 60 + endM);
+            let gapMinutes = (startH * 60 + startM) - (endH * 60 + endM);
+            // ✅ FIX: Gérer les gaps traversant minuit
+            if (gapMinutes < 0) gapMinutes += 24 * 60;
             if (gapMinutes > 0) totalPauseMinutes += gapMinutes;
           }
-          if (totalPauseMinutes > 0) pausePrevueMinutes = totalPauseMinutes;
+          if (totalPauseMinutes > 0) {
+            pausePrevueMinutes = totalPauseMinutes;
+            hasPausePrevue = true;
+          }
         } else {
           // Fallback: segment explicite de type pause (rare)
           const pauseSegment = segments.find(seg => {
@@ -265,13 +271,21 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
               const [pStartH, pStartM] = pauseStart.split(':').map(Number);
               const [pEndH, pEndM] = pauseEnd.split(':').map(Number);
               pausePrevueMinutes = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
+              if (pausePrevueMinutes > 0) hasPausePrevue = true;
             }
           } else if (shift.pauseDebut && shift.pauseFin) {
             const [pStartH, pStartM] = shift.pauseDebut.split(':').map(Number);
             const [pEndH, pEndM] = shift.pauseFin.split(':').map(Number);
             pausePrevueMinutes = (pEndH * 60 + pEndM) - (pStartH * 60 + pStartM);
+            if (pausePrevueMinutes > 0) hasPausePrevue = true;
           }
         }
+        
+        // ✅ FIX: Si aucune pause prévue dans le shift (1 seul segment, pas de pause explicite),
+        // ne PAS vérifier la pause. Un retour de pointage ne signifie pas forcément un retour de pause.
+        if (!hasPausePrevue) {
+          // Shift sans pause prévue → skip la détection pause_excessive
+        } else {
         
         // Tolérance de 5 minutes
         const depassementMinutes = dureePauseReelleMinutes - pausePrevueMinutes;
@@ -311,6 +325,7 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
             });
           }
         }
+        } // fin else hasPausePrevue
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -321,10 +336,14 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       // ═══════════════════════════════════════════════════════════════════════════
       if (arrivees.length === 0) {
         const [heureDebut, minuteDebut] = shiftHours.heureDebut.split(':').map(Number);
-        const debutPrevu = new Date(horodatage);
-        debutPrevu.setHours(heureDebut, minuteDebut, 0, 0);
-        
-        const diffMinutes = Math.round((horodatage - debutPrevu) / 60000);
+        // ✅ FIX: Comparer en minutes Paris au lieu de setHours (UTC sur le serveur Render)
+        const pointageMinutesParis = horodatageToParisMinutes(horodatage);
+        const shiftDebutMinutes = heureDebut * 60 + minuteDebut;
+        // diffMinutes: négatif = en avance, positif = en retard
+        let diffMinutes = pointageMinutesParis - shiftDebutMinutes;
+        // Gérer le passage minuit (si pointage post-minuit pour shift pré-minuit)
+        if (diffMinutes > 720) diffMinutes -= 1440;
+        if (diffMinutes < -720) diffMinutes += 1440;
       
         // 📍 Arrivée très en avance (≥45 min) - EXTRA POTENTIEL
         // Seuil 45 min : en dessous on ne paie pas d'extra
@@ -385,10 +404,14 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
     // ═══════════════════════════════════════════════════════════════════════════
     if (type === 'depart') {
       const [heureFin, minuteFin] = shiftHours.heureFin.split(':').map(Number);
-      const finPrevue = new Date(horodatage);
-      finPrevue.setHours(heureFin, minuteFin, 0, 0);
-      
-      const diffMinutes = Math.round((finPrevue - horodatage) / 60000);
+      // ✅ FIX: Comparer en minutes Paris au lieu de setHours (UTC sur le serveur Render)
+      const pointageMinutesParis = horodatageToParisMinutes(horodatage);
+      const shiftFinMinutes = heureFin * 60 + minuteFin;
+      // diffMinutes: positif = parti avant la fin, négatif = parti après la fin  
+      let diffMinutes = shiftFinMinutes - pointageMinutesParis;
+      // Gérer le passage minuit (shift finit à 00:00 = 0, pointage à 23:50 = 1430)
+      if (diffMinutes > 720) diffMinutes -= 1440;
+      if (diffMinutes < -720) diffMinutes += 1440;
       
       // 🚪 Départ anticipé modéré (15-60 min avant) - Info seulement, pas d'anomalie
       // NOTE: Les départs anticipés ne créent plus d'anomalies - pratique standard SIRH
@@ -533,11 +556,10 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
  */
 async function creerAnomalieTempsReel({ userId, shiftId, type, gravite, description, date }) {
   try {
-    // Vérifier si anomalie existe déjà pour ce jour/user/type
-    const dateDebut = new Date(date);
-    dateDebut.setHours(0, 0, 0, 0);
-    const dateFin = new Date(date);
-    dateFin.setHours(23, 59, 59, 999);
+    // ✅ FIX: Utiliser les bornes business day Paris (pas setHours en UTC)
+    // La date passée est déjà le jour business correct (via getBusinessDay)
+    const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+    const { start: dateDebut, end: dateFin } = getBusinessDayBoundsUTC(dateStr);
     
     const existante = await prisma.anomalie.findFirst({
       where: {
@@ -554,8 +576,8 @@ async function creerAnomalieTempsReel({ userId, shiftId, type, gravite, descript
       return null;
     }
     
-    const dateAnomalie = new Date(date);
-    dateAnomalie.setHours(12, 0, 0, 0);
+    // Midi Paris pour la date de l'anomalie (11:00 UTC = 12:00 Paris hiver)
+    const dateAnomalie = new Date(`${dateStr}T11:00:00.000Z`);
     
     const anomalie = await prisma.anomalie.create({
       data: {
