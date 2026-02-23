@@ -347,12 +347,12 @@ export default function BottomNav({ pendingLeaves = 0, hasNotifications = false 
                 {localStorage.getItem('token') ? (
                   <QRCodeCanvas 
                     value={localStorage.getItem('token')} 
-                    size={280}
+                    size={400}
                     className="w-full h-full max-w-full"
-                    level="M"
+                    level="L"
                     includeMargin={true}
-                    bgColor="#fafafa"
-                    fgColor="#18181b"
+                    bgColor="#ffffff"
+                    fgColor="#000000"
                     style={{ width: '100%', height: '100%' }}
                   />
                 ) : (

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { QrReader } from 'react-qr-reader';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import axios from 'axios';
 import { ScanLine, Check, X, Clock, Wifi, WifiOff, Camera, CameraOff, RefreshCw, Maximize2, Minimize2, CloudOff, Upload, UserCheck, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { API_BASE } from '../config/api';
@@ -11,13 +11,13 @@ const brand = '#cf292c';
 // ═══════════════════════════════════════════════════════════════════════════
 
 const API_TIMEOUT = 10000; // 10 secondes
-const BLOCK_DURATION_MS = 30000; // 30 secondes par QR code
+const BLOCK_DURATION_MS = 180000; // 3 minutes par QR code (le serveur bloque aussi 2min)
 
-// Durées d'affichage par état (en ms)
-const DURATION_SUCCESS = 5000;    // Succès : 5s (temps de lire et s'éloigner)
-const DURATION_ERROR = 4000;      // Erreur : 4s
-const DURATION_OFFLINE = 5000;    // Hors-ligne : 5s (rassurer l'utilisateur)
-const DURATION_ALREADY = 3000;    // Déjà pointé : 3s (rappel court)
+// Durées d'affichage par état (en ms) - OPTIMISÉES pour débit file d'attente
+const DURATION_SUCCESS = 4000;    // Succès : 4s (bien visible pour que l'employé comprenne)
+const DURATION_ERROR = 3000;      // Erreur : 3s
+const DURATION_OFFLINE = 3000;    // Hors-ligne : 3s
+const DURATION_ALREADY = 3000;    // Déjà pointé : 3s (assez pour lire le message)
 
 const OFFLINE_QUEUE_KEY = 'badgeuse_offline_queue'; // Clé localStorage
 const SYNC_RETRY_INTERVAL_MS = 10000; // Retry sync toutes les 10s
@@ -30,7 +30,20 @@ const apiClient = axios.create({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🔊 FEEDBACK SONORE
+// � VIBRATION FEEDBACK
+// ═══════════════════════════════════════════════════════════════════════════
+const vibrate = (pattern) => {
+  try {
+    if (navigator.vibrate) {
+      navigator.vibrate(pattern);
+    }
+  } catch (e) {
+    // Vibration non supportée (desktop) - silencieux
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// �🔊 FEEDBACK SONORE
 // ═══════════════════════════════════════════════════════════════════════════
 const playSound = (type) => {
   try {
@@ -178,12 +191,28 @@ const Badgeuse = () => {
   const syncIntervalRef = useRef(null);
   const isMountedRef = useRef(true);
   const isDisplayingRef = useRef(false); // Protection synchrone contre les scans pendant l'affichage
+  const scannerRef = useRef(null);
+  const handleScanRef = useRef(null);
 
   // Cleanup au démontage
   useEffect(() => {
     isMountedRef.current = true;
+
+    // Remplacer le manifest PWA par celui de la badgeuse
+    // Quand la tablette ajoute cette page sur l'écran d'accueil,
+    // le start_url sera /badgeuse (pas /home)
+    const manifestLink = document.querySelector('link[rel="manifest"]');
+    const originalHref = manifestLink?.getAttribute('href');
+    if (manifestLink) {
+      manifestLink.setAttribute('href', '/manifest-badgeuse.json');
+    }
+
     return () => {
       isMountedRef.current = false;
+      // Restaurer le manifest original
+      if (manifestLink && originalHref) {
+        manifestLink.setAttribute('href', originalHref);
+      }
       if (confirmationTimeoutRef.current) {
         clearTimeout(confirmationTimeoutRef.current);
       }
@@ -308,43 +337,90 @@ const Badgeuse = () => {
     }
   };
 
-  // Vérification caméra
+  // Initialisation du scanner QR (html5-qrcode + BarcodeDetector natif si dispo)
   useEffect(() => {
-    const checkCameraSupport = async () => {
+    let mounted = true;
+
+    const initScanner = async () => {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('API caméra non disponible');
+        const scanner = new Html5Qrcode('qr-reader', {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          verbose: false
+        });
+        scannerRef.current = scanner;
+
+        await scanner.start(
+          { facingMode: 'user' },
+          {
+            fps: 15,
+            disableFlip: false,
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true
+            }
+          },
+          (decodedText) => {
+            if (handleScanRef.current) {
+              handleScanRef.current(decodedText);
+            }
+          },
+          () => {} // QR non trouvé dans le frame - ignoré
+        );
+
+        // Forcer l'autofocus continu si supporté
+        try {
+          const videoElem = document.querySelector('#qr-reader video');
+          if (videoElem && videoElem.srcObject) {
+            const track = videoElem.srcObject.getVideoTracks()[0];
+            const capabilities = track.getCapabilities?.();
+            if (capabilities?.focusMode?.includes('continuous')) {
+              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+            }
+          }
+        } catch (focusErr) {
+          console.warn('Autofocus continu non supporté:', focusErr);
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'user' }  // Caméra avant pour tablette murale
-        });
-        
-        stream.getTracks().forEach(track => track.stop());
-        setCameraError('');
-        setCameraReady(true);
-        
-      } catch (err) {
-        console.error('Erreur caméra:', err);
-        let errorMessage = '';
-        
-        if (err.name === 'NotAllowedError') {
-          errorMessage = 'Autorisez l\'accès à la caméra';
-        } else if (err.name === 'NotFoundError') {
-          errorMessage = 'Aucune caméra détectée';
-        } else {
-          errorMessage = err.message || 'Caméra indisponible';
+        if (mounted) {
+          setCameraReady(true);
+          setCameraError('');
+          setCameraChecking(false);
         }
-        
-        setCameraError(errorMessage);
-        setCameraReady(false);
-      } finally {
-        setCameraChecking(false);
+      } catch (err) {
+        console.error('Erreur scanner:', err);
+        if (mounted) {
+          let errorMessage = '';
+          const errStr = err?.toString() || '';
+          if (errStr.includes('NotAllowed') || errStr.includes('Permission')) {
+            errorMessage = "Autorisez l'accès à la caméra";
+          } else if (errStr.includes('NotFound') || errStr.includes('Requested device not found')) {
+            errorMessage = 'Aucune caméra détectée';
+          } else {
+            errorMessage = err?.message || 'Caméra indisponible';
+          }
+          setCameraError(errorMessage);
+          setCameraReady(false);
+          setCameraChecking(false);
+        }
       }
     };
 
-    checkCameraSupport();
-  }, []);
+    // Petit délai pour que le DOM soit prêt
+    const timer = setTimeout(initScanner, 100);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            scannerRef.current.stop().catch(() => {});
+          }
+          scannerRef.current.clear();
+        } catch {}
+        scannerRef.current = null;
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 🎯 HELPER: Afficher l'écran de confirmation avec protection synchrone
@@ -392,12 +468,10 @@ const Badgeuse = () => {
     const now = Date.now();
     const scanTime = new Date(); // Heure exacte du scan
     
-    // Protection 2: Ce QR code est encore bloqué (anti-spam 30s par personne)
-    // IMPORTANT: Ce check est AVANT isProcessing pour afficher le message même pendant la confirmation
+    // Protection 2: Ce QR code est encore bloqué (anti re-scan même personne 30s)
+    // → Afficher "Déjà pointé" pour que l'employé comprenne qu'il a déjà scanné
     const blockedUntil = blockedQRCodes.current.get(result);
     if (blockedUntil && now < blockedUntil) {
-      const remainingSeconds = Math.ceil((blockedUntil - now) / 1000);
-      
       // Extraire les infos pour afficher le nom
       let blockedEmployeInfo = { prenom: 'Employé', nom: '' };
       try {
@@ -408,11 +482,12 @@ const Badgeuse = () => {
         };
       } catch { /* ignore */ }
       
-      // Afficher l'écran "déjà pointé"
+      // Afficher l'écran "déjà pointé" - bien visible pour qu'il comprenne
       setSuccess('already');
       setEmployeInfo(blockedEmployeInfo);
-      setMessage(`Pointage déjà effectué`);
+      setMessage('C\'est bon, ton pointage est déjà enregistré !');
       playSound('warning');
+      vibrate([100, 50, 100]); // Double vibration courte = "déjà fait"
       showConfirmationScreen(DURATION_ALREADY);
       return;
     }
@@ -431,6 +506,7 @@ const Badgeuse = () => {
       setSuccess(false);
       setMessage('QR Code non reconnu');
       playSound('error');
+      vibrate(400); // Vibration longue = erreur
       blockedQRCodes.current.set(result, now + 5000);
       showConfirmationScreen(DURATION_ERROR);
       return;
@@ -461,6 +537,7 @@ const Badgeuse = () => {
       setEmployeInfo(jwtEmployeInfo);
       setMessage('Pointage enregistré localement');
       playSound('pending');
+      vibrate([200, 100, 200]); // Double vibration moyenne = sauvegardé
       showConfirmationScreen(DURATION_OFFLINE, true); // true = resetProcessing
       return;
     }
@@ -486,7 +563,12 @@ const Badgeuse = () => {
       });
       setMessage(serverData.message || 'Pointage enregistré');
       playSound('success');
+      vibrate(200); // Vibration courte unique = succès
       showConfirmationScreen(DURATION_SUCCESS, true);
+      
+      // Prolonger le blocage : le serveur bloque déjà 2 min,
+      // on s'aligne côté client pour éviter même d'envoyer la requête
+      blockedQRCodes.current.set(result, Date.now() + BLOCK_DURATION_MS);
       
     } catch (err) {
       // ═══════════════════════════════════════════════════════════════════════
@@ -500,6 +582,7 @@ const Badgeuse = () => {
         setEmployeInfo(jwtEmployeInfo);
         setMessage('Connexion perdue - Pointage sauvegardé');
         playSound('pending');
+        vibrate([200, 100, 200]); // Double vibration = sauvegardé
         showConfirmationScreen(DURATION_OFFLINE, true);
       } else {
         // Vraie erreur serveur
@@ -511,6 +594,7 @@ const Badgeuse = () => {
         const errorMsg = err.response?.data?.message || err.response?.data?.error || 'QR Code invalide';
         console.error('❌ Erreur pointage:', err.response?.status, err.response?.data);
         setMessage(errorMsg);
+        vibrate(400); // Vibration longue = erreur
         
         // Si erreur "trop récent", garder le blocage complet
         if (!errorMsg.includes('récent')) {
@@ -520,6 +604,11 @@ const Badgeuse = () => {
       }
     }
   }, [isProcessing, showConfirmationScreen]);
+
+  // Ref pour que le scanner appelle toujours la version actuelle de handleScan
+  useEffect(() => {
+    handleScanRef.current = handleScan;
+  }, [handleScan]);
   
   // Nettoyer les anciens QR codes bloqués toutes les minutes
   useEffect(() => {
@@ -532,10 +621,63 @@ const Badgeuse = () => {
     return () => clearInterval(cleanup);
   }, []);
 
-  const retryCamera = () => {
+  const retryCamera = async () => {
     setCameraError('');
     setCameraReady(false);
-    window.location.reload();
+    setCameraChecking(true);
+
+    // Arrêter le scanner existant
+    if (scannerRef.current) {
+      try {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        scannerRef.current.clear();
+      } catch {}
+      scannerRef.current = null;
+    }
+
+    try {
+      const scanner = new Html5Qrcode('qr-reader', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false
+      });
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: 'user' },
+        {
+          fps: 15,
+          disableFlip: false,
+          experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true
+          }
+        },
+        (decodedText) => {
+          if (handleScanRef.current) {
+            handleScanRef.current(decodedText);
+          }
+        },
+        () => {}
+      );
+
+      setCameraReady(true);
+      setCameraError('');
+    } catch (err) {
+      const errStr = err?.toString() || '';
+      let errorMessage = '';
+      if (errStr.includes('NotAllowed') || errStr.includes('Permission')) {
+        errorMessage = "Autorisez l'accès à la caméra";
+      } else if (errStr.includes('NotFound')) {
+        errorMessage = 'Aucune caméra détectée';
+      } else {
+        errorMessage = err?.message || 'Caméra indisponible';
+      }
+      setCameraError(errorMessage);
+      setCameraReady(false);
+    } finally {
+      setCameraChecking(false);
+    }
   };
 
   const formatTime = (date) => {
@@ -602,56 +744,33 @@ const Badgeuse = () => {
         </div>
       </header>
 
-      {/* Main content - adapté à tous les écrans */}
-      <main className="flex-1 flex flex-col lg:flex-row items-center justify-between lg:justify-center gap-4 lg:gap-12 xl:gap-20 p-3 sm:p-4 md:p-6 lg:p-10 overflow-hidden">
+      {/* Main content - OPTIMISÉ TABLETTE : scanner = max de l'écran */}
+      <main className="flex-1 flex flex-col items-center gap-2 p-2 sm:p-3" style={{ minHeight: 0 }}>
         
-        {/* Top/Left - Clock */}
-        <div className="flex flex-col items-center lg:items-start shrink-0">
-          <div className="text-center lg:text-left">
-            <div className="hidden sm:flex items-center justify-center lg:justify-start gap-2 mb-1">
-              <Clock className="w-4 h-4 lg:w-6 lg:h-6 text-white/60" />
-              <span className="text-white/60 text-[10px] sm:text-xs uppercase tracking-wider">Heure actuelle</span>
-            </div>
-            <p className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold text-white tracking-tight">
-              {formatTime(currentTime)}
-            </p>
-            <p className="text-xs sm:text-sm md:text-base lg:text-lg text-white/60 mt-0.5 sm:mt-1 capitalize">
-              {formatDate(currentTime)}
-            </p>
-          </div>
-          
-          {/* Instructions - desktop/tablette paysage seulement */}
-          <div className="hidden lg:block mt-6 bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 w-full max-w-sm">
-            <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
-              <ScanLine className="w-4 h-4" style={{ color: brand }} />
-              Instructions
-            </h3>
-            <ul className="space-y-2 text-sm text-white/70">
-              <li className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-xs flex-shrink-0" style={{ color: brand }}>1</span>
-                Présentez votre QR Code
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-xs flex-shrink-0" style={{ color: brand }}>2</span>
-                Attendez la confirmation
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-xs flex-shrink-0" style={{ color: brand }}>3</span>
-                Pointage enregistré !
-              </li>
-            </ul>
-          </div>
+        {/* Horloge compacte */}
+        <div className="flex items-center gap-3 shrink-0">
+          <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-white tracking-tight font-mono">
+            {formatTime(currentTime)}
+          </p>
+          <div className="w-px h-6 bg-white/20" />
+          <p className="text-xs sm:text-sm text-white/50 capitalize">
+            {formatDate(currentTime)}
+          </p>
         </div>
 
-        {/* Center - Scanner */}
-        <div className="w-full max-w-[380px] sm:max-w-md md:max-w-lg lg:max-w-xl xl:max-w-2xl flex-1 flex items-center">
-          <div className="relative w-full">
-            {/* Scanner frame */}
-            <div className="relative aspect-[4/3] rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden border-2 sm:border-4 border-white/20 shadow-2xl shadow-black/50">
+        {/* Scanner - prend TOUT l'espace restant */}
+        <div className="w-full max-w-3xl rounded-2xl sm:rounded-3xl overflow-hidden border-2 sm:border-4 border-white/20 shadow-2xl shadow-black/50 bg-slate-800" style={{ flex: '1 1 0%', minHeight: 0, position: 'relative' }}>
               
+              {/* Scanner vidéo - toujours dans le DOM pour html5-qrcode */}
+              <div id="qr-reader" style={{ 
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                opacity: cameraReady && !cameraError ? 1 : 0,
+                pointerEvents: cameraReady && !cameraError ? 'auto' : 'none'
+              }} />
+
               {cameraChecking ? (
                 // État de chargement initial
-                <div className="absolute inset-0 bg-slate-800 flex flex-col items-center justify-center text-center p-4 sm:p-6 md:p-10">
+                <div className="absolute inset-0 z-20 bg-slate-800 flex flex-col items-center justify-center text-center p-4 sm:p-6 md:p-10">
                   <div className="w-14 h-14 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full bg-white/10 flex items-center justify-center mb-3 sm:mb-4 md:mb-6">
                     <ScanLine className="w-7 h-7 sm:w-10 sm:h-10 md:w-12 md:h-12 text-white/40" />
                   </div>
@@ -665,26 +784,6 @@ const Badgeuse = () => {
                 </div>
               ) : !cameraError && cameraReady ? (
                 <>
-                  <QrReader
-                    constraints={{
-                      facingMode: 'user',
-                      width: { ideal: 1280 },
-                      height: { ideal: 960 },
-                    }}
-                    onResult={(result, error) => {
-                      if (error && error.name !== 'NotFoundException') {
-                        console.warn('Scanner:', error);
-                      }
-                      if (result && !isProcessing) {
-                        handleScan(result?.text);
-                      }
-                    }}
-                    videoId="video"
-                    scanDelay={150}
-                    containerStyle={{ width: '100%', height: '100%' }}
-                    videoStyle={{ objectFit: 'cover', width: '100%', height: '100%' }}
-                  />
-                  
                   {/* Overlay pendant le traitement d'un scan */}
                   {isProcessing && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
@@ -711,7 +810,7 @@ const Badgeuse = () => {
                   </div>
                 </>
               ) : (
-                <div className="absolute inset-0 bg-slate-800 flex flex-col items-center justify-center text-center p-6 md:p-10">
+                <div className="absolute inset-0 z-20 bg-slate-800 flex flex-col items-center justify-center text-center p-6 md:p-10">
                   <div className="w-20 h-20 md:w-28 md:h-28 rounded-full bg-white/10 flex items-center justify-center mb-4 md:mb-6">
                     <CameraOff className="w-10 h-10 md:w-14 md:h-14 text-white/40" />
                   </div>
@@ -745,24 +844,20 @@ const Badgeuse = () => {
                 </div>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Bottom - Instructions mobile (iPhone/tablette portrait) */}
-        <div className="lg:hidden w-full shrink-0">
-          <div className="flex items-center justify-center gap-4 sm:gap-6 text-[10px] sm:text-xs text-white/60">
-            <div className="flex items-center gap-1.5">
-              <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white/10 flex items-center justify-center text-[9px] sm:text-[10px]" style={{ color: brand }}>1</span>
-              <span>Présentez QR</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white/10 flex items-center justify-center text-[9px] sm:text-[10px]" style={{ color: brand }}>2</span>
-              <span>Confirmation</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white/10 flex items-center justify-center text-[9px] sm:text-[10px]" style={{ color: brand }}>3</span>
-              <span>Enregistré !</span>
-            </div>
+        {/* Instructions compactes en bas */}
+        <div className="flex items-center justify-center gap-4 sm:gap-6 text-[10px] sm:text-xs text-white/50 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[9px]" style={{ color: brand }}>1</span>
+            <span>Présentez QR</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[9px]" style={{ color: brand }}>2</span>
+            <span>Confirmation</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[9px]" style={{ color: brand }}>3</span>
+            <span>Enregistré !</span>
           </div>
         </div>
       </main>
@@ -854,7 +949,7 @@ const Badgeuse = () => {
                 ) : success === 'already' ? (
                   <>
                     <Clock className="w-4 h-4" />
-                    <span>Déjà pointé récemment</span>
+                    <span>Déjà enregistré !</span>
                   </>
                 ) : (
                   <>
@@ -924,6 +1019,46 @@ const Badgeuse = () => {
         @keyframes shrink {
           from { width: 100%; }
           to { width: 0%; }
+        }
+        /* html5-qrcode : forcer le vidéo à couvrir tout le conteneur */
+        #qr-reader {
+          border: none !important;
+          overflow: hidden !important;
+        }
+        #qr-reader video {
+          object-fit: cover !important;
+          width: 100% !important;
+          height: 100% !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+        }
+        /* Cacher TOUS les éléments UI par défaut de html5-qrcode */
+        #qr-reader img,
+        #qr-reader br,
+        #qr-reader > span,
+        #qr-reader canvas,
+        #qr-reader svg,
+        #qr-reader__status_span,
+        #qr-reader__dashboard_section,
+        #qr-reader__dashboard_section_swaplink,
+        #qr-reader__header_message {
+          display: none !important;
+        }
+        /* Tous les divs internes = remplir le conteneur */
+        #qr-reader > div {
+          width: 100% !important;
+          height: 100% !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          border: none !important;
+          box-shadow: none !important;
+          background: transparent !important;
+        }
+        /* La zone ombrée de scan = la cacher */
+        #qr-reader > div > div {
+          display: none !important;
         }
       `}</style>
     </div>
