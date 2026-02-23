@@ -536,7 +536,11 @@ class AnomalyScheduler {
       const gapEnd = workSegments[gi + 1].start;
       const [endH, endM] = gapStart.split(':').map(Number);
       const [startH, startM] = gapEnd.split(':').map(Number);
-      const gapMinutes = (startH * 60 + startM) - (endH * 60 + endM);
+      let gapMinutes = (startH * 60 + startM) - (endH * 60 + endM);
+      // ✅ FIX: Gérer les gaps traversant minuit (ex: 23:00→00:30 = 90min, pas -1350min)
+      if (gapMinutes < 0) {
+        gapMinutes += 24 * 60;
+      }
       if (gapMinutes > 0) {
         pauseGaps.push({ start: gapStart, end: gapEnd, dureeMinutes: gapMinutes });
       }
@@ -702,8 +706,20 @@ class AnomalyScheduler {
   async catchUpMissedShifts() {
     // 🕐 Utiliser l'heure Paris
     const paris = getParisTime();
-    const today = paris.dateStr;
-    const currentMinutes = paris.hour * 60 + paris.minute;
+    let today = paris.dateStr;
+    let currentMinutes = paris.hour * 60 + paris.minute;
+    
+    // ✅ FIX: Même logique que checkEndedShifts pour le passage minuit
+    // Si on est entre 00:00 et 05:00, c'est encore la journée de travail de la VEILLE
+    if (paris.hour < BUSINESS_DAY_CUTOFF_HOUR) {
+      const hier = new Date();
+      hier.setDate(hier.getDate() - 1);
+      const yyyy = hier.getFullYear();
+      const mm = String(hier.getMonth() + 1).padStart(2, '0');
+      const dd = String(hier.getDate()).padStart(2, '0');
+      today = `${yyyy}-${mm}-${dd}`;
+      currentMinutes = 24 * 60 + paris.hour * 60 + paris.minute;
+    }
 
     try {
       // 🕐 Bornes Paris
