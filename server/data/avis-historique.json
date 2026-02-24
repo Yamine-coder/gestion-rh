@@ -23,6 +23,17 @@
       "month": "2026-02"
     },
     {
+      "author": "Nathalie Marouteix",
+      "rating": 2,
+      "text": "Très déçue :maintenant pour commander il faut utiliser une borne automatique comme dans un fast food.De plus les plats arrivent en décalé,les boissons ne sont même pas servies pour nous faire patienter.Hygiène à revoir: les miettes sont jetées par terre...Les pizzas sont servies sur une feuille de papier posée sur une planche.Le papier s'effrite quand on coupe la pizza,très désagréable. On risque de manger du papier...Bref cette adresse a perdu de son charme.Heureusement les pizzas sont bonnes même si elles sont petites",
+      "time": 1769953465000,
+      "relativeTime": "il y a 3 semaines",
+      "profilePhoto": "https://lh3.googleusercontent.com/a/ACg8ocLrGGlbZZ3Ng9ZqgUFaFgZvsdhO6eluFjl8hQoh7Lm4E1BZ=s128-c0x00000000-cc-rp-mo",
+      "isNegative": true,
+      "addedAt": 1771932772553,
+      "month": "2026-02"
+    },
+    {
       "author": "Camille",
       "rating": 1,
       "text": "Expérience très désagréable avec un mauvais accueil , un service décalé de minimum 10 min entre chaque plats ce qui n’est pas normal dans un restaurant, l’hygiène est également pas appliqué avec la dame qui jette les miettes par terre , les bornes me font vaguement penser au Mcdo , le personnel cris sans arrêt le numéro des commandes, les pizzas sont bonnes mais on peut confondre le fromage et le papier disposé sous la pizza . Pas de service, préférez une pizza de quartier !!!",
@@ -200,5 +211,5 @@
     }
   ],
   "snapshots": [],
-  "lastUpdate": 1771897665593
+  "lastUpdate": 1771932772553
 }

@@ -258,7 +258,7 @@ const Badgeuse = () => {
   const syncOfflineQueue = useCallback(async () => {
     if (!navigator.onLine || isSyncing) return;
     
-    // Nettoyer les pointages expirés (> 30 min)
+    // Récupérer la queue (pas d'expiration côté client - tablette fixe)
     const queue = clearExpiredFromQueue();
     if (queue.length === 0) {
       setPendingCount(0);

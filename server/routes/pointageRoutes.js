@@ -341,9 +341,16 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
         const shiftDebutMinutes = heureDebut * 60 + minuteDebut;
         // diffMinutes: négatif = en avance, positif = en retard
         let diffMinutes = pointageMinutesParis - shiftDebutMinutes;
-        // Gérer le passage minuit (si pointage post-minuit pour shift pré-minuit)
-        if (diffMinutes > 720) diffMinutes -= 1440;
-        if (diffMinutes < -720) diffMinutes += 1440;
+        // ✅ FIX: Gérer le passage minuit UNIQUEMENT pour les shifts nocturnes
+        // (ex: shift 22:00→02:00 = heureFin < heureDebut)
+        // Sans cette condition, un retard critique (ex: +750min) est faussement converti
+        // en avance massive via le wrap -1440, créant de faux extra_potentiel
+        const [hFin, mFin] = shiftHours.heureFin.split(':').map(Number);
+        const shiftEstNocturne = (hFin * 60 + mFin) < shiftDebutMinutes;
+        if (shiftEstNocturne) {
+          if (diffMinutes > 720) diffMinutes -= 1440;
+          if (diffMinutes < -720) diffMinutes += 1440;
+        }
       
         // 📍 Arrivée très en avance (≥45 min) - EXTRA POTENTIEL
         // Seuil 45 min : en dessous on ne paie pas d'extra
@@ -409,9 +416,16 @@ async function detecterAnomaliesTempsReel(userId, type, horodatage) {
       const shiftFinMinutes = heureFin * 60 + minuteFin;
       // diffMinutes: positif = parti avant la fin, négatif = parti après la fin  
       let diffMinutes = shiftFinMinutes - pointageMinutesParis;
-      // Gérer le passage minuit (shift finit à 00:00 = 0, pointage à 23:50 = 1430)
-      if (diffMinutes > 720) diffMinutes -= 1440;
-      if (diffMinutes < -720) diffMinutes += 1440;
+      // ✅ FIX: Gérer le passage minuit UNIQUEMENT pour les shifts nocturnes
+      // (ex: shift 22:00→02:00 = heureFin < heureDebut)
+      // Sans cette condition, un départ très tôt (ex: diff=+743) est faussement converti
+      // en overtime massive via le wrap -1440, créant de faux extra_potentiel
+      const [hDeb, mDeb] = shiftHours.heureDebut.split(':').map(Number);
+      const shiftEstNocturne = shiftFinMinutes < (hDeb * 60 + mDeb);
+      if (shiftEstNocturne) {
+        if (diffMinutes > 720) diffMinutes -= 1440;
+        if (diffMinutes < -720) diffMinutes += 1440;
+      }
       
       // 🚪 Départ anticipé modéré (15-60 min avant) - Info seulement, pas d'anomalie
       // NOTE: Les départs anticipés ne créent plus d'anomalies - pratique standard SIRH
@@ -764,19 +778,20 @@ router.post('/auto', authenticateToken, async (req, res) => {
         // Ignoré silencieusement — on utilise l'heure réelle
       }
     } else if (offlineTimestamp) {
-      // 📴 MODE HORS-LIGNE: max 30 minutes de retard
+      // 📴 MODE HORS-LIGNE: max 12h de retard (tablette restaurant - coupures longues possibles)
       const offlineTime = new Date(offlineTimestamp);
       const ageMs = Date.now() - offlineTime.getTime();
-      const MAX_OFFLINE_MS = 30 * 60 * 1000; // 30 minutes
+      const MAX_OFFLINE_MS = 12 * 60 * 60 * 1000; // 12 heures
       
       if (ageMs < 0) {
         // Timestamp dans le futur → rejeté
         console.warn(`[POINTAGE] 🚫 offlineTimestamp dans le futur rejeté (user ${userId})`);
       } else if (ageMs > MAX_OFFLINE_MS) {
         // Trop ancien → rejeté, on utilise l'heure actuelle
-        console.warn(`[POINTAGE] 🚫 offlineTimestamp trop ancien (${Math.round(ageMs / 60000)} min, max 30 min) pour user ${userId}`);
+        console.warn(`[POINTAGE] 🚫 offlineTimestamp trop ancien (${Math.round(ageMs / 60000)} min, max 12h) pour user ${userId}`);
       } else {
         maintenant = offlineTime;
+        console.log(`[POINTAGE] 📴 Offline sync: user ${userId}, pointage original ${offlineTime.toISOString()}, retard ${Math.round(ageMs / 60000)} min`);
       }
     }
 
@@ -831,6 +846,21 @@ router.post('/auto', authenticateToken, async (req, res) => {
 
     if (!type) {
       return res.status(400).json({ message: "Pointage impossible à déterminer." });
+    }
+
+    // 🛡️ Protection cohérence temporelle (offline sync)
+    // Si le type déduit est "départ" mais que l'horodatage (offline) est AVANT la dernière arrivée,
+    // c'est une incohérence causée par le traitement tardif d'un pointage offline.
+    // Ex: arrivée à 12:00 (online), puis sync d'un offline à 11:07 → système déduit "départ" mais c'est faux.
+    if (isSortie(type) && dernier && isEntree(dernier.type)) {
+      const dernierTime = new Date(dernier.horodatage).getTime();
+      if (maintenant.getTime() < dernierTime) {
+        console.warn(`[POINTAGE] ⚠️ Incohérence temporelle: départ offline à ${maintenant.toISOString()} est AVANT la dernière arrivée à ${new Date(dernier.horodatage).toISOString()} — pointage ignoré (user ${userId})`);
+        return res.status(400).json({ 
+          message: "Pointage ignoré",
+          details: "Horodatage incohérent : le départ ne peut pas être avant la dernière arrivée"
+        });
+      }
     }
 
     // 🛡️ Protection anti-doublon renforcée
