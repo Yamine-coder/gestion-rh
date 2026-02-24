@@ -849,16 +849,17 @@ router.post('/auto', authenticateToken, async (req, res) => {
     }
 
     // 🛡️ Protection cohérence temporelle (offline sync)
-    // Si le type déduit est "départ" mais que l'horodatage (offline) est AVANT la dernière arrivée,
+    // Si le type déduit est "départ" mais que l'horodatage (offline) est AVANT ou ÉGAL à la dernière arrivée,
     // c'est une incohérence causée par le traitement tardif d'un pointage offline.
-    // Ex: arrivée à 12:00 (online), puis sync d'un offline à 11:07 → système déduit "départ" mais c'est faux.
+    // Ex 1: arrivée à 12:00 (online), puis sync d'un offline à 11:07 → système déduit "départ" mais c'est faux.
+    // Ex 2: même scan offline envoyé 2 fois → arrivée 12:00:17, puis "départ" 12:00:17 (même ms)
     if (isSortie(type) && dernier && isEntree(dernier.type)) {
       const dernierTime = new Date(dernier.horodatage).getTime();
-      if (maintenant.getTime() < dernierTime) {
-        console.warn(`[POINTAGE] ⚠️ Incohérence temporelle: départ offline à ${maintenant.toISOString()} est AVANT la dernière arrivée à ${new Date(dernier.horodatage).toISOString()} — pointage ignoré (user ${userId})`);
+      if (maintenant.getTime() <= dernierTime) {
+        console.warn(`[POINTAGE] ⚠️ Incohérence temporelle: départ à ${maintenant.toISOString()} est AVANT/ÉGAL à la dernière arrivée à ${new Date(dernier.horodatage).toISOString()} — pointage ignoré (user ${userId})`);
         return res.status(400).json({ 
           message: "Pointage ignoré",
-          details: "Horodatage incohérent : le départ ne peut pas être avant la dernière arrivée"
+          details: "Horodatage incohérent : le départ ne peut pas être avant ou simultané à la dernière arrivée"
         });
       }
     }
@@ -894,6 +895,30 @@ router.post('/auto', authenticateToken, async (req, res) => {
           message: "Veuillez patienter",
           details: `Un pointage a déjà été enregistré il y a moins de 2 minutes. Patientez avant de rebadger.`
         });
+      }
+
+      // 🛡️ Anti-doublon OFFLINE : vérifier aussi autour de l'horodatage réel (maintenant)
+      // Cas: offline sync envoie 2x le même scan → même timestamp mais requêtes séparées
+      // La vérif ci-dessus ne les attrape que si now ≈ horodatage (pointage online)
+      // Pour les pointages offline, now >> horodatage, donc il faut aussi vérifier autour de maintenant
+      if (offlineTimestamp) {
+        const doublonOffline = await prisma.pointage.findFirst({
+          where: {
+            userId,
+            horodatage: {
+              gte: new Date(maintenant.getTime() - 30000), // ±30 secondes
+              lte: new Date(maintenant.getTime() + 30000)
+            }
+          }
+        });
+
+        if (doublonOffline) {
+          console.warn(`[POINTAGE] 🚫 Doublon offline détecté: user ${userId}, horodatage ${maintenant.toISOString()} déjà enregistré (ID ${doublonOffline.id})`);
+          return res.status(409).json({ 
+            message: "Pointage déjà enregistré",
+            details: "Ce pointage a déjà été synchronisé."
+          });
+        }
       }
     }
 
