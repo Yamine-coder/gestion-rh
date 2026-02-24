@@ -168,6 +168,36 @@ const clearExpiredFromQueue = () => {
   return getOfflineQueue();
 };
 
+// 📴 Signaler les pointages en attente au serveur (endpoint léger)
+// Permet à l'admin de voir les pointages non encore synchronisés
+const reportPendingToServer = async (queue) => {
+  if (!queue || queue.length === 0) return;
+  
+  // Utiliser le token du premier item pour s'authentifier
+  const firstToken = queue[0]?.token;
+  if (!firstToken) return;
+
+  try {
+    await axios.post(
+      `${API_BASE}/pointage/report-pending`,
+      {
+        pendingItems: queue.map(item => ({
+          timestamp: item.timestamp,
+          employeNom: item.employeInfo?.nom || '',
+          employePrenom: item.employeInfo?.prenom || ''
+        })),
+        deviceId: `tablette-${window.location.hostname}`
+      },
+      { 
+        headers: { Authorization: `Bearer ${firstToken}` },
+        timeout: 5000 // Timeout court - ne pas bloquer
+      }
+    );
+  } catch {
+    // Silencieux - c'est un best-effort, la tablette est probablement hors-ligne
+  }
+};
+
 const Badgeuse = () => {
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState(null);
@@ -261,6 +291,12 @@ const Badgeuse = () => {
     
     const remainingQueue = getOfflineQueue();
     setPendingCount(remainingQueue.length);
+    
+    // Signaler les items restants (si des pointages n'ont pas pu être synchronisés)
+    if (remainingQueue.length > 0) {
+      reportPendingToServer(remainingQueue);
+    }
+    
     setIsSyncing(false);
   }, [isSyncing]);
 
@@ -591,6 +627,9 @@ const Badgeuse = () => {
       const queueLength = addToOfflineQueue(result, scanTime, jwtEmployeInfo);
       setPendingCount(queueLength);
       
+      // Signaler au serveur (best-effort, probablement échouera car hors-ligne)
+      reportPendingToServer(getOfflineQueue());
+      
       setSuccess(null); // État "pending"
       setEmployeInfo(jwtEmployeInfo);
       setMessage('Pointage enregistré localement');
@@ -635,6 +674,9 @@ const Badgeuse = () => {
       if (!err.response || err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK') {
         const queueLength = addToOfflineQueue(result, scanTime, jwtEmployeInfo);
         setPendingCount(queueLength);
+        
+        // Signaler au serveur (best-effort)
+        reportPendingToServer(getOfflineQueue());
         
         setSuccess(null); // État "pending"
         setEmployeInfo(jwtEmployeInfo);

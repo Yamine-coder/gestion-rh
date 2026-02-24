@@ -611,7 +611,125 @@ router.post('/manuel', authenticateToken, isAdmin, enregistrerPointage);
 
 // 👨‍💼 Admin : pointages d’un jour
 router.get('/admin/pointages/jour/:date', authenticateToken, isAdmin, getPointagesParJour);
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📴 SIGNALEMENT DES POINTAGES EN ATTENTE (tablette hors-ligne)
+// La tablette signale les pointages qu'elle a en file d'attente locale
+// ═══════════════════════════════════════════════════════════════════════════════
+router.post('/report-pending', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { pendingItems, deviceId } = req.body;
 
+    if (!pendingItems || !Array.isArray(pendingItems) || pendingItems.length === 0) {
+      return res.status(400).json({ message: "pendingItems requis (tableau non vide)" });
+    }
+
+    // Récupérer infos employé
+    const employe = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, nom: true, prenom: true }
+    });
+
+    if (!employe) {
+      return res.status(404).json({ message: "Employé non trouvé" });
+    }
+
+    // Upsert chaque item en attente (éviter les doublons basés sur userId + timestamp)
+    const results = [];
+    for (const item of pendingItems) {
+      if (!item.timestamp) continue;
+
+      const timestamp = new Date(item.timestamp);
+      if (isNaN(timestamp.getTime())) continue;
+
+      // Vérifier si déjà signalé (même userId + même timestamp à 1 seconde près)
+      const existing = await prisma.pendingPointage.findFirst({
+        where: {
+          userId,
+          timestamp: {
+            gte: new Date(timestamp.getTime() - 1000),
+            lte: new Date(timestamp.getTime() + 1000)
+          }
+        }
+      });
+
+      if (!existing) {
+        const created = await prisma.pendingPointage.create({
+          data: {
+            userId,
+            timestamp,
+            employeNom: employe.nom || null,
+            employePrenom: employe.prenom || null,
+            deviceId: deviceId || null
+          }
+        });
+        results.push(created);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${results.length} pointage(s) en attente signalé(s)`,
+      reported: results.length
+    });
+  } catch (err) {
+    console.error('❌ Erreur report-pending:', err);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
+// 📴 Admin : récupérer les pointages en attente pour une date
+router.get('/admin/pending/:date', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { date } = req.params;
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      return res.status(400).json({ message: "Date invalide" });
+    }
+
+    // Bornes de la journée business (05:00 → 04:59 J+1)
+    const { start, end } = getBusinessDayBoundsUTC(date);
+
+    const pending = await prisma.pendingPointage.findMany({
+      where: {
+        timestamp: { gte: start, lt: end },
+        synced: false
+      },
+      include: {
+        user: {
+          select: { id: true, email: true, nom: true, prenom: true }
+        }
+      },
+      orderBy: { timestamp: 'asc' }
+    });
+
+    // Grouper par employé
+    const grouped = {};
+    for (const p of pending) {
+      const key = p.userId;
+      if (!grouped[key]) {
+        grouped[key] = {
+          userId: p.userId,
+          email: p.user?.email || '',
+          nom: p.user?.nom || p.employeNom || '',
+          prenom: p.user?.prenom || p.employePrenom || '',
+          pendingPointages: []
+        };
+      }
+      grouped[key].pendingPointages.push({
+        id: p.id,
+        timestamp: p.timestamp,
+        reportedAt: p.reportedAt,
+        deviceId: p.deviceId
+      });
+    }
+
+    res.json(Object.values(grouped));
+  } catch (err) {
+    console.error('❌ Erreur admin/pending:', err);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
+});
 // 🔁 Pointage automatique avec max 2 blocs (arrivee → depart → arrivee → depart)
 // NOUVELLE LOGIQUE : Gère le travail de nuit + validations de sécurité
 router.post('/auto', authenticateToken, async (req, res) => {
@@ -764,7 +882,28 @@ router.post('/auto', authenticateToken, async (req, res) => {
       releaseUserLock(userId);
     }
 
-    // 🔥 DÉTECTION TEMPS RÉEL - Best practice apps RH pro
+    // � AUTO-MARK SYNCED: Si ce pointage vient d'un offline sync, marquer les pending comme synchronisés
+    try {
+      await prisma.pendingPointage.updateMany({
+        where: {
+          userId,
+          synced: false,
+          timestamp: {
+            gte: new Date(maintenant.getTime() - 2000), // ±2 secondes
+            lte: new Date(maintenant.getTime() + 2000)
+          }
+        },
+        data: {
+          synced: true,
+          syncedAt: new Date()
+        }
+      });
+    } catch (syncMarkErr) {
+      // Non bloquant
+      console.warn('⚠️ Erreur auto-mark synced:', syncMarkErr.message);
+    }
+
+    // �🔥 DÉTECTION TEMPS RÉEL - Best practice apps RH pro
     // Analyse immédiate au moment du pointage (comme Factorial, PayFit, Lucca)
     const anomaliesDetectees = await detecterAnomaliesTempsReel(userId, type, maintenant);
 

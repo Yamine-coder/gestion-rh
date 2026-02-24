@@ -1,6 +1,5 @@
 // components/NavigationRestoreNotification.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, Clock, X } from 'lucide-react';
 
 const NavigationRestoreNotification = ({ 
   show, 
@@ -13,94 +12,44 @@ const NavigationRestoreNotification = ({
 
   const handleDismiss = useCallback(() => {
     setIsVisible(false);
-    setTimeout(() => onDismiss(), 300); // Attendre la fin de l'animation
+    setTimeout(() => onDismiss(), 300);
   }, [onDismiss]);
 
   useEffect(() => {
     if (show) {
       setIsVisible(true);
-      // Auto-dismiss après 5 secondes
       const timer = setTimeout(() => {
         handleDismiss();
-      }, 5000);
+      }, 3500);
       return () => clearTimeout(timer);
     }
   }, [show, handleDismiss]);
 
-  const formatViewType = (viewType) => {
-    const types = {
-      'jour': 'vue journalière',
-      'semaine': 'vue hebdomadaire', 
-      'mois': 'vue mensuelle'
-    };
-    return types[viewType] || viewType;
-  };
-
   const formatDate = (date) => {
     return new Intl.DateTimeFormat('fr-FR', {
       day: 'numeric',
-      month: 'long',
+      month: 'short',
       year: 'numeric'
     }).format(new Date(date));
-  };
-
-  const formatSessionDuration = (minutes) => {
-    if (minutes < 60) {
-      return `${Math.round(minutes)} min`;
-    } else {
-      const hours = Math.floor(minutes / 60);
-      const remainingMinutes = Math.round(minutes % 60);
-      return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
-    }
   };
 
   if (!show && !isVisible) return null;
 
   return (
-    <div className={`fixed top-4 right-4 z-50 transition-all duration-300 ${
-      isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
+    <div className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-none ${
+      isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
     }`}>
-      <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-4 max-w-sm">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <Calendar className="w-4 h-4 text-green-600" />
-              </div>
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900">
-                Position restaurée
-              </p>
-              <div className="mt-1 text-xs text-gray-500 space-y-1">
-                <div className="flex items-center space-x-1">
-                  <Calendar className="w-3 h-3" />
-                  <span>{formatDate(restoredDate)}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="w-3 h-3 rounded bg-blue-100 flex items-center justify-center">
-                    <span className="w-1.5 h-1.5 bg-blue-600 rounded"></span>
-                  </span>
-                  <span className="capitalize">{formatViewType(restoredViewType)}</span>
-                </div>
-                {sessionDuration && (
-                  <div className="flex items-center space-x-1">
-                    <Clock className="w-3 h-3" />
-                    <span>Dernière visite il y a {formatSessionDuration(sessionDuration)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <button
-            onClick={handleDismiss}
-            className="flex-shrink-0 ml-2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      <div className="pointer-events-auto inline-flex items-center gap-2 bg-white text-gray-800 text-xs font-medium px-3.5 py-2 rounded-full shadow-lg border border-red-100 ring-1 ring-red-200/50">
+        <span className="w-1.5 h-1.5 bg-[#cf292c] rounded-full flex-shrink-0 animate-pulse" />
+        <span>Position restaurée · <span className="text-[#cf292c] font-semibold">{formatDate(restoredDate)}</span></span>
+        <button
+          onClick={handleDismiss}
+          className="ml-1 p-0.5 rounded-full text-gray-400 hover:text-[#cf292c] hover:bg-red-50 transition-colors"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );

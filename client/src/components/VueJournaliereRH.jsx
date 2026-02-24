@@ -24,6 +24,7 @@ function VueJournaliereRH() {
 
   const [date, setDate] = useState(getInitialDate());
   const [pointages, setPointages] = useState([]);
+  const [pendingPointages, setPendingPointages] = useState([]);
   const [exportingPresence, setExportingPresence] = useState(false);
   const [presenceMois, setPresenceMois] = useState(() => {
     const now = new Date();
@@ -148,15 +149,18 @@ function VueJournaliereRH() {
 
   const fetchPointages = useCallback(async () => {
     try {
-      const res = await axios.get(
-        `${API_BASE}/pointage/admin/pointages/jour/${date}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setPointages(res.data);
+      const [resPointages, resPending] = await Promise.all([
+        axios.get(
+          `${API_BASE}/pointage/admin/pointages/jour/${date}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        ),
+        axios.get(
+          `${API_BASE}/pointage/admin/pending/${date}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        ).catch(() => ({ data: [] })) // Silencieux si erreur
+      ]);
+      setPointages(resPointages.data);
+      setPendingPointages(resPending.data || []);
     } catch (err) {
       console.error("Erreur chargement pointages :", err);
     }
@@ -164,6 +168,14 @@ function VueJournaliereRH() {
 
   useEffect(() => {
     fetchPointages();
+    
+    // Auto-refresh toutes les 30s si on regarde aujourd'hui
+    const today = getLocalDateString();
+    let intervalId;
+    if (date === today) {
+      intervalId = setInterval(fetchPointages, 30000);
+    }
+    return () => { if (intervalId) clearInterval(intervalId); };
   }, [fetchPointages]);
 
   // Fermer le picker au clic extérieur
@@ -325,7 +337,7 @@ function VueJournaliereRH() {
       </div>
 
       {/* Cartes statistiques responsive */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Employés présents</p>
           <p className="text-xl sm:text-2xl font-bold text-gray-800">
@@ -393,7 +405,80 @@ function VueJournaliereRH() {
             })()}
           </p>
         </div>
+        {/* Carte pointages en attente */}
+        <div className={`p-3 sm:p-4 rounded-lg border shadow-sm ${
+          pendingPointages.length > 0 
+            ? 'bg-amber-50 border-amber-300' 
+            : 'bg-white border-gray-200'
+        }`}>
+          <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">
+            <span className="hidden sm:inline">En attente de sync</span>
+            <span className="sm:hidden">En attente</span>
+          </p>
+          <p className={`text-xl sm:text-2xl font-bold ${pendingPointages.length > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
+            {pendingPointages.reduce((sum, g) => sum + g.pendingPointages.length, 0)}
+            {pendingPointages.length > 0 && (
+              <span className="text-xs sm:text-sm font-normal ml-1 text-amber-500">
+                ({pendingPointages.length} emp.)
+              </span>
+            )}
+          </p>
+        </div>
       </div>
+
+      {/* 📴 Bannière pointages en attente de synchronisation */}
+      {pendingPointages.length > 0 && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-amber-800">
+                Pointages en attente de synchronisation
+              </h4>
+              <p className="text-xs text-amber-600 mt-0.5">
+                Ces pointages ont été enregistrés sur la tablette hors-ligne et n'ont pas encore été synchronisés avec le serveur.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {pendingPointages.map((group) => (
+              <div key={group.userId} className="flex items-center gap-3 bg-white rounded-lg p-3 border border-amber-100">
+                {/* Avatar */}
+                <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-xs font-bold">
+                    {group.prenom && group.nom
+                      ? `${group.prenom.charAt(0)}${group.nom.charAt(0)}`.toUpperCase()
+                      : (group.email || '?').charAt(0).toUpperCase()
+                    }
+                  </span>
+                </div>
+                {/* Info employé */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-800 truncate">
+                    {group.prenom && group.nom ? `${group.prenom} ${group.nom}` : group.email || 'Employé inconnu'}
+                  </div>
+                  <div className="text-xs text-gray-500">{group.email}</div>
+                </div>
+                {/* Badges des horaires en attente */}
+                <div className="flex flex-wrap gap-1 justify-end">
+                  {group.pendingPointages.map((pp) => (
+                    <div key={pp.id} className="inline-flex items-center px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium border border-amber-200">
+                      <svg className="w-3 h-3 mr-1 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {dayjs(pp.timestamp).format('HH:mm')}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Vue desktop : Tableau amélioré */}
       <div className="hidden md:block bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Trophy, TrendingUp, TrendingDown, Users, Star, AlertTriangle, AlertCircle,
   Plus, Minus, Search, Filter, Calendar, Award, ChevronRight,
@@ -1081,7 +1082,7 @@ function AttribuerView({ rules, onSuccess }) {
 function EmployeDetailsModal({ data, onClose, onAttribuer }) {
   const niveau = getNiveau(data.score?.score_total || 0);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Header épuré */}
@@ -1208,7 +1209,8 @@ function EmployeDetailsModal({ data, onClose, onAttribuer }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1241,7 +1243,7 @@ function QuickAttributionModal({ employe, rules, onClose, onSuccess }) {
   const malusRules = manualRules.filter(r => r.points < 0);
   const selectedRuleData = manualRules.find(r => r.code === selectedRule);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Header épuré */}
@@ -1399,6 +1401,7 @@ function QuickAttributionModal({ employe, rules, onClose, onSuccess }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

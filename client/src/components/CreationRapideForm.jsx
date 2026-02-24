@@ -3,13 +3,19 @@ import axios from 'axios';
 import { format, parseISO, addDays, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { API_BASE } from '../config/api';
+import PlanningTypes from './PlanningTypes';
 
 /**
  * Composant de formulaire pour la création (rapide ou récurrente) de plannings avec options suppression.
  */
-const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
-  // Onglet actif: 'create' | 'delete'
+const CreationRapideForm = ({ employes, onClose, onSuccess, onTabChange }) => {
+  // Onglet actif: 'create' | 'delete' | 'templates'
   const [tab, setTab] = useState('create');
+
+  const changeTab = (newTab) => {
+    setTab(newTab);
+    if (onTabChange) onTabChange(newTab);
+  };
   const [selectedEmployees, setSelectedEmployees] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -253,14 +259,19 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
       <div className="flex border-b border-slate-200 gap-4 text-sm font-medium">
         <button
           type="button"
-          onClick={()=>setTab('create')}
+          onClick={()=>changeTab('create')}
           className={`px-3 py-2 -mb-px border-b-2 transition-colors ${tab==='create' ? 'border-[#cf292c] text-[#cf292c]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >Créer</button>
         <button
           type="button"
-          onClick={()=>setTab('delete')}
+          onClick={()=>changeTab('delete')}
           className={`px-3 py-2 -mb-px border-b-2 transition-colors ${tab==='delete' ? 'border-[#cf292c] text-[#cf292c]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >Supprimer</button>
+        <button
+          type="button"
+          onClick={()=>changeTab('templates')}
+          className={`px-3 py-2 -mb-px border-b-2 transition-colors ${tab==='templates' ? 'border-[#cf292c] text-[#cf292c]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >Templates</button>
       </div>
       {error && <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg text-sm">{error}</div>}
       {deleteError && <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg text-sm">{deleteError}</div>}
@@ -549,6 +560,11 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
             <label htmlFor="autoCloseShared" className="cursor-pointer">Fermer automatiquement après une action réussie</label>
           </div>
         </div>
+      )}
+
+      {/* Onglet Templates */}
+      {tab==='templates' && (
+        <PlanningTypes embedded={true} employesProp={employes} />
       )}
     </div>
   );

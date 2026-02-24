@@ -723,8 +723,18 @@ class AnomalyScheduler {
       // Midi Paris pour la date de l'anomalie
       const midiParis = new Date(`${dateStr}T11:00:00.000Z`); // 11:00 UTC = 12:00 Paris hiver
       
-      await prisma.anomalie.create({
-        data: {
+      // Utiliser upsert pour éviter les logs prisma:error sur doublon (race condition)
+      await prisma.anomalie.upsert({
+        where: {
+          employeId_date_type_description: {
+            employeId,
+            date: midiParis,
+            type,
+            description
+          }
+        },
+        update: {}, // Ne rien modifier si déjà existant
+        create: {
           employeId,
           date: midiParis,
           type,
@@ -921,7 +931,7 @@ class AnomalyScheduler {
                 if (minutesApresFinShift >= 60) {
                   const heuresSupPotentielles = (minutesApresFinShift / 60).toFixed(1);
                   
-                  // Créer anomalie missing_out avec heures sup potentielles
+                  // Créer anomalie missing_out_prolonge (escalade)
                   await this.createAnomalieIfNotExists(userIdInt, dateStr, 'missing_out_prolonge', {
                     gravite: minutesApresFinShift > 180 ? 'haute' : 'moyenne', // >3h = grave
                     shiftId: shift.id,
@@ -932,6 +942,23 @@ class AnomalyScheduler {
                     heuresSupPotentielles,
                     description: `Sortie non pointée - "En cours" depuis ${(dureeEnCours / 60).toFixed(1)}h (fin prévue: ${shiftEnd}, ${heuresSupPotentielles}h sup potentielles)`
                   });
+                  
+                  // ✅ Auto-résoudre le missing_out basique (remplacé par la version prolongée)
+                  try {
+                    await prisma.anomalie.updateMany({
+                      where: {
+                        employeId: userIdInt,
+                        type: 'missing_out',
+                        statut: 'en_attente',
+                        date: new Date(`${dateStr}T00:00:00.000Z`)
+                      },
+                      data: {
+                        statut: 'auto_resolue',
+                        commentaire: 'Escaladé en missing_out_prolonge',
+                        traiteAt: new Date()
+                      }
+                    });
+                  } catch (e) { /* non bloquant */ }
                   
                 }
               }
@@ -1147,37 +1174,28 @@ class AnomalyScheduler {
           ...shiftsHier.map(s => ({ ...s, shiftDate: hierStr }))
         ];
         
-        // Fonction pour obtenir l'heure de début d'un shift en minutes
-        const getShiftStartMinutes = (shift) => {
-          const segments = parseSegments(shift.segments);
-          const workSegment = segments.find(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
-          if (!workSegment) return null;
-          
-          const startTime = workSegment.start || workSegment.debut;
-          if (!startTime) return null;
-          
-          const [h, m] = startTime.split(':').map(Number);
-          return h * 60 + m;
-        };
-        
-        // Fonction pour obtenir l'heure de FIN d'un shift en minutes
-        const getShiftEndMinutes = (shift) => {
+        // ✅ FIX: Extraire TOUS les créneaux (start/end) de CHAQUE segment d'un shift
+        // Avant: ne vérifiait que le 1er début et le dernier fin → faux positifs pour shifts coupés
+        const getAllSegmentBoundaries = (shift) => {
           const segments = parseSegments(shift.segments);
           const workSegments = segments.filter(s => s.type?.toLowerCase() !== 'pause' && !s.isExtra);
-          if (!workSegments.length) return null;
-          
-          // Prendre la fin du dernier segment
-          const lastSegment = workSegments[workSegments.length - 1];
-          const endTime = lastSegment.end || lastSegment.fin;
-          if (!endTime) return null;
-          
-          const [h, m] = endTime.split(':').map(Number);
-          return h * 60 + m;
+          return workSegments.map(seg => {
+            const startTime = seg.start || seg.debut;
+            const endTime = seg.end || seg.fin;
+            if (!startTime || !endTime) return null;
+            const [sH, sM] = startTime.split(':').map(Number);
+            const [eH, eM] = endTime.split(':').map(Number);
+            return { startMin: sH * 60 + sM, endMin: eH * 60 + eM };
+          }).filter(Boolean);
         };
         
         // Pour chaque pointage d'entrée, trouver le shift le plus proche
-        // ✅ CORRIGÉ: Utiliser le helper centralisé pour filtrer les entrées
-        const entreesPointages = filtrerEntrees(userPointages);
+        // ✅ FIX: Ne vérifier que les pointages dont la date Paris est aujourd'hui ou hier
+        // Sinon des pointages de J-2 (inclus dans la fenêtre UTC) ne trouvent pas de shift
+        const entreesPointages = filtrerEntrees(userPointages).filter(p => {
+          const pDateStr = new Date(p.horodatage).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+          return pDateStr === realToday || pDateStr === hierStr;
+        });
         
         for (const pointage of entreesPointages) {
           const pointageDate = new Date(pointage.horodatage);
@@ -1187,43 +1205,44 @@ class AnomalyScheduler {
           const [ptH, ptM] = pointageParisStr.split(':').map(Number);
           const pointageMinutes = ptH * 60 + ptM;
           
-          // Chercher le meilleur shift
+          // Chercher le meilleur shift parmi TOUS les segments de TOUS les shifts
           let bestShift = null;
           let bestDistance = Infinity;
           
           for (const shift of allShifts) {
-            const shiftStart = getShiftStartMinutes(shift);
-            if (shiftStart === null) continue;
-            const shiftEnd = getShiftEndMinutes(shift);
+            const segmentBounds = getAllSegmentBoundaries(shift);
+            if (segmentBounds.length === 0) continue;
             
-            // Calculer la distance (au plus proche entre début et fin du shift)
-            let distance;
+            let shiftBestDistance = Infinity;
+            
             if (shift.shiftDate === pointageDateStr) {
-              // Même jour : distance au plus proche (début ou fin du shift)
-              const distToStart = Math.abs(pointageMinutes - shiftStart);
-              const distToEnd = shiftEnd !== null ? Math.abs(pointageMinutes - shiftEnd) : Infinity;
-              distance = Math.min(distToStart, distToEnd);
+              // Même jour : distance au plus proche parmi TOUS les segments
+              for (const seg of segmentBounds) {
+                const distToStart = Math.abs(pointageMinutes - seg.startMin);
+                const distToEnd = Math.abs(pointageMinutes - seg.endMin);
+                const segDist = Math.min(distToStart, distToEnd);
+                if (segDist < shiftBestDistance) shiftBestDistance = segDist;
+              }
             } else if (shift.shiftDate === hierStr && pointageDateStr === realToday) {
               // Shift d'hier, pointage aujourd'hui (shift de nuit)
-              // Le shift se termine après minuit → comparer l'heure du pointage avec la fin du shift
-              // Cas typique: shift 16:00-00:00, pointage à 00:00 → distance = 0
-              const shiftEndNormalized = shiftEnd !== null && shiftEnd <= shiftStart 
-                ? shiftEnd  // La fin est après minuit (ex: 00:00, 01:00) → comparer directement
-                : null;
-              
-              if (shiftEndNormalized !== null) {
-                // Comparer le pointage (après minuit) avec la fin du shift (aussi après minuit)
-                distance = Math.abs(pointageMinutes - shiftEndNormalized);
-              } else {
-                // Shift classique d'hier qui ne franchit pas minuit → distance depuis le début
-                distance = pointageMinutes + (1440 - shiftStart);
+              for (const seg of segmentBounds) {
+                const crossesMidnight = seg.endMin <= seg.startMin;
+                if (crossesMidnight) {
+                  // La fin est après minuit → comparer directement
+                  const segDist = Math.abs(pointageMinutes - seg.endMin);
+                  if (segDist < shiftBestDistance) shiftBestDistance = segDist;
+                } else {
+                  // Shift classique d'hier, ne franchit pas minuit
+                  const segDist = pointageMinutes + (1440 - seg.startMin);
+                  if (segDist < shiftBestDistance) shiftBestDistance = segDist;
+                }
               }
             } else {
               continue; // Pas pertinent
             }
             
-            if (distance < bestDistance) {
-              bestDistance = distance;
+            if (shiftBestDistance < bestDistance) {
+              bestDistance = shiftBestDistance;
               bestShift = shift;
             }
           }
@@ -1245,12 +1264,17 @@ class AnomalyScheduler {
             });
             
             if (!anomalieExistante) {
-              // Calculer les heures travaillées
-              // ✅ CORRIGÉ: Utiliser le helper centralisé pour filtrer les sorties
-              const sorties = filtrerSorties(userPointages);
+              // ✅ FIX: Filtrer les pointages du MÊME jour uniquement (pas ceux de la veille)
+              const sameDayPointages = userPointages.filter(p => {
+                const pDateStr = new Date(p.horodatage).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+                return pDateStr === pointageDateStr;
+              });
+              
+              // Calculer les heures travaillées (uniquement pointages du même jour)
+              const sameDaySorties = filtrerSorties(sameDayPointages);
               let totalMinutes = 0;
               
-              for (const sortie of sorties) {
+              for (const sortie of sameDaySorties) {
                 const sortieTime = new Date(sortie.horodatage);
                 if (sortieTime > pointageDate) {
                   totalMinutes = (sortieTime - pointageDate) / (1000 * 60);
@@ -1267,7 +1291,7 @@ class AnomalyScheduler {
                   gravite: 'moyenne',
                   statut: 'en_attente',
                   details: {
-                    pointages: userPointages.map(p => ({
+                    pointages: sameDayPointages.map(p => ({
                       type: p.type,
                       heure: new Date(p.horodatage).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })
                     })),

@@ -32,6 +32,7 @@ const eventsRoutes = require('./routes/eventsRoutes');
 const avisRoutes = require('./routes/avisRoutes');
 const notificationsConfigRoutes = require('./routes/notificationsConfigRoutes');
 const memoRoutes = require('./routes/memoRoutes');
+const planningTemplateRoutes = require('./routes/planningTemplateRoutes');
 
 // Import du scheduler d'anomalies temps réel
 const anomalyScheduler = require('./services/anomalyScheduler');
@@ -53,6 +54,7 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
+      'http://localhost:3002',
       'http://localhost:5173',
       process.env.FRONTEND_URL
     ].filter(Boolean);
@@ -75,7 +77,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control']
 };
 
 // Trust proxy (Render utilise un reverse proxy)
@@ -149,6 +151,7 @@ app.use("/api/events", eventsRoutes); // Matchs de foot + événements locaux
 app.use("/api/avis", avisRoutes); // Avis Google du restaurant
 app.use("/api/notifications-config", notificationsConfigRoutes); // Config notifications email
 app.use("/api/memo", memoRoutes); // Rappels mémo par email
+app.use("/api/planning-templates", planningTemplateRoutes); // Planning types / modèles
 
 // Route de health check (avant le error handler)
 app.get('/health', (req, res) => {

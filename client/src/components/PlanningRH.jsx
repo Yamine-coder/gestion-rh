@@ -64,6 +64,7 @@ import {
 } from "lucide-react"; // Ajout d'icônes modernes
 import ErrorMessage from "./ErrorMessage";
 import CreationRapideForm from "./CreationRapideForm";
+import PlanningTypes from "./PlanningTypes";
 import NavigationRestoreNotification from "./NavigationRestoreNotification";
 import RapportHeuresEmploye from "./RapportHeuresEmploye";
 import { useSyncAnomalies } from '../hooks/useAnomalies';
@@ -3849,9 +3850,62 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
   const [hoveredSegment, setHoveredSegment] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1); // 0.75, 1, 1.25, 1.5
   const [showCoverage, setShowCoverage] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('all'); // all, working, off, available
+  const [filterStatus, setFilterStatus] = useState('all'); // all, working, off, available, connected, pending
   const scrollRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // --- Pointages temps réel ---
+  const [pointages, setPointages] = useState({}); // { userId: { blocs: [...], total: '...' } }
+  const [pointagesLoading, setPointagesLoading] = useState(false);
+  
+  // Charger les pointages du jour
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !dStr) return;
+    let cancelled = false;
+    const fetchPointages = async () => {
+      setPointagesLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/pointages/admin/pointages/jour/${dStr}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Erreur pointages');
+        const data = await res.json();
+        if (cancelled) return;
+        // Indexer par email -> trouver l'employé id
+        const indexed = {};
+        data.forEach(p => {
+          const emp = employes.find(e => e.email === p.email);
+          if (emp) {
+            indexed[emp.id] = { blocs: p.blocs || [], total: p.total, nom: p.nom, prenom: p.prenom };
+          }
+        });
+        setPointages(indexed);
+      } catch (err) {
+        console.error('Erreur chargement pointages:', err);
+      } finally {
+        if (!cancelled) setPointagesLoading(false);
+      }
+    };
+    fetchPointages();
+    // Rafraîchir toutes les 2 minutes si c'est aujourd'hui
+    let interval;
+    if (isTodayView) {
+      interval = setInterval(fetchPointages, 120000);
+    }
+    return () => { cancelled = true; if (interval) clearInterval(interval); };
+  }, [dStr, isTodayView, employes]);
+  
+  // Calculer le statut de pointage d'un employé
+  const getPointageStatus = (empId) => {
+    const p = pointages[empId];
+    if (!p || !p.blocs || p.blocs.length === 0) return 'none'; // pas de pointage
+    const lastBloc = p.blocs[p.blocs.length - 1];
+    if (lastBloc.arrivee && !lastBloc.depart) return 'connected'; // en poste (arrivé mais pas parti)
+    if (lastBloc.arrivee && lastBloc.depart) return 'completed'; // a fini sa journée
+    if (!lastBloc.arrivee && lastBloc.depart) return 'error'; // anomalie
+    return 'none';
+  };
   
   // Mise � jour du temps r�el toutes les minutes
   useEffect(() => {
@@ -3951,14 +4005,20 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
   const dayStats = React.useMemo(() => {
     let working = 0, onLeave = 0, absent = 0, available = 0;
     let totalHoursPlanned = 0, extraHours = 0, pendingValidation = 0;
+    let connected = 0, pendingPointage = 0;
     
     employes.forEach(emp => {
       const { shift, conge } = getData(emp);
+      const pStatus = getPointageStatus(emp.id);
+      
+      if (pStatus === 'connected') connected++;
       
       if (conge) {
         onLeave++;
       } else if (shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length) {
         working++;
+        // A un shift mais pas encore pointé
+        if (pStatus === 'none' && isTodayView) pendingPointage++;
         shift.segments.forEach(seg => {
           const dur = durationMinutes(seg.start, seg.end);
           totalHoursPlanned += dur;
@@ -3977,11 +4037,13 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
       onLeave,
       absent,
       available,
+      connected,
+      pendingPointage,
       totalHoursPlanned: Math.round(totalHoursPlanned / 60 * 10) / 10,
       extraHours: Math.round(extraHours / 60 * 10) / 10,
       pendingValidation
     };
-  }, [employes, shifts, conges, dStr]);
+  }, [employes, shifts, conges, dStr, pointages, isTodayView]);
 
   // Heures totales par employ�
   const totalHeuresParEmploye = employes.reduce((acc, emp) => {
@@ -4034,6 +4096,7 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
     
     return employes.filter(emp => {
       const { shift, conge } = getData(emp);
+      const pStatus = getPointageStatus(emp.id);
       switch (filterStatus) {
         case 'working':
           return shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length > 0;
@@ -4041,11 +4104,15 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
           return conge || shift?.type === 'repos' || shift?.type === 'absence';
         case 'available':
           return !conge && (!shift || (shift.type === 'travail' && (!Array.isArray(shift.segments) || !shift.segments.length)));
+        case 'connected':
+          return pStatus === 'connected';
+        case 'pending':
+          return pStatus === 'none' && shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length > 0;
         default:
           return true;
       }
     });
-  }, [employes, filterStatus, shifts, conges, dStr]);
+  }, [employes, filterStatus, shifts, conges, dStr, pointages]);
 
   // Position et calculs
   const minuteToPercent = (minute) => {
@@ -4187,6 +4254,35 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
               <span>disponibles</span>
             </button>
             
+            {/* Séparateur pointages */}
+            {isTodayView && (
+              <>
+                <div className="w-px h-4 bg-gray-200 mx-1" />
+                <button 
+                  onClick={() => setFilterStatus(f => f === 'connected' ? 'all' : 'connected')}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-full transition-colors ${
+                    filterStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="font-semibold">{dayStats.connected}</span>
+                  <span>connecté{dayStats.connected > 1 ? 's' : ''}</span>
+                </button>
+                {dayStats.pendingPointage > 0 && (
+                  <button 
+                    onClick={() => setFilterStatus(f => f === 'pending' ? 'all' : 'pending')}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-full transition-colors ${
+                      filterStatus === 'pending' ? 'bg-amber-100 text-amber-700' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span className="font-semibold">{dayStats.pendingPointage}</span>
+                    <span>en attente</span>
+                  </button>
+                )}
+              </>
+            )}
+            
             {filterStatus !== 'all' && (
               <button 
                 onClick={() => setFilterStatus('all')}
@@ -4281,6 +4377,8 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
         {filteredEmployes.map((emp, empIndex) => {
           const { shift, conge } = getData(emp);
           const totalH = totalHeuresParEmploye[emp.id];
+          const pStatus = getPointageStatus(emp.id);
+          const pData = pointages[emp.id];
           
           // D�terminer le statut pour la couleur de fond
           let rowBg = empIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50/30';
@@ -4295,16 +4393,43 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
             >
               {/* Info employ� */}
               <div className="w-40 shrink-0 border-r border-gray-200 px-2 py-1.5 flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full text-[10px] font-semibold flex items-center justify-center shadow-sm ${
-                  conge ? 'bg-amber-100 text-amber-700' :
-                  shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length ? 'bg-green-100 text-green-700' :
-                  'bg-gray-100 text-gray-500'
-                }`}>
-                  {getEmployeeInitials(emp)}
+                <div className="relative">
+                  <div className={`w-7 h-7 rounded-full text-[10px] font-semibold flex items-center justify-center shadow-sm ${
+                    conge ? 'bg-amber-100 text-amber-700' :
+                    shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length ? 'bg-green-100 text-green-700' :
+                    'bg-gray-100 text-gray-500'
+                  }`}>
+                    {getEmployeeInitials(emp)}
+                  </div>
+                  {/* Indicateur de pointage */}
+                  {isTodayView && pStatus === 'connected' && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-sm" title="Connect\u00e9(e)">
+                      <div className="w-full h-full rounded-full bg-emerald-500 animate-ping opacity-75" />
+                    </div>
+                  )}
+                  {isTodayView && pStatus === 'completed' && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow-sm flex items-center justify-center" title="Journ\u00e9e termin\u00e9e">
+                      <svg className="w-1.5 h-1.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    </div>
+                  )}
+                  {isTodayView && pStatus === 'none' && shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length > 0 && (
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-amber-400 border-2 border-white shadow-sm" title="En attente de pointage" />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-medium text-gray-800 truncate">{formatEmployeeName(emp)}</div>
-                  <div className="text-[9px] text-gray-400 truncate">{emp.poste || emp.role || ''}</div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] text-gray-400 truncate">{emp.poste || emp.role || ''}</span>
+                    {isTodayView && pData && (
+                      <span className={`text-[8px] font-semibold px-1 py-px rounded-full ${
+                        pStatus === 'connected' ? 'bg-emerald-100 text-emerald-700' :
+                        pStatus === 'completed' ? 'bg-blue-100 text-blue-600' :
+                        'bg-gray-100 text-gray-500'
+                      }`}>
+                        {pStatus === 'connected' ? 'En poste' : pStatus === 'completed' ? pData.total : ''}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -6040,6 +6165,7 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [creationRapideModalOpen, setCreationRapideModalOpen] = useState(false);
+  const [creationRapideTab, setCreationRapideTab] = useState('create');
   const [showComparaison, setShowComparaison] = useState(() => sessionStorage.getItem('planningRH_showComparaison') === 'true');
   const [updateTrigger, setUpdateTrigger] = useState(0); // Forcer le rafraîchissement des composants
 
@@ -8531,9 +8657,46 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
               />
             )}
             
-            {creationRapideModalOpen && (
+            {/* Overlay plein écran pour les Templates */}
+            {creationRapideModalOpen && creationRapideTab === 'templates' && (
+              <div className="fixed inset-0 z-50 bg-slate-50 flex flex-col" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+                {/* Header plein écran */}
+                <div className="flex-shrink-0 px-6 py-3 border-b border-slate-200 bg-white shadow-sm">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setCreationRapideTab('create')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                        Retour
+                      </button>
+                      <div className="h-5 w-px bg-slate-200" />
+                      <h2 className="text-base font-semibold text-slate-800">Planning Templates</h2>
+                    </div>
+                    <button 
+                      onClick={() => { setCreationRapideModalOpen(false); setCreationRapideTab('create'); }}
+                      className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {/* Contenu plein écran */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  <PlanningTypes employesProp={employes} onClose={() => { setCreationRapideModalOpen(false); setCreationRapideTab('create'); }} />
+                </div>
+              </div>
+            )}
+
+            {creationRapideModalOpen && creationRapideTab !== 'templates' && (
               <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden border border-slate-200 flex flex-col">
+                <div className="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden border border-slate-200 flex flex-col">
                   {/* Header compact avec onglets intégrés */}
                   <div className="flex-shrink-0 px-4 py-2.5 border-b border-slate-200 bg-white">
                     <div className="flex justify-between items-center">
@@ -8554,7 +8717,8 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                     
                     <CreationRapideForm 
                       employes={employes}
-                      onClose={() => setCreationRapideModalOpen(false)} 
+                      onClose={() => setCreationRapideModalOpen(false)}
+                      onTabChange={(tab) => setCreationRapideTab(tab)}
                       onSuccess={async (datePremiereCreation) => {
                         // Attendre un court instant pour s'assurer que la base de donn�es a �t� mise � jour
                         setTimeout(async () => {
@@ -8609,6 +8773,7 @@ export default function PlanningRH({ openAnomaliesPanel = false }) {
                 </div>
               </div>
             )}
+
         </div>
 
       {/* Notification de restauration de navigation */}

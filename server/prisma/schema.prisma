@@ -55,6 +55,7 @@ model User {
   candidaturesRemplacement                                     CandidatureRemplacement[]  @relation("CandidatRemplacement")
   justificatifsNavigo                                          JustificatifNavigo[]       @relation("UserJustificatifsNavigo")
   justificatifsNavigoValides                                   JustificatifNavigo[]       @relation("ValidateurJustificatifsNavigo")
+  pendingPointages                                             PendingPointage[]
 }
 
 model PasswordReset {
@@ -627,4 +628,37 @@ model MouvementEffectif {
   @@index([type])
   @@index([date])
   @@index([userId])
+}
+
+// 📋 Planning Type / Template - Modèle de planning réutilisable par catégorie
+model PlanningTemplate {
+  id          Int      @id @default(autoincrement())
+  nom         String   // Ex: "Salle - Hiver", "Cuisine - Été"
+  categorie   String   // Catégorie de poste (Pizzaiolo, Caisse/Service, etc.)
+  description String?  // Note optionnelle
+  grille      Json     // { lundi: { "10:00-11:00": [employeId, ...], ... }, mardi: {...}, ... }
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([categorie])
+  @@index([active])
+}
+
+// 📱 Pointages en attente de synchronisation (signalés par la tablette hors-ligne)
+model PendingPointage {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id])
+  timestamp     DateTime // L'heure du pointage sur la tablette
+  employeNom    String?  // Nom pour affichage admin
+  employePrenom String?  // Prénom pour affichage admin
+  deviceId      String?  // Identifiant de la tablette
+  reportedAt    DateTime @default(now()) // Quand le signalement a été reçu
+  synced        Boolean  @default(false) // Passé à true quand le vrai pointage arrive
+  syncedAt      DateTime?
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([synced])
 }
