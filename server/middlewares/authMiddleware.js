@@ -68,6 +68,43 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Middleware spécial pour le refresh: accepte les tokens expirés (max 30 jours)
+const REFRESH_MAX_AGE = 30 * 24 * 60 * 60; // 30 jours en secondes
+const refreshAuthMiddleware = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = (authHeader && authHeader.split(' ')[1]) || req.query?.token;
+  if (!token) {
+    return res.status(401).json({ error: 'Token manquant' });
+  }
+
+  // ignoreExpiration: true → accepte les tokens expirés pour permettre le refresh
+  jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true }, async (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Token invalide' });
+    }
+
+    // Sécurité: refuser les tokens expirés depuis plus de 30 jours
+    // Un token trop ancien ne doit pas pouvoir être rafraîchi
+    if (user.exp) {
+      const expiredSince = Math.floor(Date.now() / 1000) - user.exp;
+      if (expiredSince > REFRESH_MAX_AGE) {
+        return res.status(401).json({ error: 'Token expiré depuis trop longtemps. Veuillez vous reconnecter.' });
+      }
+    }
+
+    // Vérifier que l'utilisateur est toujours actif (defense-in-depth)
+    const userId = user.userId || user.id;
+    const statut = await checkUserActive(userId);
+    if (statut !== 'actif' && statut !== 'erreur_db') {
+      return res.status(403).json({ error: 'Compte désactivé. Contactez votre administrateur.' });
+    }
+
+    req.user = user;
+    req.userId = userId;
+    next();
+  });
+};
+
 // Middleware pour vérifier les droits admin
 const adminMiddleware = (req, res, next) => {
   // Normaliser le rôle en minuscule pour comparaison
@@ -82,6 +119,7 @@ const adminMiddleware = (req, res, next) => {
 
 module.exports = {
   authMiddleware: authenticateToken,
+  refreshAuthMiddleware: refreshAuthMiddleware,
   adminMiddleware: adminMiddleware,
   invalidateStatusCache,
   // Export par défaut pour compatibilité

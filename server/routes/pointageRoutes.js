@@ -717,9 +717,45 @@ router.get('/admin/pending/:date', authenticateToken, isAdmin, async (req, res) 
       orderBy: { timestamp: 'asc' }
     });
 
-    // Grouper par employé
-    const grouped = {};
+    // 🔍 AUTO-CLEAN: Cross-check against real pointages
+    // If a pending pointage has a matching real pointage (same user, ±5 min), mark it synced
+    const pendingUserIds = [...new Set(pending.map(p => p.userId))];
+    let realPointages = [];
+    if (pendingUserIds.length > 0) {
+      realPointages = await prisma.pointage.findMany({
+        where: {
+          userId: { in: pendingUserIds },
+          horodatage: { gte: start, lt: end }
+        },
+        select: { userId: true, horodatage: true }
+      });
+    }
+
+    const staleIds = [];
+    const stillPending = [];
     for (const p of pending) {
+      const hasMatchingPointage = realPointages.some(rp =>
+        rp.userId === p.userId &&
+        Math.abs(rp.horodatage.getTime() - p.timestamp.getTime()) < 5 * 60 * 1000 // ±5 min
+      );
+      if (hasMatchingPointage) {
+        staleIds.push(p.id);
+      } else {
+        stillPending.push(p);
+      }
+    }
+
+    // Mark stale ones as synced in background
+    if (staleIds.length > 0) {
+      prisma.pendingPointage.updateMany({
+        where: { id: { in: staleIds } },
+        data: { synced: true, syncedAt: new Date() }
+      }).catch(err => console.warn('⚠️ Auto-clean pending error:', err.message));
+    }
+
+    // Grouper par employé (only truly pending ones)
+    const grouped = {};
+    for (const p of stillPending) {
       const key = p.userId;
       if (!grouped[key]) {
         grouped[key] = {
@@ -744,6 +780,42 @@ router.get('/admin/pending/:date', authenticateToken, isAdmin, async (req, res) 
     res.status(500).json({ message: "Erreur serveur" });
   }
 });
+// ✅ Marquer des pointages pending comme synchronisés (appelé par la badgeuse après sync réussi)
+router.post('/mark-synced', authenticateToken, async (req, res) => {
+  try {
+    const { timestamps } = req.body;
+    const userId = req.user.userId;
+
+    if (!timestamps || !Array.isArray(timestamps) || timestamps.length === 0) {
+      return res.status(400).json({ message: 'timestamps requis (tableau)' });
+    }
+
+    let markedCount = 0;
+    for (const ts of timestamps) {
+      const t = new Date(ts);
+      if (isNaN(t.getTime())) continue;
+
+      const result = await prisma.pendingPointage.updateMany({
+        where: {
+          userId,
+          synced: false,
+          timestamp: {
+            gte: new Date(t.getTime() - 5000), // ±5 seconds 
+            lte: new Date(t.getTime() + 5000)
+          }
+        },
+        data: { synced: true, syncedAt: new Date() }
+      });
+      markedCount += result.count;
+    }
+
+    res.json({ success: true, marked: markedCount });
+  } catch (err) {
+    console.error('❌ Erreur mark-synced:', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
 // 🔁 Pointage automatique avec max 2 blocs (arrivee → depart → arrivee → depart)
 // NOUVELLE LOGIQUE : Gère le travail de nuit + validations de sécurité
 router.post('/auto', authenticateToken, async (req, res) => {

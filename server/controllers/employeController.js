@@ -3,10 +3,10 @@ const { enrichUserWithCategories } = require('../utils/categoriesHelper');
 
 const getTousLesEmployes = async (req, res) => {
   try {
-    // Récupérer UNIQUEMENT les employés (pas admins, managers, RH)
+    // Récupérer tous les utilisateurs (employés + admins)
     const utilisateurs = await prisma.user.findMany({
       where: {
-        role: 'employee' // Uniquement les employés opérationnels
+        role: { in: ['employee', 'admin'] }
       },
       select: {
         id: true,

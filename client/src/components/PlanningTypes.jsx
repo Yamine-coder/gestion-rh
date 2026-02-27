@@ -54,7 +54,7 @@ const COULEURS_EMPLOYES = [
 // ============================================================
 // Composant Principal
 // ============================================================
-export default function PlanningTypes({ embedded = false, employesProp = null, onClose = null }) {
+export default function PlanningTypes({ embedded = false, employesProp = null, onClose = null, onTemplateSelect = null }) {
   // État global
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -340,6 +340,7 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
       setGrille(g);
       setInitialGrille(JSON.parse(JSON.stringify(g)));
       setHasChanges(false);
+      if (onTemplateSelect) onTemplateSelect(template);
     };
     if (hasChanges) {
       requestConfirm('Modifications non sauvegardées. Continuer ?', doSelect);
@@ -416,6 +417,73 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
       const actualKey = resolveStorageKey(next, jour, creneau);
       if (!next[jour][actualKey]) return next;
       next[jour][actualKey] = next[jour][actualKey].filter(id => id !== employeId);
+      return next;
+    });
+    setHasChanges(true);
+  };
+
+  // Basculer un employé entre heure complète et demi-heure
+  const toggleEmployeeHalf = (jour, hourKey, firstHalfKey, secondHalfKey, empId, currentCoverage) => {
+    setGrille(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      if (!next[jour]) next[jour] = {};
+      if (currentCoverage === 'full') {
+        // Plein → 1ère demi-heure seulement (finit à :30)
+        if (next[jour][hourKey]?.includes(empId)) {
+          next[jour][hourKey] = next[jour][hourKey].filter(id => id !== empId);
+          if (!next[jour][firstHalfKey]) next[jour][firstHalfKey] = [];
+          if (!next[jour][firstHalfKey].includes(empId)) next[jour][firstHalfKey].push(empId);
+        }
+        if (next[jour][secondHalfKey]?.includes(empId)) {
+          next[jour][secondHalfKey] = next[jour][secondHalfKey].filter(id => id !== empId);
+        }
+      } else {
+        // Partiel → heure complète
+        if (next[jour][firstHalfKey]?.includes(empId)) {
+          next[jour][firstHalfKey] = next[jour][firstHalfKey].filter(id => id !== empId);
+        }
+        if (next[jour][secondHalfKey]?.includes(empId)) {
+          next[jour][secondHalfKey] = next[jour][secondHalfKey].filter(id => id !== empId);
+        }
+        if (!next[jour][hourKey]) next[jour][hourKey] = [];
+        if (!next[jour][hourKey].includes(empId)) next[jour][hourKey].push(empId);
+      }
+      // Nettoyage clés vides
+      for (const k of [hourKey, firstHalfKey, secondHalfKey]) {
+        if (next[jour][k]?.length === 0) delete next[jour][k];
+      }
+      return next;
+    });
+    setHasChanges(true);
+  };
+
+  // Couper/rétablir la demi-heure pour TOUS les employés d'un créneau
+  const toggleAllHalf = (jour, hourKey, firstHalfKey, secondHalfKey) => {
+    setGrille(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      if (!next[jour]) return next;
+      const fullEmps = next[jour][hourKey] || [];
+      const firstEmps = next[jour][firstHalfKey] || [];
+      const secondEmps = next[jour][secondHalfKey] || [];
+      const hasAnyFull = fullEmps.length > 0;
+      if (hasAnyFull) {
+        // Il y a des employés sur l'heure complète → les couper à :30
+        if (!next[jour][firstHalfKey]) next[jour][firstHalfKey] = [];
+        for (const empId of fullEmps) {
+          if (!next[jour][firstHalfKey].includes(empId)) next[jour][firstHalfKey].push(empId);
+        }
+        delete next[jour][hourKey];
+        // Garder la 2ème demi-heure telle quelle
+      } else if (firstEmps.length > 0 || secondEmps.length > 0) {
+        // Que des demi-heures → remettre tout en heure complète
+        const all = [...new Set([...firstEmps, ...secondEmps])];
+        next[jour][hourKey] = all;
+        delete next[jour][firstHalfKey];
+        delete next[jour][secondHalfKey];
+      }
+      for (const k of [hourKey, firstHalfKey, secondHalfKey]) {
+        if (next[jour][k]?.length === 0) delete next[jour][k];
+      }
       return next;
     });
     setHasChanges(true);
@@ -603,20 +671,18 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
       })
     : [];
 
-  // Heures visibles : générées dynamiquement selon le contenu de la grille
-  // Seules les heures ayant au moins 1 employé dans un jour sont affichées
-  // Gère les mélanges clés 1h/30min sans doublon
+  // Heures visibles : TOUJOURS heure par heure (1 ligne = 1h)
+  // Chaque entrée contient les sous-clés 30min pour gérer les demi-heures
+  // La demi-heure :30 apparaît en sous-ligne compacte seulement si le contenu diffère de :00
   const visibleHeures = useMemo(() => {
     // Collecter toutes les clés occupées (au moins 1 employé)
     const occupiedKeys = new Set();
-    let hasHalfHours = false;
 
     JOURS.forEach(j => {
       if (!grille[j]) return;
       Object.keys(grille[j]).forEach(key => {
         if (grille[j][key]?.length > 0) {
           occupiedKeys.add(key);
-          if (key.includes(':30')) hasHalfHours = true;
         }
       });
     });
@@ -631,82 +697,83 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
           label: `${String(sNorm).padStart(2, '0')}h`,
           key: `${String(sNorm).padStart(2, '0')}:00-${String(eNorm).padStart(2, '0')}:00`,
           sortOrder: s,
-          isHalf: false
+          isHalf: false,
+          // Sous-clés pour le rendu
+          keyFirstHalf: `${String(sNorm).padStart(2, '0')}:00-${String(sNorm).padStart(2, '0')}:30`,
+          keySecondHalf: `${String(sNorm).padStart(2, '0')}:30-${String(eNorm).padStart(2, '0')}:00`,
         });
       }
       return entries;
     }
 
-    // Décomposer toutes les clés en demi-heures uniques (sortOrder)
-    // pour détecter quels créneaux 30min sont couverts
-    const coveredSlots = new Set(); // sortOrder values (e.g. 10, 10.5, 11, ...)
+    // Décomposer toutes les clés en demi-heures couvertes
+    const coveredHalves = new Set(); // sortOrder values (e.g. 10, 10.5, 11, ...)
     for (const key of occupiedKeys) {
       const [start, end] = key.split('-');
       const sSort = timeToSort(start);
       const eSort = timeToSort(end);
-      const dur = eSort - sSort;
-      if (dur === 1 && !hasHalfHours) {
-        // Clé 1h sans demi-heures dans la grille → garder telle quelle
-        coveredSlots.add(sSort);
-      } else {
-        // Décomposer en pas de 0.5
-        for (let t = sSort; t < eSort; t += 0.5) {
-          coveredSlots.add(t);
-        }
+      for (let t = sSort; t < eSort; t += 0.5) {
+        coveredHalves.add(t);
       }
     }
 
-    // Construire les entrées
-    const entries = [];
-    const sortedSlots = Array.from(coveredSlots).sort((a, b) => a - b);
+    // Regrouper par heure entière
+    const hourSet = new Set();
+    for (const h of coveredHalves) {
+      hourSet.add(Math.floor(h));
+    }
+    const sortedHours = Array.from(hourSet).sort((a, b) => a - b);
 
-    if (!hasHalfHours) {
-      // Pas de demi-heures → entrées 1h simples
-      for (const s of sortedSlots) {
-        const sNorm = s >= 24 ? s - 24 : s;
-        const eNorm = (s + 1) >= 24 ? (s + 1) - 24 : (s + 1);
-        const sH = String(Math.floor(sNorm)).padStart(2, '0');
-        const eH = String(Math.floor(eNorm)).padStart(2, '0');
-        entries.push({
-          label: `${sH}h`,
-          key: `${sH}:00-${eH}:00`,
-          sortOrder: s,
-          isHalf: false
-        });
-      }
-    } else {
-      // Demi-heures présentes → toutes les entrées en 30min
-      for (const s of sortedSlots) {
-        const sNorm = s >= 24 ? s - 24 : s;
-        const eStep = s + 0.5;
-        const eNorm = eStep >= 24 ? eStep - 24 : eStep;
-        const sH = String(Math.floor(sNorm)).padStart(2, '0');
-        const sM = sNorm % 1 === 0.5 ? '30' : '00';
-        const eH = String(Math.floor(eNorm)).padStart(2, '0');
-        const eM = eNorm % 1 === 0.5 ? '30' : '00';
-        entries.push({
-          label: sM === '30' ? `${sH}h30` : `${sH}h`,
-          key: `${sH}:${sM}-${eH}:${eM}`,
-          sortOrder: s,
-          isHalf: sM === '30'
-        });
-      }
+    // Construire les entrées (toujours 1h)
+    const entries = [];
+    for (const s of sortedHours) {
+      const sNorm = s >= 24 ? s - 24 : s;
+      const eNorm = (s + 1) >= 24 ? (s + 1) - 24 : (s + 1);
+      const sH = String(Math.floor(sNorm)).padStart(2, '0');
+      const eH = String(Math.floor(eNorm)).padStart(2, '0');
+      entries.push({
+        label: `${sH}h`,
+        key: `${sH}:00-${eH}:00`,
+        sortOrder: s,
+        isHalf: false,
+        // Sous-clés 30min pour le rendu détaillé
+        keyFirstHalf: `${sH}:00-${sH}:30`,
+        keySecondHalf: `${sH}:30-${eH}:00`,
+      });
     }
 
     return entries;
   }, [grille]);
 
   // Helper : résoudre les employés pour un créneau visuel
-  // Quand visibleHeures génère des clés 30min mais la grille a des clés 1h,
-  // on cherche aussi la clé 1h parent qui couvre ce créneau
+  // Gère les clés 1h, 30min et mixtes dans la grille
   const getCellEmployees = useCallback((jour, slotKey) => {
     if (!grille[jour]) return [];
     // D'abord essayer la clé exacte
     const exact = grille[jour][slotKey];
     if (exact && exact.length > 0) return exact;
-    // Si le créneau est 30min, chercher la clé 1h parente
+    // Si le créneau est 1h (ex: 12:00-13:00), combiner les 2 demi-heures
     const [start, end] = slotKey.split('-');
     const [sH, sM] = start.split(':');
+    const sSort = timeToSort(start);
+    const eSort = timeToSort(end);
+    if (eSort - sSort === 1 && sM === '00') {
+      // Clé 1h → combiner les 2 clés 30min
+      const halfNorm = sSort + 0.5;
+      const halfH = String(Math.floor(halfNorm >= 24 ? halfNorm - 24 : halfNorm)).padStart(2, '0');
+      const halfM = halfNorm % 1 === 0.5 ? '30' : '00';
+      const eNorm = eSort >= 24 ? eSort - 24 : eSort;
+      const eH2 = String(Math.floor(eNorm)).padStart(2, '0');
+      const eM2 = eNorm % 1 === 0.5 ? '30' : '00';
+      const key1 = `${sH}:00-${halfH}:${halfM}`;
+      const key2 = `${halfH}:${halfM}-${eH2}:${eM2}`;
+      const set = new Set([
+        ...(grille[jour][key1] || []),
+        ...(grille[jour][key2] || [])
+      ]);
+      if (set.size > 0) return Array.from(set);
+    }
+    // Si le créneau est 30min, chercher la clé 1h parente
     if (sM === '30') {
       // Ce créneau 30min (ex: 23:30-00:00) → chercher clé 1h commençant à 23:00
       const parentStart = `${sH}:00`;
@@ -731,6 +798,27 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
       }
     }
     return [];
+  }, [grille]);
+
+  // Helper : couverture par employé pour un créneau horaire (full/first/second)
+  const getHourCoverage = useCallback((jour, hourKey, firstHalfKey, secondHalfKey) => {
+    if (!grille[jour]) return {};
+    const fullEmps = grille[jour][hourKey] || [];
+    const firstEmps = grille[jour][firstHalfKey] || [];
+    const secondEmps = grille[jour][secondHalfKey] || [];
+    const coverage = {};
+    // Employés sur le créneau 1h complet
+    for (const empId of fullEmps) coverage[empId] = 'full';
+    // Employés 1ère demi-heure seulement
+    for (const empId of firstEmps) {
+      if (!coverage[empId]) coverage[empId] = 'first';
+    }
+    // Employés 2ème demi-heure
+    for (const empId of secondEmps) {
+      if (coverage[empId] === 'first') coverage[empId] = 'full';
+      else if (!coverage[empId]) coverage[empId] = 'second';
+    }
+    return coverage;
   }, [grille]);
 
   // Comptage total d'heures pour un employé dans la grille (demi-heures = 0.5)
@@ -1020,8 +1108,9 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
       {/* ══════════════════════════════════════════════════════════════ */}
       {/* TOOLBAR — PlanningRH-style compact bar (collapsible) */}
       {/* ══════════════════════════════════════════════════════════════ */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200">
-        {/* Toggle header */}
+      <div className={`flex-shrink-0 bg-white ${embedded ? 'border-b border-gray-100' : 'border-b border-gray-200'}`}>
+        {/* Toggle header — hidden in embedded mode (parent header handles it) */}
+        {!embedded && (
         <button
           onClick={() => setShowHeader(v => !v)}
           className="w-full flex items-center gap-1.5 px-4 py-1 hover:bg-gray-50 transition-colors"
@@ -1033,18 +1122,17 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
             <span className="text-[10px] text-gray-400 ml-1">— {selectedTemplate.nom} ({selectedTemplate.categorie})</span>
           )}
         </button>
+        )}
 
-        {showHeader && (
-        <div className="px-4 pb-2">
+        {(embedded || showHeader) && (
+        <div className={`${embedded ? 'px-3 py-1.5' : 'px-4 pb-2'}`}>
         <div className="flex items-center gap-2 flex-wrap">
 
-          <div className="w-px h-5 bg-gray-200" />
-
           {/* Filtre catégorie pills */}
-          <div className="flex items-center gap-0.5 bg-gray-100 p-0.5 rounded-md">
+          <div className="flex items-center gap-0.5 bg-gray-100 p-0.5 rounded-md overflow-x-auto">
             <button
               onClick={() => setFilterCategorie('')}
-              className={`px-2 py-1 text-xs font-medium rounded transition-all ${
+              className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all whitespace-nowrap ${
                 !filterCategorie ? 'text-gray-900 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -1054,7 +1142,7 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
               <button
                 key={cat.value}
                 onClick={() => setFilterCategorie(filterCategorie === cat.value ? '' : cat.value)}
-                className={`px-2 py-1 text-xs font-medium rounded transition-all ${
+                className={`px-2 py-0.5 text-[11px] font-medium rounded transition-all whitespace-nowrap ${
                   filterCategorie === cat.value ? 'text-gray-900 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -1063,56 +1151,56 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
             ))}
           </div>
 
-          <div className="w-px h-5 bg-gray-200" />
+          <div className="w-px h-4 bg-gray-200" />
 
           {/* Bouton Nouveau */}
           <button
-            onClick={() => { setShowCreateForm(true); setEditingTemplate(null); resetForm(); }}
-            className="h-7 px-2.5 text-xs font-semibold text-white bg-[#cf292c] hover:bg-[#b52429] rounded-md transition-all shadow-sm flex items-center gap-1"
+            onClick={() => { setShowCreateForm(true); setEditingTemplate(null); resetForm(); setShowSidebar(true); }}
+            className="h-6 px-2 text-[11px] font-semibold text-white bg-[#cf292c] hover:bg-[#b52429] rounded-md transition-all shadow-sm flex items-center gap-1"
           >
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+            <Plus className="w-3 h-3" strokeWidth={2} />
             Nouveau
           </button>
 
           {/* Actions template sélectionné */}
           {selectedTemplate && (
             <>
-              <div className="w-px h-5 bg-gray-200" />
+              <div className="w-px h-4 bg-gray-200" />
 
               <button
                 onClick={handleSaveGrille}
                 disabled={!hasChanges || saving}
-                className={`h-7 px-2 text-xs font-medium rounded-md transition-all flex items-center gap-1 border ${
+                className={`h-6 px-2 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 border ${
                   hasChanges
                     ? 'text-white bg-[#cf292c] border-[#cf292c] hover:bg-[#b52429]'
                     : 'text-gray-400 border-gray-200 bg-gray-50 cursor-not-allowed'
                 }`}
               >
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" strokeWidth={1.5} />}
-                Sauvegarder
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" strokeWidth={1.5} />}
+                Sauver
               </button>
 
               <button
                 onClick={() => { setShowImportModal(true); setImportDate(''); }}
-                className="h-7 px-2 text-xs font-medium rounded-md transition-all flex items-center gap-1 border text-gray-600 hover:text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                className="h-6 px-2 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 border text-gray-600 hover:text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
               >
-                <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
-                Importer semaine
+                <Download className="w-3 h-3" strokeWidth={1.5} />
+                Importer
               </button>
 
               <button
                 onClick={() => requestConfirm('Vider toute la grille ?', () => { setGrille(initGrille()); setHasChanges(true); showToast('Grille vidée', 'success'); })}
-                className="h-7 px-2 text-xs font-medium rounded-md transition-all flex items-center gap-1 border text-gray-600 hover:text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                className="h-6 px-2 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 border text-gray-600 hover:text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
               >
-                <Eraser className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <Eraser className="w-3 h-3" strokeWidth={1.5} />
                 Vider
               </button>
 
               <button
                 onClick={() => { setShowApplyModal(true); setApplyDate(getNextMonday()); setApplyResult(null); }}
-                className="h-7 px-2 text-xs font-medium rounded-md transition-all flex items-center gap-1 text-white bg-emerald-600 border-emerald-600 hover:bg-emerald-700 border shadow-sm"
+                className="h-6 px-2 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 text-white bg-emerald-600 border-emerald-600 hover:bg-emerald-700 border shadow-sm"
               >
-                <Play className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <Play className="w-3 h-3" strokeWidth={1.5} />
                 Appliquer
               </button>
             </>
@@ -1121,11 +1209,11 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
           {/* Toggle vue */}
           {selectedTemplate && (
             <>
-              <div className="w-px h-5 bg-gray-200" />
+              <div className="w-px h-4 bg-gray-200" />
               <div className="flex items-center gap-0.5 bg-gray-100 p-0.5 rounded-md">
                 <button
-                  onClick={() => { setViewMode('overview'); setFocusMode(false); setShowSidebar(true); setShowHeader(true); }}
-                  className={`h-6 px-2 text-[11px] font-medium rounded flex items-center gap-1 transition-all ${
+                  onClick={() => { setViewMode('overview'); setFocusMode(false); setShowSidebar(true); if (!embedded) setShowHeader(true); }}
+                  className={`h-5 px-1.5 text-[10px] font-medium rounded flex items-center gap-1 transition-all ${
                     viewMode === 'overview' ? 'text-gray-900 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   }`}
                   title="Vue d'ensemble"
@@ -1134,8 +1222,8 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
                   Ensemble
                 </button>
                 <button
-                  onClick={() => { setViewMode('detail'); setShowSidebar(false); setShowHeader(false); setShowFooter(false); setShowEmployeesBar(false); }}
-                  className={`h-6 px-2 text-[11px] font-medium rounded flex items-center gap-1 transition-all ${
+                  onClick={() => { setViewMode('detail'); setShowSidebar(false); if (!embedded) { setShowHeader(false); setShowFooter(false); setShowEmployeesBar(false); } }}
+                  className={`h-5 px-1.5 text-[10px] font-medium rounded flex items-center gap-1 transition-all ${
                     viewMode === 'detail' ? 'text-gray-900 bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                   }`}
                   title="Vue détaillée (plein écran)"
@@ -1147,13 +1235,13 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
             </>
           )}
 
-          {/* Indicateur template actif */}
-          {selectedTemplate && (
-            <div className="ml-auto flex items-center px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200">
-              <span className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
+          {/* Indicateur template actif — hidden in embedded mode (shown in parent header) */}
+          {!embedded && selectedTemplate && (
+            <div className="ml-auto flex items-center px-2 py-0.5 rounded-md bg-gray-50 border border-gray-200">
+              <span className="text-[11px] font-medium text-gray-700 truncate max-w-[180px]">
                 {selectedTemplate.nom}
               </span>
-              <span className="ml-2 text-[10px] text-gray-400">
+              <span className="ml-1.5 text-[10px] text-gray-400">
                 {selectedTemplate.categorie} • {assignedCount}/{employesFiltres.length}
               </span>
             </div>
@@ -1718,79 +1806,118 @@ export default function PlanningTypes({ embedded = false, employesProp = null, o
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleHeures.map((h, hIdx) => (
-                    <tr key={h.key} className={h.isHalf ? 'opacity-80' : ''}>
-                      <td className={`sticky left-0 z-10 w-12 px-1 py-0 border-r border-b border-gray-200/80 text-right ${
-                        h.isHalf ? 'bg-gray-50/60' : hIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                      }`}>
-                        <span className={`font-mono font-semibold ${h.isHalf ? 'text-[8px] text-gray-300' : 'text-[10px] text-gray-400'}`}>{h.label}</span>
-                      </td>
-                      {JOURS.map(j => {
-                        const cellKey = `${j}-${h.key}`;
-                        const cellEmployees = getCellEmployees(j, h.key);
-                        const isOver = dragOverCell === cellKey;
+                  {visibleHeures.map((h, hIdx) => {
+                    const firstHalfKey = h.keyFirstHalf;
+                    const secondHalfKey = h.keySecondHalf;
 
-                        return (
-                          <td
-                            key={cellKey}
-                            onDragOver={e => handleCellDragOver(e, j, h.key)}
-                            onDragLeave={handleCellDragLeave}
-                            onDrop={e => handleCellDrop(e, j, h.key)}
-                            onMouseEnter={() => handleCellMouseEnter(j, h.key)}
-                            className={`relative border-b border-r border-gray-200/60 align-top transition-all duration-100 ${
-                              isOver
-                                ? 'ring-2 ring-inset ring-[#cf292c] bg-red-50/50'
-                                : cellEmployees.length > 0
-                                  ? 'bg-blue-50/20'
-                                  : hIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
-                            } hover:bg-slate-50/80`}
-                            style={{ minWidth: 100, height: 26, padding: '1px 2px' }}
-                          >
-                            <div className="flex flex-wrap gap-px">
-                              {cellEmployees.map(empId => {
-                                const chipColor = getEmployeColor(empId);
-                                const beingDragged = isDragging && dragEmployee === empId && dragSourceCell?.jour === j && dragSourceCell?.creneau === h.key;
-                                return (
-                                  <span
-                                    key={empId}
-                                    draggable
-                                    onDragStart={e => handleChipDragStart(e, empId, j, h.key)}
-                                    onDragEnd={handleDragEnd}
-                                    className={`group/chip inline-flex items-center gap-0 pl-1 pr-0.5 py-0 rounded text-[9px] font-semibold cursor-grab active:cursor-grabbing hover:shadow-md transition-all shadow-sm border leading-tight ${chipColor} ${
-                                      beingDragged ? 'opacity-40 scale-95' : ''
-                                    }`}
-                                    title={`Glisser pour déplacer`}
-                                  >
-                                    <GripVertical className="w-2 h-2 opacity-30 flex-shrink-0" strokeWidth={2} />
-                                    {getEmployeLabel(empId)}
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); removeEmployeFromCell(j, h.key, empId); }}
-                                      className="ml-0.5 w-3 h-3 rounded-full flex items-center justify-center opacity-30 group-hover/chip:opacity-100 hover:bg-red-500 hover:text-white transition-all flex-shrink-0"
-                                      title="Retirer"
+                    return (
+                      <tr key={h.key}>
+                        <td className={`sticky left-0 z-10 w-12 px-1 py-0 border-r border-b border-gray-200/80 text-right ${
+                          hIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                        }`}>
+                          <span className="font-mono font-semibold text-[10px] text-gray-400">{h.label}</span>
+                        </td>
+                        {JOURS.map(j => {
+                          const cellKey = `${j}-${h.key}`;
+                          const allEmployees = getCellEmployees(j, h.key);
+                          const coverage = getHourCoverage(j, h.key, firstHalfKey, secondHalfKey);
+                          const isOver = dragOverCell === cellKey;
+                          // Déterminer si des demi-heures existent dans cette cellule
+                          const hasPartial = allEmployees.some(id => coverage[id] === 'first' || coverage[id] === 'second');
+
+                          return (
+                            <td
+                              key={cellKey}
+                              onDragOver={e => handleCellDragOver(e, j, h.key)}
+                              onDragLeave={handleCellDragLeave}
+                              onDrop={e => handleCellDrop(e, j, h.key)}
+                              onMouseEnter={() => handleCellMouseEnter(j, h.key)}
+                              className={`relative border-b border-r border-gray-200/60 align-top transition-all duration-100 ${
+                                isOver
+                                  ? 'ring-2 ring-inset ring-[#cf292c] bg-red-50/50'
+                                  : allEmployees.length > 0
+                                    ? 'bg-blue-50/20'
+                                    : hIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                              } hover:bg-slate-50/80`}
+                              style={{ minWidth: 100, height: 26, padding: '1px 2px' }}
+                            >
+                              <div className="flex flex-wrap gap-px">
+                                {allEmployees.map(empId => {
+                                  const chipColor = getEmployeColor(empId);
+                                  const beingDragged = isDragging && dragEmployee === empId && dragSourceCell?.jour === j && dragSourceCell?.creneau === h.key;
+                                  const empCoverage = coverage[empId] || 'full';
+                                  const isPartial = empCoverage !== 'full';
+                                  const halfLabel = empCoverage === 'first' ? '→:30' : empCoverage === 'second' ? ':30→' : null;
+                                  // La clé de stockage pour le drag reflète la couverture
+                                  const dragKey = empCoverage === 'second' ? secondHalfKey : empCoverage === 'first' ? firstHalfKey : h.key;
+                                  return (
+                                    <span
+                                      key={empId}
+                                      draggable
+                                      onDragStart={e => handleChipDragStart(e, empId, j, dragKey)}
+                                      onDragEnd={handleDragEnd}
+                                      className={`group/chip inline-flex items-center gap-0 pl-1 pr-0.5 py-0 rounded text-[9px] font-semibold cursor-grab active:cursor-grabbing hover:shadow-md transition-all shadow-sm border leading-tight ${chipColor} ${
+                                        beingDragged ? 'opacity-40 scale-95' : ''
+                                      } ${isPartial ? 'ring-1 ring-orange-300/60' : ''}`}
+                                      title={halfLabel ? `Couvre seulement la demi-heure (${halfLabel}). Cliquer sur le badge pour basculer.` : 'Glisser pour déplacer'}
                                     >
-                                      <X className="w-2 h-2" strokeWidth={2.5} />
-                                    </button>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            {/* Bouton + pour ajouter */}
-                            <CellAddButton
-                              jour={j}
-                              creneau={h.key}
-                              employesFiltres={cellEmployees.length > 0
-                                ? employesFiltres.filter(e => !cellEmployees.includes(e.id))
-                                : employesFiltres
-                              }
-                              onAdd={(empId) => addEmployeToCell(j, h.key, empId)}
-                              getEmployeColor={getEmployeColor}
-                              compact={cellEmployees.length > 0}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                                      <GripVertical className="w-2 h-2 opacity-30 flex-shrink-0" strokeWidth={2} />
+                                      {getEmployeLabel(empId)}
+                                      {halfLabel && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); toggleEmployeeHalf(j, h.key, firstHalfKey, secondHalfKey, empId, empCoverage); }}
+                                          className="ml-0.5 px-0.5 py-0 rounded text-[7px] font-bold bg-orange-400/80 text-white hover:bg-orange-500 transition-colors flex-shrink-0 leading-none"
+                                          title={empCoverage === 'first' ? 'Finit à :30 — cliquer pour remettre l\'heure complète' : 'Commence à :30 — cliquer pour remettre l\'heure complète'}
+                                        >
+                                          {halfLabel}
+                                        </button>
+                                      )}
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); removeEmployeFromCell(j, dragKey, empId); }}
+                                        className="ml-0.5 w-3 h-3 rounded-full flex items-center justify-center opacity-30 group-hover/chip:opacity-100 hover:bg-red-500 hover:text-white transition-all flex-shrink-0"
+                                        title="Retirer"
+                                      >
+                                        <X className="w-2 h-2" strokeWidth={2.5} />
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              {/* Boutons d'action */}
+                              <div className="flex items-center gap-px">
+                                <CellAddButton
+                                  jour={j}
+                                  creneau={h.key}
+                                  employesFiltres={allEmployees.length > 0
+                                    ? employesFiltres.filter(e => !allEmployees.includes(e.id))
+                                    : employesFiltres
+                                  }
+                                  onAdd={(empId) => addEmployeToCell(j, h.key, empId)}
+                                  getEmployeColor={getEmployeColor}
+                                  compact={allEmployees.length > 0}
+                                />
+                                {/* Bouton couper/rétablir la demi-heure pour tous */}
+                                {allEmployees.length > 0 && (
+                                  <button
+                                    onClick={() => toggleAllHalf(j, h.key, firstHalfKey, secondHalfKey)}
+                                    className={`w-4 h-4 rounded flex items-center justify-center font-bold transition-all ${
+                                      hasPartial
+                                        ? 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                                        : 'bg-gray-100/0 text-gray-300 hover:bg-gray-100 hover:text-gray-500'
+                                    }`}
+                                    title={hasPartial ? 'Remettre l\'heure complète pour tous' : 'Couper à :30 pour tous'}
+                                    style={{ fontSize: 7 }}
+                                  >
+                                    ½
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

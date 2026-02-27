@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { signup, login, completerOnboarding, demandeRecuperation, resetAvecToken } = require('../controllers/authController');
 // IMPORTANT: l'ancien import retournait un objet -> Express recevait un objet au lieu d'une fonction
-const { authMiddleware } = require('../middlewares/authMiddleware');
+const { authMiddleware, refreshAuthMiddleware } = require('../middlewares/authMiddleware');
 const { rateLimitLogin, rateLimitRecovery } = require('../middlewares/rateLimitMiddleware');
 const prisma = require('../prisma/client');
 const bcrypt = require('bcryptjs');
@@ -62,8 +62,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// 🔄 Route pour rafraîchir un token valide (avant expiration)
-router.post('/refresh-token', authMiddleware, async (req, res) => {
+// 🔄 Route pour rafraîchir un token (accepte les tokens expirés pour éviter la déconnexion)
+router.post('/refresh-token', refreshAuthMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
@@ -77,7 +77,7 @@ router.post('/refresh-token', authMiddleware, async (req, res) => {
     const newToken = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '365d' }
     );
 
     res.json({ token: newToken });

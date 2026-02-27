@@ -170,31 +170,67 @@ const clearExpiredFromQueue = () => {
 
 // 📴 Signaler les pointages en attente au serveur (endpoint léger)
 // Permet à l'admin de voir les pointages non encore synchronisés
+// ✅ FIX: Grouper par token (employé) pour éviter de tout signaler sous le même userId
 const reportPendingToServer = async (queue) => {
   if (!queue || queue.length === 0) return;
-  
-  // Utiliser le token du premier item pour s'authentifier
-  const firstToken = queue[0]?.token;
-  if (!firstToken) return;
 
-  try {
-    await axios.post(
-      `${API_BASE}/pointage/report-pending`,
-      {
-        pendingItems: queue.map(item => ({
-          timestamp: item.timestamp,
-          employeNom: item.employeInfo?.nom || '',
-          employePrenom: item.employeInfo?.prenom || ''
-        })),
-        deviceId: `tablette-${window.location.hostname}`
-      },
-      { 
-        headers: { Authorization: `Bearer ${firstToken}` },
-        timeout: 5000 // Timeout court - ne pas bloquer
-      }
-    );
-  } catch {
-    // Silencieux - c'est un best-effort, la tablette est probablement hors-ligne
+  // Grouper les items par token (chaque employé a son propre JWT)
+  const byToken = {};
+  for (const item of queue) {
+    if (!item.token) continue;
+    if (!byToken[item.token]) byToken[item.token] = [];
+    byToken[item.token].push(item);
+  }
+
+  // Envoyer un report-pending par employé
+  for (const [token, items] of Object.entries(byToken)) {
+    try {
+      await axios.post(
+        `${API_BASE}/pointage/report-pending`,
+        {
+          pendingItems: items.map(item => ({
+            timestamp: item.timestamp,
+            employeNom: item.employeInfo?.nom || '',
+            employePrenom: item.employeInfo?.prenom || ''
+          })),
+          deviceId: `tablette-${window.location.hostname}`
+        },
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 5000
+        }
+      );
+    } catch {
+      // Silencieux - best-effort
+    }
+  }
+};
+
+// ✅ Marquer les pointages pending comme synchronisés côté serveur
+const markSyncedOnServer = async (syncedItems) => {
+  if (!syncedItems || syncedItems.length === 0) return;
+
+  // Grouper par token pour envoyer la bonne auth
+  const byToken = {};
+  for (const item of syncedItems) {
+    if (!item.token) continue;
+    if (!byToken[item.token]) byToken[item.token] = [];
+    byToken[item.token].push(item.timestamp);
+  }
+
+  for (const [token, timestamps] of Object.entries(byToken)) {
+    try {
+      await axios.post(
+        `${API_BASE}/pointage/mark-synced`,
+        { timestamps },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 5000
+        }
+      );
+    } catch {
+      // Silencieux - best-effort cleanup
+    }
   }
 };
 
@@ -221,6 +257,7 @@ const Badgeuse = () => {
   const syncIntervalRef = useRef(null);
   const isMountedRef = useRef(true);
   const isDisplayingRef = useRef(false); // Protection synchrone contre les scans pendant l'affichage
+  const isProcessingRef = useRef(false); // Protection synchrone contre les scans pendant le traitement API
   const scannerRef = useRef(null);
   const handleScanRef = useRef(null);
 
@@ -268,6 +305,7 @@ const Badgeuse = () => {
     setIsSyncing(true);
     
     let syncedCount = 0;
+    const syncedItems = []; // Track successfully synced items to mark on server
     
     for (const item of queue) {
       try {
@@ -277,16 +315,23 @@ const Badgeuse = () => {
           { headers: { Authorization: `Bearer ${item.token}` } }
         );
         
+        syncedItems.push({ token: item.token, timestamp: item.timestamp });
         removeFromOfflineQueue(item.id);
         syncedCount++;
         
       } catch (err) {
-        // Si erreur "trop récent" ou déjà enregistré, on supprime quand même
-        if (err.response?.status === 409) {
+        // Si erreur "trop récent", déjà enregistré, ou journée terminée → on supprime aussi
+        if (err.response?.status === 409 || err.response?.status === 400) {
+          syncedItems.push({ token: item.token, timestamp: item.timestamp });
           removeFromOfflineQueue(item.id);
-        } else {
+          syncedCount++;
         }
       }
+    }
+    
+    // ✅ Marquer explicitement les pending comme synchronisés côté serveur
+    if (syncedItems.length > 0) {
+      markSyncedOnServer(syncedItems);
     }
     
     const remainingQueue = getOfflineQueue();
@@ -536,8 +581,9 @@ const Badgeuse = () => {
     // Programmer la fermeture
     confirmationTimeoutRef.current = setTimeout(() => {
       if (isMountedRef.current) {
-        // Désactiver la protection
+        // Désactiver les protections synchrones
         isDisplayingRef.current = false;
+        isProcessingRef.current = false;
         setShowConfirmation(false);
         setMessage('');
         setEmployeInfo(null);
@@ -555,6 +601,9 @@ const Badgeuse = () => {
     // Protection 0: Ignorer TOUS les scans si un écran de confirmation est affiché
     // Utilisation d'une REF pour une vérification synchrone (pas de stale closure)
     if (isDisplayingRef.current) return;
+    
+    // Protection 0b: Ignorer si un scan est déjà en cours de traitement (ref synchrone)
+    if (isProcessingRef.current) return;
     
     // Protection 1: Résultat vide ou invalide
     if (!result) return;
@@ -607,6 +656,7 @@ const Badgeuse = () => {
     }
 
     // ═══ TRAITEMENT DU SCAN ═══
+    isProcessingRef.current = true; // SYNCHRONE: bloque immédiatement les callbacks suivants
     setIsProcessing(true);
     blockedQRCodes.current.set(result, now + BLOCK_DURATION_MS);
 

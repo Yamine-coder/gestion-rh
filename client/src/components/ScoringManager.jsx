@@ -1084,9 +1084,9 @@ function EmployeDetailsModal({ data, onClose, onAttribuer }) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         {/* Header épuré */}
-        <div className="px-6 py-5 border-b border-gray-100">
+        <div className="px-6 py-5 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold ${niveau.bg}`}>
@@ -1109,7 +1109,7 @@ function EmployeDetailsModal({ data, onClose, onAttribuer }) {
         </div>
 
         {/* Stats cards - Design sobre */}
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex-shrink-0">
           <div className="grid grid-cols-4 gap-3">
             {/* Niveau */}
             <div className="bg-white rounded-xl p-3 border border-gray-200 text-center">
@@ -1152,7 +1152,7 @@ function EmployeDetailsModal({ data, onClose, onAttribuer }) {
         </div>
 
         {/* Historique */}
-        <div className="px-6 py-4 max-h-[300px] overflow-y-auto">
+        <div className="px-6 py-4 flex-1 overflow-y-auto min-h-0">
           <h3 className="font-medium text-gray-900 text-sm mb-3 flex items-center gap-2">
             <Clock className="w-4 h-4 text-gray-400" />
             Historique des points
@@ -1193,16 +1193,16 @@ function EmployeDetailsModal({ data, onClose, onAttribuer }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+        <div className="px-6 py-4 border-t border-gray-200 bg-white flex-shrink-0 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium"
+            className="px-5 py-2.5 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors text-sm font-semibold"
           >
             Fermer
           </button>
           <button
             onClick={onAttribuer}
-            className="px-4 py-2 bg-[#cf292c] text-white rounded-lg hover:bg-[#b82329] transition-colors flex items-center gap-2 text-sm font-medium"
+            className="px-5 py-2.5 bg-[#cf292c] text-white rounded-lg hover:bg-[#b82329] transition-colors flex items-center gap-2 text-sm font-semibold shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Attribuer des points

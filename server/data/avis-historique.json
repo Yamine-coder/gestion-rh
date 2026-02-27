@@ -1,6 +1,17 @@
 {
   "reviews": [
     {
+      "author": "grégoire robmal",
+      "rating": 5,
+      "text": "Chez Antoine, c’est LA pizzeria de quartier comme on les aime : authentique, généreuse et sans chichi. Les pizzas cuites au feu de bois sont tout simplement excellentes — pâte bien croustillante, garnitures généreuses et de qualité. J’ai craqué pour la Reine, un classique parfaitement maîtrisé, mais la carte propose suffisamment de choix pour satisfaire tout le monde.\nLe cadre est simple et convivial, le service efficace et souriant même aux heures de pointe. Le rapport qualité/prix est vraiment imbattable pour le secteur — on se régale sans se ruiner.\nPetit conseil : arrivez tôt le midi, car l’endroit est souvent pris d’assaut, preuve que la réputation n’est plus à faire ! Une maison de qualité depuis 1970 qui mérite amplement ses fidèles.\nJe recommande sans hésiter. 🍕",
+      "time": 1771700436000,
+      "relativeTime": "il y a moins d'une semaine",
+      "profilePhoto": "https://lh3.googleusercontent.com/a-/ALV-UjU1bWQ7-nEL2xv2sOwgArJh6yIx1Mxzsb1hCHwaKIyHy5ersEo=s128-c0x00000000-cc-rp-mo",
+      "isNegative": false,
+      "addedAt": 1772123759749,
+      "month": "2026-02"
+    },
+    {
       "author": "Guettoyouv Aion",
       "rating": 5,
       "text": "⭐⭐⭐⭐⭐\nSuper expérience dans ce restaurant ! L’accueil est chaleureux, le service rapide et très agréable. Les plats sont délicieux, et on sent que les produits sont de qualité. Très bon rapport qualité-prix. Je recommande sans hésiter ! 🍽️",
@@ -211,5 +222,5 @@
     }
   ],
   "snapshots": [],
-  "lastUpdate": 1771932772553
+  "lastUpdate": 1772192987088
 }

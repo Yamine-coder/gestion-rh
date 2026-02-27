@@ -876,7 +876,7 @@ const createBatchShifts = async (req, res) => {
     
     // ── Phase 1: Validation de TOUS les shifts AVANT insertion ──
     for (const shiftData of shifts) {
-      let { employeeId, date, segments, type = 'travail', startTime, endTime } = shiftData;
+      let { employeeId, date, segments, type = 'travail', startTime, endTime, replaceExisting } = shiftData;
       const employeId = Number(employeeId);
       
       if (!employeId || !date) {
@@ -944,7 +944,7 @@ const createBatchShifts = async (req, res) => {
         paymentDate: segment.paymentDate || '', paymentNote: segment.paymentNote || ''
       }));
       
-      validatedShifts.push({ employeId, dateObj, type, segmentsAvecIds });
+      validatedShifts.push({ employeId, dateObj, type, segmentsAvecIds, replaceExisting: !!replaceExisting });
     }
     
     // ── Phase 2: Détection duplicats dans le batch ──
@@ -952,15 +952,24 @@ const createBatchShifts = async (req, res) => {
       where: {
         OR: validatedShifts.map(s => ({ employeId: s.employeId, date: s.dateObj, type: 'travail' }))
       },
-      select: { employeId: true, date: true }
+      select: { id: true, employeId: true, date: true }
     });
     const existingKeys = new Set(existingShifts.map(s => `${s.employeId}|${s.date.toISOString().slice(0,10)}`));
     
     const toCreate = [];
+    const toReplace = [];
     for (const vs of validatedShifts) {
       const key = `${vs.employeId}|${vs.dateObj.toISOString().slice(0,10)}`;
       if (existingKeys.has(key)) {
-        errors.push(`Shift déjà existant pour employé ${vs.employeId} le ${vs.dateObj.toISOString().slice(0,10)} — ignoré`);
+        if (vs.replaceExisting) {
+          // Trouver le shift existant pour le remplacer
+          const existing = existingShifts.find(s => s.employeId === vs.employeId && s.date.toISOString().slice(0,10) === vs.dateObj.toISOString().slice(0,10));
+          if (existing) {
+            toReplace.push({ ...vs, existingShiftId: existing.id });
+          }
+        } else {
+          errors.push(`Shift déjà existant pour employé ${vs.employeId} le ${vs.dateObj.toISOString().slice(0,10)} — ignoré`);
+        }
       } else {
         toCreate.push(vs);
         existingKeys.add(key); // éviter doublons dans le batch lui-même
@@ -969,9 +978,17 @@ const createBatchShifts = async (req, res) => {
     
     // ── Phase 3: Insertion TRANSACTIONNELLE ──
     let result = [];
-    if (toCreate.length > 0) {
-      result = await prisma.$transaction(
-        toCreate.map(vs => prisma.shift.create({
+    const ops = [];
+    // Replacements
+    for (const vs of toReplace) {
+      ops.push(async (tx) => {
+        // Nettoyer dépendances FK
+        await tx.demandeRemplacement.deleteMany({ where: { shiftId: vs.existingShiftId } });
+        await tx.extraPaymentLog.deleteMany({ where: { shiftId: vs.existingShiftId } });
+        await tx.shiftCorrection.deleteMany({ where: { shiftId: vs.existingShiftId } });
+        await tx.paiementExtra.deleteMany({ where: { shiftId: vs.existingShiftId } });
+        await tx.shift.delete({ where: { id: vs.existingShiftId } });
+        return tx.shift.create({
           data: {
             employeId: parseInt(vs.employeId, 10),
             date: vs.dateObj,
@@ -980,8 +997,30 @@ const createBatchShifts = async (req, res) => {
             segments: vs.segmentsAvecIds,
             version: 0
           }
-        }))
-      );
+        });
+      });
+    }
+    // Creates
+    if (toCreate.length > 0 || toReplace.length > 0) {
+      result = await prisma.$transaction(async (tx) => {
+        const results = [];
+        for (const op of ops) {
+          results.push(await op(tx));
+        }
+        for (const vs of toCreate) {
+          results.push(await tx.shift.create({
+            data: {
+              employeId: parseInt(vs.employeId, 10),
+              date: vs.dateObj,
+              type: vs.type,
+              motif: '',
+              segments: vs.segmentsAvecIds,
+              version: 0
+            }
+          }));
+        }
+        return results;
+      }, { maxWait: 10000, timeout: 30000 });
     }
     
     res.status(201).json({
@@ -1020,19 +1059,34 @@ const createRecurringShifts = async (req, res) => {
       mode: 'skip' | 'replace'   // comportement si un shift existe déjà
     }
   */
-  const { employeIds, startDate, endDate, monthsCount, daysOfWeek, segments, mode='skip' } = req.body || {};
+  const { employeIds, startDate, endDate, monthsCount, daysOfWeek, segments, segmentsByDay, mode='skip' } = req.body || {};
   if (!Array.isArray(employeIds) || employeIds.length === 0) return res.status(400).json({ error: 'employeIds requis' });
   if (!startDate) return res.status(400).json({ error: 'startDate requis' });
   if ((!endDate && !monthsCount) || (endDate && monthsCount)) return res.status(400).json({ error: 'Fournir soit endDate soit monthsCount' });
   if (!Array.isArray(daysOfWeek) || daysOfWeek.length === 0) return res.status(400).json({ error: 'daysOfWeek requis' });
-  if (!Array.isArray(segments) || segments.length === 0) return res.status(400).json({ error: 'segments requis' });
+  // segments OU segmentsByDay requis
+  const hasSegmentsByDay = segmentsByDay && typeof segmentsByDay === 'object' && Object.keys(segmentsByDay).length > 0;
+  if (!hasSegmentsByDay && (!Array.isArray(segments) || segments.length === 0)) return res.status(400).json({ error: 'segments requis' });
 
   try {
     const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
-    for (const seg of segments) {
-      if (!seg.start || !seg.end || !timeRegex.test(seg.start) || !timeRegex.test(seg.end) || seg.start === seg.end) {
-        return res.status(400).json({ error: `Segment invalide ${seg.start || '?'}-${seg.end || '?'}` });
+    const validateSegs = (segs, label) => {
+      for (const seg of segs) {
+        if (!seg.start || !seg.end || !timeRegex.test(seg.start) || !timeRegex.test(seg.end) || seg.start === seg.end) {
+          return `Segment invalide ${label}: ${seg.start || '?'}-${seg.end || '?'}`;
+        }
       }
+      return null;
+    };
+    if (hasSegmentsByDay) {
+      for (const [day, daySegs] of Object.entries(segmentsByDay)) {
+        if (!Array.isArray(daySegs) || daySegs.length === 0) return res.status(400).json({ error: `Segments vides pour jour ${day}` });
+        const err = validateSegs(daySegs, `jour ${day}`);
+        if (err) return res.status(400).json({ error: err });
+      }
+    } else {
+      const err = validateSegs(segments, '');
+      if (err) return res.status(400).json({ error: err });
     }
     // Dates
     const [sy, sm, sd] = startDate.split('-').map(Number);
@@ -1080,8 +1134,8 @@ const createRecurringShifts = async (req, res) => {
       existingMap.set(key, s.id);
     });
 
-    // Normalised segments with ids
-    const baseSegments = segments.map(seg => ({
+    // Normalised segments with ids — par jour si segmentsByDay fourni
+    const normalizeSegs = (segs) => segs.map(seg => ({
       id: seg.id || require('crypto').randomUUID(),
       start: seg.start,
       end: seg.end,
@@ -1094,6 +1148,14 @@ const createRecurringShifts = async (req, res) => {
       paymentDate: seg.paymentDate || '',
       paymentNote: seg.paymentNote ? sanitize(seg.paymentNote) : ''
     }));
+    // Map jour -> segments normalisés
+    const segmentsByDayNorm = {};
+    if (hasSegmentsByDay) {
+      for (const [day, daySegs] of Object.entries(segmentsByDay)) {
+        segmentsByDayNorm[Number(day)] = normalizeSegs(daySegs);
+      }
+    }
+    const baseSegments = hasSegmentsByDay ? null : normalizeSegs(segments);
 
     // 🛡️ RÉCUPÉRER TOUS LES CONGÉS APPROUVÉS POUR FILTRER LES DATES
     const congesApprouves = await prisma.conge.findMany({
@@ -1143,8 +1205,8 @@ const createRecurringShifts = async (req, res) => {
       }
     }
 
-    // Execute in batches of 100
-    const BATCH = 100;
+    // Execute in batches of 25 with extended timeout (Neon/Prisma default is 5s)
+    const BATCH = 25;
     for (let i=0;i<createOps.length;i+=BATCH) {
       const slice = createOps.slice(i,i+BATCH);
       await prisma.$transaction(async (tx) => {
@@ -1161,18 +1223,21 @@ const createRecurringShifts = async (req, res) => {
             await tx.paiementExtra.deleteMany({ where: { shiftId: op.shiftId, statut: 'a_payer' } });
             await tx.shift.delete({ where: { id: op.shiftId } });
           }
+          // Choisir les segments selon le jour de la semaine
+          const dow = new Date(op.dateStr + 'T00:00:00.000Z').getUTCDay();
+          const segsForDay = hasSegmentsByDay ? (segmentsByDayNorm[dow] || baseSegments) : baseSegments;
           await tx.shift.create({
             data: {
               employeId: Number(op.employeId),
               date: new Date(op.dateStr + 'T00:00:00.000Z'),
               type: 'travail',
               motif: null,
-              segments: baseSegments
+              segments: segsForDay
             }
           });
           created++;
         }
-      });
+      }, { maxWait: 10000, timeout: 30000 });
     }
 
     res.json({
@@ -1272,7 +1337,7 @@ const deleteRangeShifts = async (req, res) => {
         details: { before: { shiftIds, shifts: shiftsToDelete }, metadata: { startDate, endDate, type, employeIds } },
         ipAddress: getIp(req), tx
       });
-    });
+    }, { maxWait: 10000, timeout: 30000 });
     
     res.json({ success: true, deleted: shiftIds.length });
   } catch (e) {
