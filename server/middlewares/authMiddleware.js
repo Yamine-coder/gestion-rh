@@ -10,7 +10,7 @@ if (!process.env.JWT_SECRET) {
 // Cache léger pour éviter un hit DB à chaque requête
 // Map: userId → { statut, expiry }
 const statusCache = new Map();
-const CACHE_TTL = 60 * 1000; // 60 secondes
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes (optimisé pour réduire les requêtes DB)
 
 async function checkUserActive(userId) {
   const cached = statusCache.get(userId);

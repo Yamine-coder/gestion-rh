@@ -111,7 +111,7 @@ class AnomalyScheduler {
     this.intervalId = null;
     this.isRunning = false;
     this.lastCheck = null;
-    this.checkIntervalMs = 60 * 1000; // 1 minute
+    this.checkIntervalMs = 5 * 60 * 1000; // 5 minutes (optimisé pour réduire la consommation DB)
   }
 
   /**
