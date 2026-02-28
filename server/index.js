@@ -170,8 +170,8 @@ if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
       // Vérifier si on est dans les heures d'activité (9h-2h heure Paris)
       const parisHour = new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false });
       const hour = parseInt(parisHour, 10);
-      // Actif entre 9h et 2h du matin (heures restaurant)
-      const isBusinessHours = hour >= 9 || hour < 2;
+      // Actif entre 10h et 1h du matin (heures cœur restaurant)
+      const isBusinessHours = hour >= 10 || hour < 1;
       
       if (!isBusinessHours) {
         return; // Laisser Render dormir la nuit → économise les CU-hrs Neon
