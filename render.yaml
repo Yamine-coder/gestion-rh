@@ -4,7 +4,7 @@ services:
     name: gestion-rh-api
     env: node
     rootDir: server
-    buildCommand: npm install --omit=dev && npx prisma generate && npx prisma db push
+    buildCommand: npm install && npx prisma generate
     startCommand: npm start
     envVars:
       - key: PORT
