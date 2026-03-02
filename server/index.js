@@ -161,31 +161,22 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Self-ping keep-alive : empêche Render free tier de dormir
-// Optimisé : uniquement pendant les heures de service du restaurant (9h-2h Paris)
+// Keep-alive pendant les heures de service uniquement (10h-23h Paris)
+// ⚠️ Nécessite de plafonner Neon compute à 0.25 CU dans le dashboard Neon
 if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
   const SELF_PING_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
   setInterval(async () => {
     try {
-      // Vérifier si on est dans les heures d'activité (9h-2h heure Paris)
-      const parisHour = new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false });
-      const hour = parseInt(parisHour, 10);
-      // Actif entre 10h et 1h du matin (heures cœur restaurant)
-      const isBusinessHours = hour >= 10 || hour < 1;
-      
-      if (!isBusinessHours) {
-        return; // Laisser Render dormir la nuit → économise les CU-hrs Neon
+      const parisHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }), 10);
+      // Actif uniquement 10h-23h (heures de service restaurant)
+      if (parisHour < 10 || parisHour >= 23) {
+        return; // Nuit → Render + Neon dorment → 0 CU-hrs
       }
-
-      const res = await fetch(`${SELF_PING_URL}/health`);
-      if (res.ok) {
-        console.log(`[KEEP-ALIVE] Ping OK — ${new Date().toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris' })}`);
-      }
+      await fetch(`${SELF_PING_URL}/health`);
     } catch (err) {
-      console.log('[KEEP-ALIVE] Ping échoué:', err.message);
+      // Silencieux
     }
   }, 14 * 60 * 1000); // 14 minutes
-  console.log('[KEEP-ALIVE] Self-ping activé (heures restaurant 9h-2h)');
 }
 
 // Global Express error handler
