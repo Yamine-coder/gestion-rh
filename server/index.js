@@ -168,8 +168,8 @@ if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
   setInterval(async () => {
     try {
       const parisHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }), 10);
-      // Actif uniquement 10h-23h (heures de service restaurant)
-      if (parisHour < 10 || parisHour >= 23) {
+      // Actif uniquement 10h-00h (heures de service restaurant)
+      if (parisHour < 10) {
         return; // Nuit → Render + Neon dorment → 0 CU-hrs
       }
       await fetch(`${SELF_PING_URL}/health`);
