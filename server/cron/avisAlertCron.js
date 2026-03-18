@@ -149,8 +149,8 @@ async function sendDailyReviewReport() {
  * Démarre les tâches cron
  */
 function startCronJobs() {
-  // Vérification toutes les 15 minutes
-  const checkJob = cron.schedule('*/15 * * * *', checkNewReviews, {
+  // Vérification toutes les 2 heures (optimisé pour réduire conso Neon)
+  const checkJob = cron.schedule('0 */2 * * *', checkNewReviews, {
     timezone: 'Europe/Paris'
   });
   cronJobs.push(checkJob);

@@ -111,7 +111,7 @@ class AnomalyScheduler {
     this.intervalId = null;
     this.isRunning = false;
     this.lastCheck = null;
-    this.checkIntervalMs = 10 * 60 * 1000; // 10 minutes (permet à Neon de se suspendre entre chaque check)
+    this.checkIntervalMs = 30 * 60 * 1000; // 30 minutes (réduit drastiquement la conso Neon CU-hrs)
   }
 
   /**
