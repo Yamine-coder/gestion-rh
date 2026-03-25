@@ -8,7 +8,7 @@ const prisma = new PrismaClient({
   // Optimisation connexion pour Neon free tier
   datasources: {
     db: {
-      url: process.env.DATABASE_URL + (process.env.DATABASE_URL?.includes('?') ? '&' : '?') + 'connection_limit=5&pool_timeout=30&connect_timeout=15'
+      url: process.env.DATABASE_URL + (process.env.DATABASE_URL?.includes('?') ? '&' : '?') + 'connection_limit=3&pool_timeout=30&connect_timeout=15'
     }
   }
 });

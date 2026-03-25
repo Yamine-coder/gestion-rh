@@ -161,26 +161,10 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Keep-alive uniquement pendant les créneaux de service restaurant
-// Split en 2 fenêtres : midi (11h-15h) + soir (18h-00h)
-// ⚠️ Nécessite de plafonner Neon compute à 0.25 CU dans le dashboard Neon
-if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
-  const SELF_PING_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
-  setInterval(async () => {
-    try {
-      const parisHour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }), 10);
-      // Créneaux service : 11h-15h (midi) + 18h-00h (soir)
-      const isLunchService = parisHour >= 11 && parisHour < 15;
-      const isDinnerService = parisHour >= 18; // 18h-00h (minuit = heure 0 → pas inclus)
-      if (!isLunchService && !isDinnerService) {
-        return; // Hors service → Render + Neon dorment → 0 CU-hrs
-      }
-      await fetch(`${SELF_PING_URL}/health`);
-    } catch (err) {
-      // Silencieux
-    }
-  }, 14 * 60 * 1000); // 14 minutes
-}
+// ⚠️ Keep-alive SUPPRIMÉ pour économiser le quota Neon free tier
+// Render dort après 15min d'inactivité → Neon dort aussi → 0 CU-hrs
+// Conséquence : cold start ~30s au premier accès après inactivité
+// La PWA reste en cache, seuls les appels API prennent du temps au premier chargement
 
 // Global Express error handler
 app.use((err, req, res, next) => {
