@@ -111,6 +111,15 @@ function AppRoutes() {
         }
       />
 
+      <Route
+        path="/mes-documents"
+        element={
+          <ProtectedRoute roleRequired="employee">
+            <Navigate to="/employee/profil" state={{ fromNotification: true, highlightSection: 'documents-section' }} replace />
+          </ProtectedRoute>
+        }
+      />
+
       <Route path="/badgeuse" element={<Badgeuse />} />
 
       {/* Tout autre chemin renvoie à la page de login */}

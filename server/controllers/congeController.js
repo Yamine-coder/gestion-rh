@@ -181,9 +181,11 @@ const getTousLesConges = async (req, res) => {
       include: {
         user: {
           select: {
+            id: true,
             email: true,
             nom: true,
-            prenom: true
+            prenom: true,
+            categorie: true
           },
         },
       },

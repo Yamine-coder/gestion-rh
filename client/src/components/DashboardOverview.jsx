@@ -6,7 +6,6 @@ import { computeKPIs } from '../utils/kpiHelpers';
 import AlertesTempsReel from './AlertesTempsReel';
 // Nouveaux widgets Dashboard refactorisés
 import EvenementsCalendrier from './dashboard/EvenementsCalendrier';
-import AvisGoogle from './dashboard/AvisGoogle';
 import { 
   Megaphone, Plus, Edit2, Trash2, X, AlertTriangle, AlertCircle, Info, Check, 
   Bell, BellRing, BellOff, Calendar, Clock, Zap, FileText, Send, PartyPopper, Users, Coffee,
@@ -1621,6 +1620,28 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
   const employesPresents = employesList.filter(e => e.aPointe);
   const employesNonPointes = employesList.filter(e => !e.aPointe);
 
+  // 🟢 PRÉSENCE TEMPS RÉEL — données du widget header
+  const enPosteMaintenant = employesList.filter(e => e.aPointe && !e.heureSortie).length;
+  const ontTermineService = employesList.filter(e => e.aPointe && e.heureSortie).length;
+  const presenceTotalPrevu = effectifAttendu; // attendus du jour (hors congés)
+  const presenceLiveTotal = Math.max(presenceTotalPrevu, enPosteMaintenant);
+  const presenceLivePct = presenceLiveTotal > 0 ? Math.round((enPosteMaintenant / presenceLiveTotal) * 100) : 0;
+  // Retards : pointés après leur heure de début prévue (tolérance 5 min)
+  const shiftStartByEmp = new Map();
+  shifts.forEach(s => { if (s.employeeId && s.start) shiftStartByEmp.set(s.employeeId, s.start); });
+  let presenceRetards = 0;
+  employesPresents.forEach(e => {
+    const prevu = shiftStartByEmp.get(e.id);
+    if (prevu && e.heureEntree && (new Date(e.heureEntree).getTime() - new Date(prevu).getTime()) > 5 * 60 * 1000) {
+      presenceRetards++;
+    }
+  });
+  const presenceAbsents = nonPointes;        // attendus non pointés (hors congés)
+  const presenceConges = enCongeAujourdHui;  // en congé aujourd'hui
+  const presenceRingColor = presenceLivePct >= 85 ? '#10b981' : presenceLivePct >= 65 ? '#f59e0b' : '#ef4444';
+  const presenceLoading = loadingShifts || loading;
+  const presenceCirc = 2 * Math.PI * 22;
+
   // Salutation contextuelle selon l'heure
   const getGreeting = () => {
     const h = now.getHours();
@@ -1683,9 +1704,92 @@ function DashboardOverview({ onGoToConges, onNavigate }) {
             </div>
           </div>
 
-          {/* Droite - Avis Google mis en valeur */}
+          {/* Droite - Présence temps réel */}
           <div className='flex items-center'>
-            <AvisGoogle compact />
+            {presenceLoading && employesList.length === 0 ? (
+              <div className='flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5'>
+                <div className='w-14 h-14 rounded-full bg-slate-100 animate-pulse' />
+                <div className='space-y-2'>
+                  <div className='h-3 w-28 bg-slate-100 rounded animate-pulse' />
+                  <div className='h-2.5 w-20 bg-slate-100 rounded animate-pulse' />
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => onNavigate?.('vuejour')}
+                title='Voir le détail des pointages du jour'
+                className='group flex items-center gap-3 sm:gap-4 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 px-3 sm:px-4 py-2.5 hover:border-slate-300 hover:shadow-sm transition-all'
+              >
+                {/* Jauge circulaire — effectif en poste */}
+                <div className='relative w-14 h-14 flex-shrink-0'>
+                  <svg className='w-14 h-14 -rotate-90' viewBox='0 0 56 56'>
+                    <circle cx='28' cy='28' r='22' fill='none' stroke='#e2e8f0' strokeWidth='5' />
+                    <circle
+                      cx='28' cy='28' r='22' fill='none'
+                      stroke={presenceRingColor} strokeWidth='5' strokeLinecap='round'
+                      strokeDasharray={presenceCirc}
+                      strokeDashoffset={presenceCirc * (1 - presenceLivePct / 100)}
+                      className='transition-all duration-700 ease-out'
+                    />
+                  </svg>
+                  <div className='absolute inset-0 flex flex-col items-center justify-center'>
+                    <span className='text-base font-bold leading-none text-gray-800'>{enPosteMaintenant}</span>
+                    <span className='text-[9px] text-gray-400 leading-none mt-0.5'>/ {presenceTotalPrevu}</span>
+                  </div>
+                </div>
+
+                {/* Infos principales */}
+                <div className='flex flex-col items-start min-w-0'>
+                  <span className='flex items-center gap-1.5 mb-0.5'>
+                    <span className='relative flex h-2 w-2'>
+                      <span className='animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75' />
+                      <span className='relative inline-flex rounded-full h-2 w-2 bg-emerald-500' />
+                    </span>
+                    <span className='text-[10px] font-semibold uppercase tracking-wide text-emerald-600'>En direct</span>
+                  </span>
+                  <span className='text-sm font-semibold text-gray-800 leading-tight whitespace-nowrap'>En poste maintenant</span>
+                  <span className='text-[11px] text-gray-400 leading-tight whitespace-nowrap'>
+                    {presenceLivePct}% de couverture{ontTermineService > 0 ? ` · ${ontTermineService} terminé${ontTermineService > 1 ? 's' : ''}` : ''}
+                  </span>
+                </div>
+
+                {/* Séparateur */}
+                <div className='hidden sm:block w-px h-10 bg-slate-200' />
+
+                {/* Pastilles d'alerte */}
+                <div className='hidden sm:flex items-center gap-2'>
+                  {(presenceRetards > 0 || presenceAbsents > 0 || presenceConges > 0) ? (
+                    <>
+                      {presenceRetards > 0 && (
+                        <div className='flex flex-col items-center px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-100 min-w-[52px]'>
+                          <span className='text-sm font-bold text-amber-600 leading-none'>{presenceRetards}</span>
+                          <span className='text-[9px] font-medium text-amber-500 mt-0.5'>retard{presenceRetards > 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                      {presenceAbsents > 0 && (
+                        <div className='flex flex-col items-center px-2.5 py-1 rounded-xl bg-red-50 border border-red-100 min-w-[52px]'>
+                          <span className='text-sm font-bold text-[#cf292c] leading-none'>{presenceAbsents}</span>
+                          <span className='text-[9px] font-medium text-red-400 mt-0.5'>absent{presenceAbsents > 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                      {presenceConges > 0 && (
+                        <div className='flex flex-col items-center px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 min-w-[52px]'>
+                          <span className='text-sm font-bold text-slate-600 leading-none'>{presenceConges}</span>
+                          <span className='text-[9px] font-medium text-slate-400 mt-0.5'>congé{presenceConges > 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className='flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-100'>
+                      <CheckCircle className='w-4 h-4 text-emerald-500' />
+                      <span className='text-xs font-medium text-emerald-700'>Tout est en ordre</span>
+                    </div>
+                  )}
+                </div>
+
+                <ChevronRight className='w-4 h-4 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all flex-shrink-0' />
+              </button>
+            )}
           </div>
         </div>
 

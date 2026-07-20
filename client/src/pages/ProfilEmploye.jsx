@@ -31,6 +31,7 @@ import {
 import BottomNav from '../components/BottomNav';
 import UploadPhotoProfil from '../components/UploadPhotoProfil';
 import MobileOnboarding from '../components/onboarding/MobileOnboarding';
+import MesDocumentsEmploye from '../components/MesDocumentsEmploye';
 import { getToken, isTokenValid, setupTokenExpirationCheck, clearToken } from '../utils/tokenManager';
 import { getCategoriesEmploye } from '../utils/categoriesConfig';
 import { getImageUrl } from '../utils/imageUtils';
@@ -2617,6 +2618,22 @@ const ProfilEmploye = React.memo(() => {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Séparateur */}
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="p-1.5 rounded-lg bg-primary-100 dark:bg-primary-900/30">
+                        <DocumentTextIcon className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Documents à signer</h4>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Documents envoyés par l'administration
+                        </p>
+                      </div>
+                    </div>
+                    <MesDocumentsEmploye embedded />
                   </div>
                 </div>
               </Card>

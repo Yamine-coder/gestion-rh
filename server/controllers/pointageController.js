@@ -7,6 +7,16 @@ const { isEntree, isSortie, filtrerEntrees, filtrerSorties, trouverPremiereEntre
 const { parseSegments } = require('../utils/segmentUtils');
 const { getBusinessDayBoundsUTC, horodatageToParisMinutes, horodatageToParisHHMM } = require('../utils/businessDayUtils');
 
+/** Heure de fin (HH:mm) d'un shift, depuis les champs directs ou le dernier segment officiel. */
+function getShiftHeureFin(shift) {
+  if (shift.heureFin) return shift.heureFin;
+  const segments = parseSegments(shift.segments).filter((s) => !s.isExtra);
+  if (segments.length === 0) return null;
+  const sorted = [...segments].sort((a, b) => (a.start || a.debut || '').localeCompare(b.start || b.debut || ''));
+  const last = sorted[sorted.length - 1];
+  return last.end || last.fin || null;
+}
+
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
  * Met à jour les PaiementExtra du jour pour un employé après son pointage de départ
@@ -474,12 +484,27 @@ const getPointagesParJour = async (req, res) => {
       },
     });
 
+    // Shifts prévus ce jour-là → sert à pré-remplir l'heure de fin attendue
+    const shifts = await prisma.shift.findMany({
+      where: {
+        type: 'travail',
+        date: new Date(`${date}T00:00:00.000Z`),
+      },
+      select: { employeId: true, segments: true },
+    });
+    const heureFinParEmploye = {};
+    shifts.forEach((s) => {
+      const heureFin = getShiftHeureFin(s);
+      if (heureFin) heureFinParEmploye[s.employeId] = heureFin;
+    });
+
     const groupedByUser = {};
 
     pointages.forEach((p) => {
       const userId = p.user.id;
       if (!groupedByUser[userId]) {
         groupedByUser[userId] = {
+          id: userId,
           email: p.user.email,
           nom: p.user.nom,
           prenom: p.user.prenom,
@@ -491,7 +516,7 @@ const getPointagesParJour = async (req, res) => {
       if (isEntree(p.type)) {
         // Si le dernier bloc est incomplet (pas de départ), on n'en crée pas un nouveau
         if (userBlocs.length === 0 || userBlocs[userBlocs.length - 1].depart) {
-          userBlocs.push({ arrivee: p.horodatage });
+          userBlocs.push({ arrivee: p.horodatage, arriveeId: p.id });
         }
         // Sinon, on ignore l'arrivée (cas d'anomalie)
       } else if (isSortie(p.type)) {
@@ -499,13 +524,14 @@ const getPointagesParJour = async (req, res) => {
         const lastBloc = userBlocs[userBlocs.length - 1];
         if (lastBloc && !lastBloc.depart) {
           lastBloc.depart = p.horodatage;
+          lastBloc.departId = p.id;
           const diffMs = new Date(p.horodatage) - new Date(lastBloc.arrivee);
           const h = Math.floor(diffMs / 3600000);
           const m = Math.floor((diffMs % 3600000) / 60000);
           lastBloc.duree = `${h}h ${m < 10 ? '0' : ''}${m}min`;
         } else {
           // Cas rare : départ sans arrivée, on crée un bloc orphelin
-          userBlocs.push({ depart: p.horodatage });
+          userBlocs.push({ depart: p.horodatage, departId: p.id });
         }
       }
     });
@@ -525,11 +551,13 @@ const getPointagesParJour = async (req, res) => {
       const totalM = Math.floor((totalMs % 3600000) / 60000);
 
       return {
+        id: user.id,
         email: user.email,
         nom: user.nom,
         prenom: user.prenom,
         blocs: user.blocs,
         total: `${totalH}h ${totalM < 10 ? '0' : ''}${totalM}min`,
+        heureFinPrevue: heureFinParEmploye[user.id] || null,
       };
     });
 
@@ -540,9 +568,52 @@ const getPointagesParJour = async (req, res) => {
   }
 };
 
+// 🛠️ Admin : corriger l'heure d'un pointage existant (erreur de saisie)
+const corrigerPointage = async (req, res) => {
+  const { pointageId, horodatage } = req.body;
+
+  if (!pointageId || !horodatage) {
+    return res.status(400).json({ error: 'Paramètres manquants : pointageId et horodatage sont requis' });
+  }
+
+  const nouvelleDate = new Date(horodatage);
+  if (isNaN(nouvelleDate.getTime())) {
+    return res.status(400).json({ error: 'Format de date invalide' });
+  }
+
+  const maintenant = new Date();
+  const uneHeure = 60 * 60 * 1000;
+  if (nouvelleDate.getTime() > maintenant.getTime() + uneHeure) {
+    return res.status(400).json({ error: 'Impossible de fixer un pointage dans le futur' });
+  }
+
+  try {
+    const pointageExistant = await prisma.pointage.findUnique({
+      where: { id: parseInt(pointageId) },
+    });
+
+    if (!pointageExistant) {
+      return res.status(404).json({ error: 'Pointage introuvable' });
+    }
+
+    const pointageMisAJour = await prisma.pointage.update({
+      where: { id: parseInt(pointageId) },
+      data: { horodatage: nouvelleDate },
+    });
+
+    console.log(`[CORRECTION POINTAGE] admin ${req.user.userId} → pointage #${pointageId} (userId ${pointageExistant.userId}, type ${pointageExistant.type}) : ${pointageExistant.horodatage.toISOString()} → ${nouvelleDate.toISOString()}`);
+
+    res.json({ message: 'Pointage corrigé avec succès', pointage: pointageMisAJour });
+  } catch (err) {
+    console.error('Erreur correction pointage :', err);
+    res.status(500).json({ error: 'Erreur serveur lors de la correction du pointage' });
+  }
+};
+
 module.exports = {
   enregistrerPointage,
   getMesPointages,
   getMesPointagesAujourdhui,
-  getPointagesParJour
+  getPointagesParJour,
+  corrigerPointage
 };

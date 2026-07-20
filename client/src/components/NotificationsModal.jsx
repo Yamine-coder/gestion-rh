@@ -164,6 +164,30 @@ const NOTIFICATION_CONFIG = {
   },
   
   // Documents
+  document_a_signer: {
+    icon: DocumentTextIcon,
+    color: '#f59e0b',
+    bg: '#f59e0b15',
+    label: 'Document à signer',
+    route: '/employee/profil',
+    highlightSection: 'documents-section'
+  },
+  document_rappel: {
+    icon: DocumentTextIcon,
+    color: '#f59e0b',
+    bg: '#f59e0b15',
+    label: 'Rappel signature',
+    route: '/employee/profil',
+    highlightSection: 'documents-section'
+  },
+  document_signe: {
+    icon: CheckCircleIcon,
+    color: '#10b981',
+    bg: '#10b98115',
+    label: 'Document signé',
+    route: '/employee/profil',
+    highlightSection: 'documents-section'
+  },
   document_expire: {
     icon: DocumentTextIcon,
     color: '#ef4444',

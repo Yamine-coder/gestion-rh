@@ -27,15 +27,18 @@ const alertesRoutes = require('./routes/alertesRoutes');
 const remplacementRoutes = require('./routes/remplacementRoutes');
 const consignesRoutes = require('./routes/consignesRoutes');
 const fichesPosteRoutes = require('./routes/fichesPosteRoutes');
+const documentSignatureRoutes = require('./routes/documentSignatureRoutes');
 const scoringRoutes = require('./routes/scoring');
 const eventsRoutes = require('./routes/eventsRoutes');
 const avisRoutes = require('./routes/avisRoutes');
 const notificationsConfigRoutes = require('./routes/notificationsConfigRoutes');
 const memoRoutes = require('./routes/memoRoutes');
 const planningTemplateRoutes = require('./routes/planningTemplateRoutes');
+const pushRoutes = require('./routes/pushRoutes');
 
 // Import du scheduler d'anomalies temps réel
 const anomalyScheduler = require('./services/anomalyScheduler');
+const pointageReminderScheduler = require('./services/pointageReminderScheduler');
 
 // Import des crons
 const avisAlertCron = require('./cron/avisAlertCron');
@@ -146,12 +149,14 @@ app.use("/api/alertes", alertesRoutes); // Alertes temps réel retards/absences
 app.use("/api/remplacements", remplacementRoutes); // Système de remplacement entre employés
 app.use("/api/consignes", consignesRoutes); // Consignes du jour + stats ponctualité
 app.use("/api/fiches-poste", fichesPosteRoutes); // Fiches de poste PDF par catégorie
+app.use("/api/documents-rh", documentSignatureRoutes); // Documents à signer (signature employés)
 app.use("/api/scoring", scoringRoutes); // Système de scoring/points employés
 app.use("/api/events", eventsRoutes); // Matchs de foot + événements locaux
 app.use("/api/avis", avisRoutes); // Avis Google du restaurant
 app.use("/api/notifications-config", notificationsConfigRoutes); // Config notifications email
 app.use("/api/memo", memoRoutes); // Rappels mémo par email
 app.use("/api/planning-templates", planningTemplateRoutes); // Planning types / modèles
+app.use("/api/push", pushRoutes); // Web Push : rappels de pointage
 
 // Route de health check (avant le error handler)
 app.get('/health', (req, res) => {
@@ -231,6 +236,7 @@ app.listen(PORT, '0.0.0.0', () => {
   // Démarrage des tâches de fond (protégé contre les crashs)
   try {
     anomalyScheduler.start();
+    pointageReminderScheduler.start();
     avisAlertCron.startCronJobs();
     startAnomaliesCron();
     startScoringCron();

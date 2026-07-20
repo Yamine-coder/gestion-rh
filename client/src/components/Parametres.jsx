@@ -33,10 +33,12 @@ import {
   ClipboardCheck
 } from 'lucide-react';
 import FichePosteEditor from './FichePosteEditor';
+import usePushNotifications from '../hooks/usePushNotifications';
 
 const Parametres = () => {
   const [activeTab, setActiveTab] = useState('profil');
   const [loading, setLoading] = useState(false);
+  const push = usePushNotifications();
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [userRole, setUserRole] = useState('');
@@ -528,6 +530,40 @@ const Parametres = () => {
                 </div>
               </div>
             </div>
+
+            {/* Notifications push (alertes RH en temps réel) */}
+            {push.supported && (
+              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                  <div className="p-1 rounded bg-amber-100">
+                    <Bell size={14} className="text-amber-600" />
+                  </div>
+                  <h3 className="font-medium text-gray-900 text-sm">Notifications push (navigateur)</h3>
+                </div>
+                <div className="p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-600">
+                      {push.subscribed
+                        ? 'Activées — vous recevrez une alerte si un employé n\'a pas pointé son départ.'
+                        : 'Recevez une alerte sur cet appareil si un employé oublie de pointer son départ.'}
+                    </p>
+                    {push.error && <p className="text-xs text-red-600 mt-1">{push.error}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (push.subscribed ? push.unsubscribe() : push.subscribe())}
+                    disabled={push.loading}
+                    className={`flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                      push.subscribed
+                        ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        : 'bg-[#cf292c] text-white hover:bg-[#b91c1c]'
+                    }`}
+                  >
+                    {push.loading ? '...' : push.subscribed ? 'Désactiver' : 'Activer'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Dernière activité - inline */}
             <div className="bg-white rounded-lg border border-gray-200 px-3 py-2 flex items-center gap-2">

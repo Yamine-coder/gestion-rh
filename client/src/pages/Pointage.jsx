@@ -6,6 +6,7 @@ import { Link, useLocation } from 'react-router-dom';
 import BottomNav from "../components/BottomNav";
 import { ThemeContext } from '../context/ThemeContext';
 import useNotificationHighlight from '../hooks/useNotificationHighlight';
+import usePushNotifications from '../hooks/usePushNotifications';
 import { toLocalDateString, parseLocalDate } from '../utils/parisTimeUtils';
 import { API_BASE } from '../config/api';
 
@@ -30,6 +31,8 @@ const Pointage = () => {
   
   // État pour le rappel de pointage
   const [rappelPointage, setRappelPointage] = useState(null);
+  const push = usePushNotifications();
+  const [pushTestMsg, setPushTestMsg] = useState('');
 
   const token = localStorage.getItem('token');
 
@@ -337,7 +340,9 @@ const Pointage = () => {
     fetchRappelPointage();
     
     // Rafraîchir le rappel toutes les minutes
-    const rappelInterval = setInterval(fetchRappelPointage, 60 * 1000);
+    const rappelInterval = setInterval(() => {
+      fetchRappelPointage();
+    }, 60 * 1000);
     
     // 🔄 Polling léger des anomalies (60s) - temps réel gratuit
     const anomaliesPollingInterval = setInterval(() => fetchMesAnomalies(effectiveWorkDay), 60 * 1000);
@@ -985,7 +990,56 @@ const Pointage = () => {
             </div>
           </div>
         )}
-        
+
+        {/* RÉGLAGE : RAPPELS DE POINTAGE (Web Push) */}
+        {push.supported && (
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${push.subscribed ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-slate-700'}`}>
+                  <Bell className={`w-5 h-5 ${push.subscribed ? 'text-white' : 'text-gray-400 dark:text-slate-400'}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Rappels de pointage</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    {push.subscribed
+                      ? 'Activés — rappels avant ton service et à la fin'
+                      : 'Sois notifié avant ton arrivée et pour pointer ton départ'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => (push.subscribed ? push.unsubscribe() : push.subscribe())}
+                disabled={push.loading}
+                aria-pressed={push.subscribed}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${push.subscribed ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-slate-600'}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${push.subscribed ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            {push.subscribed && (
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setPushTestMsg('');
+                    const ok = await push.sendTest();
+                    setPushTestMsg(ok ? '✅ Notification envoyée' : `⚠️ ${push.error || 'Échec'}`);
+                  }}
+                  className="text-xs font-medium text-[#cf292c] hover:underline"
+                >
+                  Envoyer une notification de test
+                </button>
+                {pushTestMsg && <span className="text-xs text-gray-500 dark:text-slate-400">{pushTestMsg}</span>}
+              </div>
+            )}
+            {push.error && !push.subscribed && (
+              <p className="mt-2 text-xs text-red-500">{push.error}</p>
+            )}
+          </div>
+        )}
+
         {/* SECTION ACTION / HORLOGE */}
         <div 
           id="pointage-actions"

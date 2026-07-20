@@ -33,6 +33,7 @@ const {
   getMesPointagesAujourdhui,
   getPointagesParJour,
   enregistrerPointage,
+  corrigerPointage,
 } = require('../controllers/pointageController');
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -622,6 +623,9 @@ router.get('/mes-pointages-aujourdhui', authenticateToken, getMesPointagesAujour
 
 // 🔧 Pointage manuel (pour tests) - Admin uniquement
 router.post('/manuel', authenticateToken, isAdmin, enregistrerPointage);
+
+// 🛠️ Corriger l'heure d'un pointage existant (erreur de saisie admin)
+router.put('/corriger', authenticateToken, isAdmin, corrigerPointage);
 
 // 👨‍💼 Admin : pointages d’un jour
 router.get('/admin/pointages/jour/:date', authenticateToken, isAdmin, getPointagesParJour);

@@ -681,6 +681,7 @@ const envoyerEmailRappelConges = async (adminEmail, congesEnAttente) => {
 };
 
 module.exports = {
+  sendEmail,
   envoyerEmailAccueil,
   envoyerEmailRecuperation,
   envoyerEmailNouvelleDemandeConge,

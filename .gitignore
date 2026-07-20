@@ -32,6 +32,9 @@ yarn-error.log*
 # Prisma - Garder les migrations pour la prod
 # */prisma/migrations/
 
+# Documents RH uploadés (données sensibles employés - ne pas versionner)
+server/uploads/documents-rh/
+
 # Editor directories and files
 .vscode/
 .idea/

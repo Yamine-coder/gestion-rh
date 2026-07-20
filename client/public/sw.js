@@ -128,3 +128,46 @@ async function syncPointages() {
   // À implémenter : synchroniser les pointages faits offline
   console.log('[SW] Synchronisation des pointages...');
 }
+
+// 🔔 Notifications Web Push (rappels de pointage)
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'Chez Antoine', body: event.data ? event.data.text() : '' };
+  }
+
+  const title = data.title || 'Chez Antoine';
+  const options = {
+    body: data.body || '',
+    icon: '/logo192.png',
+    badge: '/logo192.png',
+    vibrate: [200, 100, 200],
+    silent: false,
+    requireInteraction: !!data.requireInteraction,
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    data: { url: data.url || '/pointage', ...(data.data || {}) },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Clic sur la notification → ouvrir/focus l'app sur la bonne page
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || '/pointage';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(urlToOpen);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(urlToOpen);
+    })
+  );
+});

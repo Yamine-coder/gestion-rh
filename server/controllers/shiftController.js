@@ -1270,15 +1270,20 @@ const createRecurringShifts = async (req, res) => {
 // DELETE (POST helper) : suppression en masse d'une plage pour un ou plusieurs employés
 const deleteRangeShifts = async (req, res) => {
   /* Body:
-    { employeIds?: [Int], startDate:'YYYY-MM-DD', endDate:'YYYY-MM-DD', type?: 'présence'|'absence'|undefined }
+    { employeIds?: [Int], startDate:'YYYY-MM-DD', endDate:'YYYY-MM-DD', type?: 'présence'|'absence'|undefined,
+      daysOfWeek?: [Int] }  // 0=dimanche … 6=samedi — filtre optionnel par jour de semaine
   */
-  const { employeIds, startDate, endDate, type } = req.body || {};
+  const { employeIds, startDate, endDate, type, daysOfWeek } = req.body || {};
   if (!startDate || !endDate) return res.status(400).json({ error: 'startDate et endDate requis' });
   const [sy, sm, sd] = startDate.split('-').map(Number);
   const [ey, em, ed] = endDate.split('-').map(Number);
   const start = new Date(Date.UTC(sy, sm-1, sd, 0,0,0,0));
   const end = new Date(Date.UTC(ey, em-1, ed, 23,59,59,999));
   if (end < start) return res.status(400).json({ error: 'Période invalide' });
+  // Set des jours de semaine ciblés (si fourni)
+  const daysSet = Array.isArray(daysOfWeek) && daysOfWeek.length
+    ? new Set(daysOfWeek.map(Number))
+    : null;
   try {
     const where = {
       date: { gte: start, lte: end },
@@ -1287,10 +1292,14 @@ const deleteRangeShifts = async (req, res) => {
     };
     
     // D'abord récupérer les IDs des shifts à supprimer
-    const shiftsToDelete = await prisma.shift.findMany({
+    let shiftsToDelete = await prisma.shift.findMany({
       where,
       select: { id: true, type: true, employeId: true, date: true }
     });
+    // Filtrage par jour de semaine (impossible directement en SQL Prisma)
+    if (daysSet) {
+      shiftsToDelete = shiftsToDelete.filter(s => daysSet.has(new Date(s.date).getUTCDay()));
+    }
     const shiftIds = shiftsToDelete.map(s => s.id);
     
     if (shiftIds.length === 0) {
@@ -1334,7 +1343,7 @@ const deleteRangeShifts = async (req, res) => {
       await logAudit({
         entite: 'shift_range', entiteId: null, action: 'batch_suppression',
         userId: Number(getUserId(req)),
-        details: { before: { shiftIds, shifts: shiftsToDelete }, metadata: { startDate, endDate, type, employeIds } },
+        details: { before: { shiftIds, shifts: shiftsToDelete }, metadata: { startDate, endDate, type, employeIds, daysOfWeek } },
         ipAddress: getIp(req), tx
       });
     }, { maxWait: 10000, timeout: 30000 });

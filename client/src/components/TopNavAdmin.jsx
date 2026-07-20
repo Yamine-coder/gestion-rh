@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Banknote,
   Trophy,
+  PenLine,
 } from "lucide-react";
 import logo from "../assets/onboarding/logo.png";
 import { useNotifications } from "../hooks/useNotifications";
@@ -43,6 +44,7 @@ export default function TopNavAdmin({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   
   // État pour les données utilisateur
   const [userData, setUserData] = useState({ nom: '', prenom: '', email: '', role: '' });
@@ -152,8 +154,23 @@ export default function TopNavAdmin({
       priority: "low",
       description: "Stats et évaluations"
     },
+    {
+      key: "documents",
+      label: "Documents",
+      icon: PenLine,
+      short: "Documents",
+      priority: "medium",
+      description: "Documents à signer"
+    },
     // Anomalies retirées - maintenant intégrées dans le Planning
   ];
+
+  // Entrées principales visibles directement + secondaires regroupées dans "Plus"
+  const PRIMARY_KEYS = ["dashboard", "planning", "employes", "demandes", "rapports"];
+  const primaryItems = menuItems.filter((i) => PRIMARY_KEYS.includes(i.key));
+  const moreItems = menuItems.filter((i) => !PRIMARY_KEYS.includes(i.key));
+  const isMoreActive = moreItems.some((i) => i.key === currentMenu);
+  const moreBadgeTotal = moreItems.reduce((sum, i) => sum + (i.badge || 0), 0);
 
   // Calculer le nombre total de notifications (vraies notifs + demandes en attente)
   const totalNotifications = unreadCount;
@@ -183,6 +200,13 @@ export default function TopNavAdmin({
         return <FileText size={16} className="text-amber-600" />;
       case 'justificatif_ajoute':
         return <ClipboardList size={16} className="text-emerald-600" />;
+      case 'document_a_signer':
+      case 'document_rappel':
+        return <FileText size={16} className="text-amber-600" />;
+      case 'document_signe':
+        return <FileText size={16} className="text-emerald-600" />;
+      case 'document_refuse':
+        return <FileText size={16} className="text-red-600" />;
       default:
         return <Bell size={16} className="text-gray-600" />;
     }
@@ -219,6 +243,9 @@ export default function TopNavAdmin({
     // Naviguer vers la page des conges avec l'ID a highlighter
     if (congeId && ['nouvelle_demande_conge', 'modification_demande_conge', 'justificatif_ajoute'].includes(notif.type)) {
       onMenuChange({ menu: 'demandes', highlightCongeId: congeId });
+    } else if (['document_signe', 'document_refuse', 'document_a_signer', 'document_rappel'].includes(notif.type)) {
+      // Notifications liées aux documents RH -> onglet Documents
+      onMenuChange('documents');
     } else {
       // Navigation simple vers les conges
       onMenuChange('demandes');
@@ -241,37 +268,41 @@ export default function TopNavAdmin({
     const handleClickOutside = () => {
       setShowProfileMenu(false);
       setShowNotifications(false);
+      setShowMoreMenu(false);
     };
-    if (showProfileMenu || showNotifications) {
+    if (showProfileMenu || showNotifications || showMoreMenu) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [showProfileMenu, showNotifications]);
+  }, [showProfileMenu, showNotifications, showMoreMenu]);
 
   return (
     <>
       {/* Navigation Top - Design Moderne et Épuré */}
-      <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
-        <div className="mx-auto px-6 lg:px-8">
-          <div className="flex items-center h-16">
+      <nav className="bg-white/95 backdrop-blur-md border-b border-gray-200/70 sticky top-0 z-50 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+        <div className="max-w-[1600px] mx-auto px-6 lg:px-8">
+          <div className="flex items-center h-16 gap-3">
             
             {/* Logo + Titre - Minimaliste */}
-            <div className="flex items-center gap-3 flex-shrink-0 mr-12">
+            <div className="flex items-center gap-2.5 flex-shrink-0">
               <div className="relative">
                 <img 
                   src={logo} 
                   alt="RH Manager" 
-                  className="w-9 h-9 rounded-xl object-cover shadow-sm"
+                  className="w-9 h-9 rounded-xl object-cover shadow-sm ring-1 ring-gray-100"
                 />
               </div>
-              <div className="hidden sm:block">
-                <h1 className="text-base font-semibold text-gray-900 tracking-tight">RH Manager</h1>
+              <div className="hidden xl:block">
+                <h1 className="text-base font-semibold text-gray-900 tracking-tight leading-none">RH Manager</h1>
               </div>
             </div>
 
-            {/* Navigation Desktop - Minimaliste et Épurée */}
-            <div className="hidden lg:flex items-center flex-1 gap-2">
-              {menuItems.map((item) => {
+            {/* Séparateur logo / navigation */}
+            <div className="hidden lg:block w-px h-7 bg-gray-200/80 flex-shrink-0 ml-1" />
+
+            {/* Navigation Desktop - Centrée et Épurée */}
+            <div className="hidden lg:flex items-center justify-center flex-1 gap-1">
+              {primaryItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentMenu === item.key;
                 const isPriority = item.priority === "high";
@@ -281,7 +312,7 @@ export default function TopNavAdmin({
                     key={item.key}
                     onClick={() => onMenuChange(item.key)}
                     className={`
-                      relative flex items-center gap-2.5 px-4 py-2 text-sm font-medium transition-all duration-200 rounded-lg
+                      relative flex items-center gap-2 px-3.5 py-2 text-sm font-medium transition-all duration-200 rounded-lg
                       ${isActive 
                         ? 'text-[#cf292c] bg-red-50/80' 
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -294,7 +325,7 @@ export default function TopNavAdmin({
                     
                     {/* Badge notifications - Design épuré */}
                     {item.badge && (
-                      <span className={`ml-auto min-w-[20px] h-5 px-2 rounded-full text-white text-xs font-semibold flex items-center justify-center shadow-sm ${
+                      <span className={`min-w-[18px] h-[18px] px-1.5 rounded-full text-white text-[11px] font-semibold flex items-center justify-center shadow-sm ${
                         item.badgeColor === 'amber' ? 'bg-amber-500' : 'bg-[#cf292c]'
                       }`}>
                         {item.badge > 99 ? '99+' : item.badge}
@@ -308,10 +339,81 @@ export default function TopNavAdmin({
                   </button>
                 );
               })}
+
+              {/* Menu "Plus" - Regroupe les entrées secondaires */}
+              {moreItems.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMoreMenu(!showMoreMenu);
+                      setShowProfileMenu(false);
+                      setShowNotifications(false);
+                    }}
+                    className={`
+                      relative flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all duration-200 rounded-lg
+                      ${isMoreActive || showMoreMenu
+                        ? 'text-[#cf292c] bg-red-50/80' 
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }
+                    `}
+                    title="Plus d'options"
+                  >
+                    <MenuIcon size={18} strokeWidth={2} className={isMoreActive ? 'text-[#cf292c]' : ''} />
+                    <span className="whitespace-nowrap">Plus</span>
+                    <ChevronDown size={14} className={`transition-transform duration-200 ${showMoreMenu ? 'rotate-180' : ''}`} />
+                    {moreBadgeTotal > 0 && !showMoreMenu && (
+                      <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-[#cf292c] text-white text-[11px] font-semibold flex items-center justify-center shadow-sm">
+                        {moreBadgeTotal > 99 ? '99+' : moreBadgeTotal}
+                      </span>
+                    )}
+                    {isMoreActive && (
+                      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[#cf292c] rounded-full" />
+                    )}
+                  </button>
+
+                  {/* Dropdown "Plus" */}
+                  {showMoreMenu && (
+                    <div className="absolute top-full right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                      {moreItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = currentMenu === item.key;
+                        return (
+                          <button
+                            key={item.key}
+                            onClick={() => {
+                              onMenuChange(item.key);
+                              setShowMoreMenu(false);
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                              isActive
+                                ? 'text-[#cf292c] bg-red-50/80 font-semibold'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            <Icon size={18} strokeWidth={isActive ? 2.5 : 2} className={isActive ? 'text-[#cf292c]' : 'text-gray-400'} />
+                            <div className="flex-1 text-left">
+                              <p className="font-medium leading-tight">{item.label}</p>
+                              {item.description && (
+                                <p className="text-[11px] text-gray-400 leading-tight mt-0.5">{item.description}</p>
+                              )}
+                            </div>
+                            {item.badge && (
+                              <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-[#cf292c] text-white text-[11px] font-semibold flex items-center justify-center">
+                                {item.badge > 99 ? '99+' : item.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Actions droite - Design épuré */}
-            <div className="hidden lg:flex items-center gap-3 ml-auto">
+            <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
               
               {/* Notifications - Minimaliste */}
               <div className="relative">
@@ -472,8 +574,8 @@ export default function TopNavAdmin({
                     <User size={18} className="text-white" strokeWidth={2.5} />
                   </div>
                   <div className="hidden xl:block text-left">
-                    <p className="text-sm font-semibold text-gray-900">{displayName}</p>
-                    <p className="text-xs text-gray-500">{roleLabel}</p>
+                    <p className="text-sm font-semibold text-gray-900 whitespace-nowrap">{displayName}</p>
+                    <p className="text-xs text-gray-500 whitespace-nowrap">{roleLabel}</p>
                   </div>
                   <ChevronDown size={16} className={`hidden xl:block text-gray-400 transition-transform duration-200 ${showProfileMenu ? 'rotate-180' : ''}`} />
                 </button>

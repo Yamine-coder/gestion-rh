@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
-import { format, parseISO, addDays, addMonths } from 'date-fns';
+import { format, parseISO, addDays, addMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { API_BASE } from '../config/api';
 import {
@@ -14,15 +14,15 @@ import {
  * Création rapide de plannings — Wizard 3 étapes
  * Étape 1: Employés  ·  Étape 2: Planning  ·  Étape 3: Confirmation
  */
-const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
-  // Onglet actif: 'create' | 'delete'
-  const [tab, setTab] = useState('create');
+const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialEmployeeIds }) => {
+  // Onglet actif: 'create' | 'modify' | 'delete'
+  const [tab, setTab] = useState(initialTab || 'create');
 
   // --- Wizard step (1, 2, 3) ---
   const [step, setStep] = useState(1);
 
   // --- Étape 1: Employés ---
-  const [selectedEmployees, setSelectedEmployees] = useState([]);
+  const [selectedEmployees, setSelectedEmployees] = useState(Array.isArray(initialEmployeeIds) ? initialEmployeeIds : []);
   const [empSearch, setEmpSearch] = useState('');
 
   // --- Étape 2: Planning ---
@@ -52,10 +52,19 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
   const [creationResult, setCreationResult] = useState(null);
   const [lastCreationRange, setLastCreationRange] = useState(null);
 
+  // --- Prévisualisation des conflits (plannings existants sur la période) ---
+  const [conflits, setConflits] = useState(null);
+  const [conflitsLoading, setConflitsLoading] = useState(false);
+
   // --- Onglet Suppression ---
   const [delStartDate, setDelStartDate] = useState('');
   const [delEndDate, setDelEndDate] = useState('');
-  const [delSelectedEmployees, setDelSelectedEmployees] = useState([]);
+  const [delJours, setDelJours] = useState({
+    lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: true, dimanche: true
+  });
+  const [delSelectedEmployees, setDelSelectedEmployees] = useState(
+    initialTab === 'delete' && Array.isArray(initialEmployeeIds) ? initialEmployeeIds : []
+  );
   const [delLoading, setDelLoading] = useState(false);
   const [delError, setDelError] = useState(null);
   const [delSuccess, setDelSuccess] = useState(null);
@@ -64,10 +73,11 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
   const [wipeMsg, setWipeMsg] = useState(null);
   const [wipeSelectedEmployees, setWipeSelectedEmployees] = useState([]);
   const [wipeSuccess, setWipeSuccess] = useState(false);
+  const [showDanger, setShowDanger] = useState(false);
   const [autoCloseAfterAction, setAutoCloseAfterAction] = useState(true);
   const phrase = 'SUPPRIMER TOUS';
 
-  const jourMap = { 0: 'dimanche', 1: 'lundi', 2: 'mardi', 3: 'mercredi', 4: 'jeudi', 5: 'vendredi', 6: 'samedi' };
+  const jourMap = useMemo(() => ({ 0: 'dimanche', 1: 'lundi', 2: 'mardi', 3: 'mercredi', 4: 'jeudi', 5: 'vendredi', 6: 'samedi' }), []);
   const jourLabels = { lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer', jeudi: 'Jeu', vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim' };
 
   // --- Persistence légère ---
@@ -95,7 +105,16 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
   // --- Gestion créneaux ---
   const ajouterCreneau = () => setCreneaux([...creneaux, { heureDebut: '09:00', heureFin: '17:00' }]);
   const supprimerCreneau = (index) => { if (creneaux.length > 1) setCreneaux(creneaux.filter((_, i) => i !== index)); };
-  const modifierCreneau = (index, field, value) => { const copy = [...creneaux]; copy[index][field] = value; setCreneaux(copy); };
+  const modifierCreneau = (index, field, value) => setCreneaux(prev => prev.map((c, i) => i === index ? { ...c, [field]: value } : c));
+
+  // Préréglages horaires (contexte restaurant)
+  const presetsHoraires = [
+    { label: 'Journée', creneaux: [{ heureDebut: '09:00', heureFin: '17:00' }] },
+    { label: 'Service midi', creneaux: [{ heureDebut: '11:00', heureFin: '15:00' }] },
+    { label: 'Service soir', creneaux: [{ heureDebut: '18:00', heureFin: '23:00' }] },
+    { label: 'Coupure', creneaux: [{ heureDebut: '11:00', heureFin: '15:00' }, { heureDebut: '18:00', heureFin: '23:00' }] },
+  ];
+  const appliquerPreset = (creneauxPreset) => setCreneaux(JSON.parse(JSON.stringify(creneauxPreset)));
 
   const ajouterCreneauJour = (jour) => setCreneauxJours(prev => ({ ...prev, [jour]: [...prev[jour], { heureDebut: '09:00', heureFin: '17:00' }] }));
   const supprimerCreneauJour = (jour, index) => setCreneauxJours(prev => ({ ...prev, [jour]: prev[jour].filter((_, i) => i !== index) }));
@@ -163,6 +182,79 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
     return { totalJourValides, totalPlannings: totalJourValides * selectedEmployees.length };
   }, [startDate, endDate, indefini, monthsCount, jours, selectedEmployees, jourMap]);
 
+  // --- Plage effective (dates de début/fin réellement couvertes) ---
+  const getEffectiveRange = () => {
+    if (!startDate) return { rangeStart: null, rangeEnd: null };
+    const rangeStart = startDate;
+    const rangeEnd = indefini
+      ? format(addDays(addMonths(parseISO(startDate), monthsCount), -1), 'yyyy-MM-dd')
+      : endDate;
+    return { rangeStart, rangeEnd };
+  };
+
+  // --- Raccourcis de plage de dates (réutilisés Créer + Supprimer) ---
+  const datePresets = [
+    { key: 'today', label: "Aujourd'hui" },
+    { key: 'week', label: 'Cette semaine' },
+    { key: 'month', label: 'Ce mois' },
+    { key: '3m', label: '3 mois' },
+  ];
+  const computePreset = (key) => {
+    const t = new Date();
+    if (key === 'today') return { s: format(t, 'yyyy-MM-dd'), e: format(t, 'yyyy-MM-dd') };
+    if (key === 'week') return { s: format(startOfWeek(t, { weekStartsOn: 1 }), 'yyyy-MM-dd'), e: format(endOfWeek(t, { weekStartsOn: 1 }), 'yyyy-MM-dd') };
+    if (key === 'month') return { s: format(startOfMonth(t), 'yyyy-MM-dd'), e: format(endOfMonth(t), 'yyyy-MM-dd') };
+    if (key === '3m') return { s: format(t, 'yyyy-MM-dd'), e: format(addMonths(t, 3), 'yyyy-MM-dd') };
+    return null;
+  };
+  const DatePresets = ({ onPick }) => (
+    <div className="flex flex-wrap gap-1.5">
+      {datePresets.map(p => (
+        <button key={p.key} type="button" onClick={() => { const r = computePreset(p.key); if (r) onPick(r.s, r.e); }}
+          className="px-2.5 py-1 text-[11px] font-medium rounded-full border border-slate-200 text-slate-600 hover:border-red-300 hover:bg-red-50 hover:text-red-600 transition-colors">
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // --- Analyse des conflits sur la période (à l'arrivée à l'étape 3) ---
+  React.useEffect(() => {
+    if (step !== 3 || !(tab === 'create' || tab === 'modify') || !startDate) { setConflits(null); return; }
+    let cancelled = false;
+    const run = async () => {
+      const { rangeStart, rangeEnd } = getEffectiveRange();
+      if (!rangeStart || !rangeEnd) { setConflits(null); return; }
+      try {
+        setConflitsLoading(true);
+        const token = localStorage.getItem('token');
+        const res = await axios.get(`${API_BASE}/shifts`, {
+          params: { start: rangeStart, end: `${rangeEnd}T23:59:59` },
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const sel = new Set(selectedEmployees);
+        const parEmploye = {};
+        let total = 0;
+        for (const s of (res.data || [])) {
+          if (!sel.has(s.employeId) || s.type !== 'travail') continue;
+          const d = new Date(s.date);
+          const jourName = jourMap[d.getUTCDay()];
+          if (!jours[jourName]) continue;
+          total++;
+          parEmploye[s.employeId] = (parEmploye[s.employeId] || 0) + 1;
+        }
+        if (!cancelled) setConflits({ total, employesTouches: Object.keys(parEmploye).length, parEmploye });
+      } catch (e) {
+        if (!cancelled) setConflits(null);
+      } finally {
+        if (!cancelled) setConflitsLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, tab, startDate, endDate, indefini, monthsCount, JSON.stringify(jours), JSON.stringify(selectedEmployees)]);
+
   // --- Validation par étape ---
   const validerStep1 = () => {
     if (selectedEmployees.length === 0) { setError('Sélectionnez au moins un employé'); return false; }
@@ -191,6 +283,26 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
       const token = localStorage.getItem('token');
       if (!token) { setError('Session expirée'); setLoading(false); return; }
 
+      // En mode modification : on remplace systématiquement et on nettoie d'abord la plage
+      const isModify = tab === 'modify';
+      const effectiveMode = isModify ? 'replace' : conflictMode;
+
+      // Calcul de la plage effective (pour la suppression préalable en mode modify)
+      const { rangeStart, rangeEnd } = getEffectiveRange();
+
+      // Mode modification : supprimer les plannings 'travail' existants sur la plage avant recréation
+      if (isModify) {
+        const daysMapDel = { dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
+        const daysOfWeekDel = Object.entries(jours).filter(([, v]) => v).map(([k]) => daysMapDel[k]);
+        await axios.post(`${API_BASE}/shifts/delete-range`, {
+          employeIds: selectedEmployees,
+          startDate: rangeStart,
+          endDate: rangeEnd,
+          type: 'travail',
+          daysOfWeek: daysOfWeekDel,
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+
       let formattedDate = null; let rangeInfo = null;
       if (indefini) {
         const daysMap = { dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
@@ -202,16 +314,16 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
             if (!actif) continue;
             segmentsByDay[daysMap[jourName]] = creneauxJours[jourName].map(c => ({ start: c.heureDebut, end: c.heureFin }));
           }
-          body = { employeIds: selectedEmployees, startDate, monthsCount, daysOfWeek, segmentsByDay, mode: conflictMode };
+          body = { employeIds: selectedEmployees, startDate, monthsCount, daysOfWeek, segmentsByDay, mode: effectiveMode };
         } else {
           const segments = creneaux.map(c => ({ start: c.heureDebut, end: c.heureFin }));
-          body = { employeIds: selectedEmployees, startDate, monthsCount, daysOfWeek, segments, mode: conflictMode };
+          body = { employeIds: selectedEmployees, startDate, monthsCount, daysOfWeek, segments, mode: effectiveMode };
         }
         const res = await axios.post(`${API_BASE}/shifts/recurring`, body, { headers: { Authorization: `Bearer ${token}` } });
         if (!res.data?.success) { setError(res.data?.error || 'Erreur création récurrente'); setLoading(false); return; }
         formattedDate = startDate;
         rangeInfo = { employeIds: selectedEmployees, startDate, endDate: res.data.to };
-        setCreationResult({ mode: 'recurring', details: res.data });
+        setCreationResult({ mode: 'recurring', intent: tab, details: res.data });
         setLastCreationRange(rangeInfo);
       } else {
         // Générer les shifts en batch
@@ -225,7 +337,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
           for (const empId of selectedEmployees) {
             shiftsToCreate.push({
               employeeId: empId, date: dateStr, type: 'travail',
-              replaceExisting: conflictMode === 'replace',
+              replaceExisting: effectiveMode === 'replace',
               segments: getCreneauxPourJour(js).map(c => ({ start: c.heureDebut, end: c.heureFin, commentaire: '', aValider: false, isExtra: false }))
             });
           }
@@ -234,7 +346,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
         if (!res.data || res.data.created === 0) { setError(res.data?.errors?.join('\n') || 'Aucun planning créé'); setLoading(false); return; }
         formattedDate = shiftsToCreate.length ? shiftsToCreate[0].date : null;
         rangeInfo = { employeIds: selectedEmployees, startDate, endDate };
-        setCreationResult({ mode: 'batch', details: res.data });
+        setCreationResult({ mode: 'batch', intent: tab, details: res.data });
         setLastCreationRange(rangeInfo);
       }
       setLoading(false);
@@ -248,6 +360,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
 
   // --- Suppression handlers ---
   const handleToggleDelEmployee = (id) => setDelSelectedEmployees(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const handleToggleDelJour = (jour) => setDelJours(prev => ({ ...prev, [jour]: !prev[jour] }));
   const handleSelectAllDelEmployees = () => setDelSelectedEmployees(delSelectedEmployees.length === employes.length ? [] : employes.map(e => e.id));
   const handleToggleWipeEmployee = (id) => setWipeSelectedEmployees(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const handleSelectAllWipeEmployees = () => setWipeSelectedEmployees(wipeSelectedEmployees.length === employes.length ? [] : employes.map(e => e.id));
@@ -272,13 +385,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
     } finally { setWipeLoading(false); }
   };
 
-  // Nombre de jours actifs sélectionnés
-  const joursActifs = Object.values(jours).filter(v => v).length;
-  const joursActifsLabels = Object.entries(jours).filter(([, v]) => v).map(([j]) => jourLabels[j]).join(', ');
-
   // ========== RENDU ==========
-
-  // --- Stepper visuel ---
   const StepIndicator = () => {
     const steps = [
       { num: 1, label: 'Employés', Icon: Users },
@@ -344,9 +451,9 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
           <button type="button" onClick={creerPlannings} disabled={loading}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-[#cf292c] hover:bg-[#b52528] rounded-lg transition-colors shadow-sm disabled:opacity-50">
             {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> Création...</>
+              <><Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> {tab === 'modify' ? 'Modification...' : 'Création...'}</>
             ) : (
-              <><Check className="w-4 h-4" strokeWidth={2} /> Créer les plannings</>
+              <><Check className="w-4 h-4" strokeWidth={2} /> {tab === 'modify' ? 'Appliquer les modifications' : 'Créer les plannings'}</>
             )}
           </button>
         ) : (
@@ -362,17 +469,28 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
 
   return (
     <div className="space-y-4">
-      {/* Navigation onglets */}
-      <div className="flex border-b border-slate-200 gap-1">
-        {[
-          { key: 'create', label: 'Créer', Icon: Plus },
-          { key: 'delete', label: 'Supprimer', Icon: Trash2 },
-        ].map(t => (
-          <button key={t.key} type="button" onClick={() => setTab(t.key)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 -mb-px border-b-2 text-sm font-medium transition-colors ${tab === t.key ? 'border-[#cf292c] text-[#cf292c]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-            <t.Icon className="w-4 h-4" strokeWidth={1.5} /> {t.label}
-          </button>
-        ))}
+      {/* Navigation onglets — contrôle segmenté coloré par action */}
+      <div>
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+          {[
+            { key: 'create', label: 'Créer', Icon: Plus, active: 'bg-[#cf292c] text-white shadow-sm' },
+            { key: 'modify', label: 'Modifier', Icon: SlidersHorizontal, active: 'bg-amber-500 text-white shadow-sm' },
+            { key: 'delete', label: 'Supprimer', Icon: Trash2, active: 'bg-red-600 text-white shadow-sm' },
+          ].map(t => (
+            <button key={t.key} type="button" onClick={() => { setTab(t.key); setError(null); }}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.key ? t.active : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}>
+              <t.Icon className="w-4 h-4" strokeWidth={2} /> {t.label}
+            </button>
+          ))}
+        </div>
+        {(() => {
+          const descMap = {
+            create: 'Ajouter de nouveaux plannings à un ou plusieurs employés.',
+            modify: 'Remplacer les horaires de jours précis sans toucher au reste.',
+            delete: 'Retirer les plannings sur une période donnée.',
+          };
+          return <p className="text-[11px] text-slate-400 mt-2 px-1">{descMap[tab]}</p>;
+        })()}
       </div>
 
       {error && (
@@ -382,9 +500,17 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
         </div>
       )}
 
-      {/* ===================== ONGLET CRÉATION ===================== */}
-      {tab === 'create' && !creationResult && (
+      {/* ===================== ONGLET CRÉATION / MODIFICATION ===================== */}
+      {(tab === 'create' || tab === 'modify') && !creationResult && (
         <>
+          {tab === 'modify' && (
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg text-xs">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+              <span>
+                <strong>Mode modification ciblée.</strong> Seuls les <strong>jours que vous cochez</strong> seront remplacés par cette nouvelle configuration. Les autres jours du planning récurrent <strong>restent intacts</strong>. Astuce : pour ne changer qu'un seul jour (ex. mardi), ne cochez que ce jour.
+              </span>
+            </div>
+          )}
           <StepIndicator />
 
           {/* ===== ÉTAPE 1 : EMPLOYÉS ===== */}
@@ -502,10 +628,14 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                 )}
               </div>
 
+              {!indefini && (
+                <DatePresets onPick={(s, e) => { setStartDate(s); setEndDate(e); }} />
+              )}
+
               {/* Jours de la semaine */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-slate-800">Jours travaillés</h3>
+                  <h3 className="text-sm font-semibold text-slate-800">{tab === 'modify' ? 'Jours à modifier' : 'Jours travaillés'}</h3>
                   <div className="flex gap-1.5">
                     <button type="button" onClick={() => setJours({ lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: false, dimanche: false })}
                       className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors">Lun-Ven</button>
@@ -547,6 +677,15 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
 
                 {!creneauxParJour ? (
                   <div className="space-y-2">
+                    {/* Préréglages rapides */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {presetsHoraires.map(p => (
+                        <button key={p.label} type="button" onClick={() => appliquerPreset(p.creneaux)}
+                          className="px-2.5 py-1 text-[11px] font-medium rounded-full border border-slate-200 text-slate-600 hover:border-[#cf292c]/40 hover:bg-red-50 hover:text-[#cf292c] transition-colors">
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
                     {creneaux.map((c, idx) => (
                       <div key={idx} className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
                         <input type="time" className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-center focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c]/40 bg-white"
@@ -612,7 +751,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
           {/* ===== ÉTAPE 3 : CONFIRMATION ===== */}
           {step === 3 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-800">Résumé avant création</h3>
+              <h3 className="text-sm font-semibold text-slate-800">{tab === 'modify' ? 'Résumé avant modification' : 'Résumé avant création'}</h3>
 
               {/* Carte récap */}
               <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -703,25 +842,81 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                 )}
               </div>
 
+              {/* Prévisualisation des conflits */}
+              {conflitsLoading ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+                  Analyse des plannings existants...
+                </div>
+              ) : conflits && conflits.total > 0 ? (
+                <div className={`p-3 rounded-lg border ${tab === 'modify' ? 'border-amber-200 bg-amber-50' : conflictMode === 'replace' ? 'border-amber-200 bg-amber-50' : 'border-blue-200 bg-blue-50'}`}>
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${tab === 'modify' || conflictMode === 'replace' ? 'text-amber-500' : 'text-blue-500'}`} strokeWidth={1.5} />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-semibold ${tab === 'modify' || conflictMode === 'replace' ? 'text-amber-700' : 'text-blue-700'}`}>
+                        {conflits.total} planning{conflits.total > 1 ? 's' : ''} existant{conflits.total > 1 ? 's' : ''} sur cette période
+                        <span className="font-normal"> · {conflits.employesTouches} employé{conflits.employesTouches > 1 ? 's' : ''}</span>
+                      </p>
+                      <p className={`text-[11px] mt-0.5 ${tab === 'modify' || conflictMode === 'replace' ? 'text-amber-600' : 'text-blue-600'}`}>
+                        {tab === 'modify'
+                          ? 'Ces jours seront remplacés par la nouvelle configuration. Les autres jours restent intacts.'
+                          : conflictMode === 'replace'
+                            ? 'Ils seront remplacés par la nouvelle configuration.'
+                            : 'Ces jours seront ignorés (les plannings existants seront conservés).'}
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {Object.entries(conflits.parEmploye).slice(0, 6).map(([empId, n]) => {
+                          const emp = employes.find(e => e.id === Number(empId));
+                          return emp ? (
+                            <span key={empId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white/70 rounded-md text-[11px] text-slate-600 border border-slate-200">
+                              {emp.prenom} {emp.nom?.[0]}. <span className="font-semibold">{n}</span>
+                            </span>
+                          ) : null;
+                        })}
+                        {Object.keys(conflits.parEmploye).length > 6 && (
+                          <span className="inline-flex items-center px-2 py-0.5 bg-white/70 rounded-md text-[11px] text-slate-500 border border-slate-200">
+                            +{Object.keys(conflits.parEmploye).length - 6}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : conflits && conflits.total === 0 ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-xs text-emerald-700">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
+                  Aucun conflit : aucun planning existant sur cette période.
+                </div>
+              ) : null}
+
               {/* Mode conflit */}
-              <div className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white">
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-700">Si un planning existe déjà</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    {conflictMode === 'skip' ? 'Les jours avec un planning existant seront ignorés' : 'Les plannings existants seront remplacés'}
+              {tab === 'modify' ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" strokeWidth={1.5} />
+                  <p className="text-xs text-amber-700">
+                    Seuls les <strong>jours sélectionnés</strong> seront remplacés par la nouvelle configuration. Les autres jours du planning récurrent <strong>restent intacts</strong>.
                   </p>
                 </div>
-                <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                  <button type="button" onClick={() => setConflictMode('skip')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${conflictMode === 'skip' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
-                    Ignorer
-                  </button>
-                  <button type="button" onClick={() => setConflictMode('replace')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${conflictMode === 'replace' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-400'}`}>
-                    Remplacer
-                  </button>
+              ) : (
+                <div className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 bg-white">
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-slate-700">Si un planning existe déjà</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      {conflictMode === 'skip' ? 'Les jours avec un planning existant seront ignorés' : 'Les plannings existants seront remplacés'}
+                    </p>
+                  </div>
+                  <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                    <button type="button" onClick={() => setConflictMode('skip')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${conflictMode === 'skip' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400'}`}>
+                      Ignorer
+                    </button>
+                    <button type="button" onClick={() => setConflictMode('replace')}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${conflictMode === 'replace' ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-400'}`}>
+                      Remplacer
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <WizardNav showCreate />
             </div>
@@ -730,16 +925,47 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
       )}
 
       {/* ===== RÉSULTAT CRÉATION ===== */}
-      {tab === 'create' && creationResult && (
+      {(tab === 'create' || tab === 'modify') && creationResult && (
         <div className="text-center py-8">
           <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-emerald-100 flex items-center justify-center">
             <CheckCircle2 className="w-7 h-7 text-emerald-600" strokeWidth={1.5} />
           </div>
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">Plannings créés !</h3>
-          <p className="text-sm text-slate-500 mb-6">
-            {creationResult.mode === 'batch' && <><span className="font-semibold text-emerald-600">{creationResult.details.created}</span> planning(s) créés avec succès</>}
-            {creationResult.mode === 'recurring' && <><span className="font-semibold text-emerald-600">{creationResult.details.created}</span> dates créées en récurrence</>}
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">
+            {creationResult.intent === 'modify' ? 'Plannings modifiés !' : 'Plannings créés !'}
+          </h3>
+          <p className="text-sm text-slate-500 mb-4">
+            {creationResult.mode === 'batch' && <><span className="font-semibold text-emerald-600">{creationResult.details.created}</span> planning(s) {creationResult.intent === 'modify' ? 'mis à jour' : 'créés'} avec succès</>}
+            {creationResult.mode === 'recurring' && <><span className="font-semibold text-emerald-600">{creationResult.details.created}</span> dates {creationResult.intent === 'modify' ? 'mises à jour' : 'créées'} en récurrence</>}
           </p>
+
+          {/* Détails transparence : ignorés / congés protégés / erreurs */}
+          {(() => {
+            const d = creationResult.details || {};
+            const ignores = creationResult.mode === 'recurring' ? (d.skipped || 0) : (Array.isArray(d.errors) ? d.errors.length : 0);
+            const conges = d.skippedConges || 0;
+            const remplaces = d.replaced || 0;
+            if (!ignores && !conges && !remplaces) return null;
+            return (
+              <div className="flex flex-wrap justify-center gap-2 mb-6">
+                {remplaces > 0 && (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                    {remplaces} remplacé{remplaces > 1 ? 's' : ''}
+                  </span>
+                )}
+                {ignores > 0 && (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200">
+                    {ignores} ignoré{ignores > 1 ? 's' : ''} (déjà planifié)
+                  </span>
+                )}
+                {conges > 0 && (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">
+                    🛡️ {conges} date{conges > 1 ? 's' : ''} protégée{conges > 1 ? 's' : ''} (congé approuvé)
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
           {lastCreationRange && (
             <p className="text-xs text-slate-400 mb-6">
               Du {format(parseISO(lastCreationRange.startDate), 'd MMM yyyy', { locale: fr })} au {format(parseISO(lastCreationRange.endDate), 'd MMM yyyy', { locale: fr })} — {lastCreationRange.employeIds.length} employé{lastCreationRange.employeIds.length > 1 ? 's' : ''}
@@ -748,7 +974,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
           <div className="flex justify-center gap-3">
             <button type="button" onClick={() => { setCreationResult(null); setStep(1); }}
               className="px-5 py-2.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 bg-white hover:bg-slate-50 transition-colors">
-              Créer d'autres
+              {creationResult.intent === 'modify' ? 'Modifier d\'autres' : 'Créer d\'autres'}
             </button>
             <button type="button" onClick={onClose}
               className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#cf292c] hover:bg-[#b52528] transition-colors shadow-sm">
@@ -781,11 +1007,16 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                   if (!delStartDate || !delEndDate) { setDelError('Dates requises'); return; }
                   if (new Date(delStartDate) > new Date(delEndDate)) { setDelError('Date début > date fin'); return; }
                   if (delSelectedEmployees.length === 0) { setDelError('Sélectionnez au moins un employé'); return; }
+                  const joursActifs = Object.entries(delJours).filter(([, v]) => v).map(([k]) => k);
+                  if (joursActifs.length === 0) { setDelError('Sélectionnez au moins un jour'); return; }
                   try {
                     setDelLoading(true);
                     const token = localStorage.getItem('token');
                     if (!token) { setDelError('Session expirée'); setDelLoading(false); return; }
+                    const daysMapDel = { dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
                     const body = { employeIds: delSelectedEmployees, startDate: delStartDate, endDate: delEndDate, type: 'travail' };
+                    // Ne filtrer par jour que si une partie des jours est sélectionnée (sinon = tout)
+                    if (joursActifs.length < 7) body.daysOfWeek = joursActifs.map(j => daysMapDel[j]);
                     const res = await axios.post(`${API_BASE}/shifts/delete-range`, body, { headers: { Authorization: `Bearer ${token}` } });
                     const deleted = res.data.deleted || res.data.count || 0;
                     setDelSuccess(`${deleted} planning(s) supprimé(s)`);
@@ -798,6 +1029,32 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
                   {delLoading ? 'Suppression...' : 'Supprimer'}
                 </button>
               </div>
+            </div>
+            <div className="mb-4">
+              <DatePresets onPick={(s, e) => { setDelStartDate(s); setDelEndDate(e); }} />
+            </div>
+            {/* Jours ciblés (créneaux récurrents) */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-medium text-slate-600">Jours à supprimer</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setDelJours({ lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: true, dimanche: true })} className="text-[10px] text-slate-400 hover:text-slate-600 underline">Tous</button>
+                  <button type="button" onClick={() => setDelJours({ lundi: false, mardi: false, mercredi: false, jeudi: false, vendredi: false, samedi: false, dimanche: false })} className="text-[10px] text-slate-400 hover:text-slate-600 underline">Aucun</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'].map(j => (
+                  <button key={j} type="button" onClick={() => handleToggleDelJour(j)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${delJours[j] ? 'bg-red-500 text-white border-red-500' : 'bg-white text-slate-500 border-slate-200 hover:border-red-300'}`}>
+                    {jourLabels[j]}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                {Object.values(delJours).every(Boolean)
+                  ? 'Tous les créneaux de la période seront supprimés.'
+                  : 'Seuls les créneaux des jours sélectionnés seront supprimés (utile pour retirer un seul jour récurrent).'}
+              </p>
             </div>
             <div>
               <div className="flex justify-between items-center mb-2">
@@ -822,11 +1079,22 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
             </div>
           </div>
 
-          {/* Zone dangereuse */}
+          {/* Zone dangereuse — repliée par défaut */}
+          {!showDanger ? (
+            <button type="button" onClick={() => setShowDanger(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-red-200 text-xs font-medium text-red-400 hover:text-red-600 hover:border-red-300 hover:bg-red-50/50 transition-colors">
+              <AlertTriangle className="w-3.5 h-3.5" strokeWidth={1.5} />
+              Options avancées — suppression massive
+            </button>
+          ) : (
           <div className="p-4 border border-red-200 rounded-xl bg-red-50/30 space-y-4">
-            <div>
-              <h4 className="text-sm font-semibold text-red-600 mb-2">Zone dangereuse</h4>
-              <p className="text-xs text-red-500">Tapez <code className="font-mono bg-white px-1 py-0.5 border border-red-200 rounded text-red-600">{phrase}</code> pour confirmer la suppression massive.</p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-red-600 mb-2">Zone dangereuse</h4>
+                <p className="text-xs text-red-500">Tapez <code className="font-mono bg-white px-1 py-0.5 border border-red-200 rounded text-red-600">{phrase}</code> pour confirmer la suppression massive.</p>
+              </div>
+              <button type="button" onClick={() => setShowDanger(false)}
+                className="text-[11px] text-slate-400 hover:text-slate-600 underline flex-shrink-0 ml-3">Masquer</button>
             </div>
             {wipeMsg && <div className={`text-xs px-3 py-2 rounded-lg border flex justify-between items-center ${/erreur|incorrecte/i.test(wipeMsg) ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
               <span>{wipeMsg}</span>
@@ -862,6 +1130,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess }) => {
               </div>
             </div>
           </div>
+          )}
 
           <div className="flex items-center gap-2 text-[11px] text-slate-500 pt-3 border-t border-slate-100">
             <input id="autoCloseShared" type="checkbox" className="h-4 w-4 accent-[#cf292c]" checked={autoCloseAfterAction} onChange={e => setAutoCloseAfterAction(e.target.checked)} />

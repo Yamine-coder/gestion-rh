@@ -15,6 +15,7 @@ import VueJournaliereRH from "../components/VueJournaliereRH";
 import RapportsHeures from "../components/RapportsHeures";
 import Parametres from "../components/Parametres";
 import SuiviExtras from "./SuiviExtras";
+import DocumentsRH from "../components/DocumentsRH";
 import { useNavigationCleanup } from "../hooks/useNavigationCleanup";
 
 export default function AdminDashboard() {
@@ -89,6 +90,7 @@ export default function AdminDashboard() {
           {menu === "performance" && <Performance />}
           {menu === "planning" && <PlanningRH openAnomaliesPanel={openAnomaliesPanel} />}
           {menu === "extras" && <SuiviExtras />}
+          {menu === "documents" && <DocumentsRH />}
           {menu === "settings" && <Parametres />}
         </div>
       </main>

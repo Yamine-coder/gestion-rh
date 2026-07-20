@@ -207,6 +207,10 @@ function HomeEmploye() {
   // Anomalies employé
   const [mesAnomalies, setMesAnomalies] = useState([]);
   const [loadingAnomalies, setLoadingAnomalies] = useState(true);
+
+  // Documents à signer
+  const [docsCount, setDocsCount] = useState(0);
+  const [docsTotal, setDocsTotal] = useState(0);
   
   // Événements à venir (congés, remplacements, formations...)
   const [evenementsAVenir, setEvenementsAVenir] = useState([]);
@@ -572,6 +576,8 @@ function HomeEmploye() {
     fetchEvenements();
     fetchScore();
     fetchFeedbacks();
+    // Documents à signer count
+    api.get('/api/documents-rh/mes-documents/count').then(r => { setDocsCount(r.data?.count || 0); setDocsTotal(r.data?.total || 0); }).catch(() => {});
   }, [fetchConsignes, fetchPonctualite, fetchAnomalies, fetchEvenements, fetchScore, fetchFeedbacks]);
 
   // Candidater í  un remplacement (avec confirmation)
@@ -1478,6 +1484,46 @@ function HomeEmploye() {
           </div>
         </section>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════════
+          WIDGET DOCUMENTS À SIGNER
+       */}
+      {docsCount > 0 ? (
+        <div className="px-3 sm:px-4 mt-4 sm:mt-6">
+          <Link to="/employee/profil" state={{ fromNotification: true, highlightSection: 'documents-section' }} className="block bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 p-4 hover:shadow-md transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                <FileText className="w-5 h-5 text-amber-600" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-200">Documents à signer</h3>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{docsCount} document{docsCount > 1 ? 's' : ''} en attente de votre signature</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-white text-xs font-bold">{docsCount}</span>
+                <ChevronRight className="w-4 h-4 text-amber-400" strokeWidth={2} />
+              </div>
+            </div>
+          </Link>
+        </div>
+      ) : (
+        <div className="px-3 sm:px-4 mt-4 sm:mt-6">
+          <Link to="/employee/profil" state={{ fromNotification: true, highlightSection: 'documents-section' }} className="block bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 hover:shadow-md transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                <FileText className="w-5 h-5 text-slate-500 dark:text-slate-300" strokeWidth={1.5} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Mes documents</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {docsTotal > 0 ? 'Tous vos documents sont signés' : 'Aucun document pour le moment'}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-500 flex-shrink-0" strokeWidth={2} />
+            </div>
+          </Link>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
           WIDGETS INFORMATIFS - Split Layout: Infos du jour / À venir

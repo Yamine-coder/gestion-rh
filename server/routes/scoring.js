@@ -39,13 +39,18 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
     const employeId = req.user.userId || req.user.id;
     
     // Score total depuis la vue employe_scores (Prisma $queryRaw car c'est une VIEW)
-    const scoreRowsRaw = await prisma.$queryRaw`
-      SELECT employe_id as employee_id, score_total::int as total_points, total_bonus::int as bonus_points, total_malus::int as malus_points 
-      FROM employe_scores WHERE employe_id = ${employeId}
-    `;
-    const scoreRows = convertBigInts(scoreRowsRaw);
+    let scoreRows = [];
+    try {
+      const scoreRowsRaw = await prisma.$queryRaw`
+        SELECT employe_id as employee_id, score_total::int as total_points, total_bonus::int as bonus_points, total_malus::int as malus_points 
+        FROM employe_scores WHERE employe_id = ${employeId}
+      `;
+      scoreRows = convertBigInts(scoreRowsRaw);
+    } catch (e) { /* table/vue scoring absente — score par défaut */ }
     
     // Détail des points par catégorie (complex GROUP BY + CASE — garder en raw)
+    let categoriesRows = [];
+    try {
     const categoriesRowsRaw = await prisma.$queryRaw`
       SELECT 
         COALESCE(sr.categorie, 
@@ -80,7 +85,8 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
           END
         )
     `;
-    const categoriesRows = convertBigInts(categoriesRowsRaw);
+    categoriesRows = convertBigInts(categoriesRowsRaw);
+    } catch (e) { /* table/vue scoring absente */ }
     
     // Construire les points par catégorie
     const categoriePoints = {
@@ -101,15 +107,18 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const historiqueRaw = await prisma.employePoint.findMany({
-      where: {
-        employeId: employeId,
-        dateEvenement: { gte: thirtyDaysAgo }
-      },
-      include: { rule: { select: { label: true } } },
-      orderBy: { dateEvenement: 'desc' },
-      take: 20
-    });
+    let historiqueRaw = [];
+    try {
+      historiqueRaw = await prisma.employePoint.findMany({
+        where: {
+          employeId: employeId,
+          dateEvenement: { gte: thirtyDaysAgo }
+        },
+        include: { rule: { select: { label: true } } },
+        orderBy: { dateEvenement: 'desc' },
+        take: 20
+      });
+    } catch (e) { /* table scoring absente */ }
     
     const historique = historiqueRaw.map(ep => ({
       id: ep.id,
@@ -155,10 +164,12 @@ router.get('/mon-score', authMiddleware, async (req, res) => {
     };
 
     // Rang dans le classement
-    const rangCount = await prisma.employeeScore.count({
-      where: { totalPoints: { gt: score } }
-    });
-    stats.rang = rangCount + 1;
+    try {
+      const rangCount = await prisma.employeeScore.count({
+        where: { totalPoints: { gt: score } }
+      });
+      stats.rang = rangCount + 1;
+    } catch (e) { /* table scoring absente */ stats.rang = 1; }
     
     // Plafond mensuel feedbacks
     const PLAFOND_MENSUEL_FEEDBACK = 50;

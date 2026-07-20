@@ -56,6 +56,71 @@ model User {
   justificatifsNavigo                                          JustificatifNavigo[]       @relation("UserJustificatifsNavigo")
   justificatifsNavigoValides                                   JustificatifNavigo[]       @relation("ValidateurJustificatifsNavigo")
   pendingPointages                                             PendingPointage[]
+  documentsEnvoyes                                             DocumentRH[]               @relation("DocumentCreateur")
+  signaturesDocuments                                          DocumentSignature[]        @relation("SignataireDocument")
+  pushSubscriptions                                            PushSubscription[]
+}
+
+// 📄 Documents à signer (créés par l'admin, envoyés aux employés)
+model DocumentRH {
+  id          Int                 @id @default(autoincrement())
+  titre       String
+  description String?
+  contenu     String?             // Texte du document (alternative au fichier)
+  fichierUrl  String?             // URL du fichier PDF uploadé
+  type        String              @default("note") // contrat, avenant, reglement, note, autre
+  createdById Int
+  createdBy   User                @relation("DocumentCreateur", fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  locked      Boolean             @default(false) // Verrouillé une fois envoyé (non modifiable)
+  signaturePosition String?       @default("bottom-right") // Emplacement signature: bottom-left, bottom-center, bottom-right
+  signaturePage     Int?          // Page de signature (null = dernière page)
+  signaturePlacement String?      // Placement manuel JSON: {page,xPct,yPct,wPct,hPct} (0-1, origine haut-gauche)
+  signatureChamps   String?       // Champs DocuSign JSON: [{id,type,page,xPct,yPct,wPct,hPct,text?}] (type: signature|initiales|nom|date|mention|cachet|signature_employeur)
+  cachetUrl         String?       // Image de cachet/tampon uploadée par l'admin (pour les champs type=cachet)
+  signatureEmployeurUrl String?   // Image de la signature de l'employeur (apposée par l'admin à la création)
+  signatureEmployeurNom String?   // Nom du signataire employeur (légende sous la signature employeur)
+  signatures  DocumentSignature[]
+
+  @@index([createdById])
+  @@index([createdAt])
+  @@index([type])
+}
+
+// 🖋️ Annuaire des employeurs signataires (réutilisable, indépendant des comptes)
+model SignataireEmployeur {
+  id        Int      @id @default(autoincrement())
+  nom       String   // Nom complet du signataire (ex : Jean Dupont)
+  fonction  String?  // Fonction / titre (ex : Gérant, DRH) - optionnel
+  createdAt DateTime @default(now())
+
+  @@index([nom])
+}
+
+model DocumentSignature {
+  id            Int       @id @default(autoincrement())
+  documentId    Int
+  document      DocumentRH @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  employeId     Int
+  employe       User      @relation("SignataireDocument", fields: [employeId], references: [id])
+  statut        String    @default("pending") // pending, read, signed, refused
+  signatureData String?   // Base64 de l'image signature (canvas)
+  signedAt      DateTime?
+  readAt        DateTime?
+  refusedAt     DateTime?
+  motifRefus    String?
+  ipAddress     String?
+  userAgent     String?   // Navigateur/appareil au moment de la signature (preuve)
+  consentement  Boolean   @default(false) // Case « Lu et approuvé » cochée par le salarié
+  signedPdfUrl  String?   // PDF signé généré (signature incrustée + bandeau certification)
+  documentHash  String?   // Empreinte SHA-256 du contenu signé (intégrité)
+  createdAt     DateTime  @default(now())
+
+  @@unique([documentId, employeId])
+  @@index([employeId])
+  @@index([statut])
+  @@index([documentId])
 }
 
 model PasswordReset {
@@ -661,4 +726,31 @@ model PendingPointage {
   @@index([userId])
   @@index([timestamp])
   @@index([synced])
+}
+
+// 🔔 Abonnements Web Push (1 employé → n appareils)
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String   // Clé publique du client (chiffrement)
+  auth      String   // Secret d'authentification du client
+  userAgent String?  // Appareil / navigateur (info)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// 🕐 Journal des rappels de pointage envoyés (anti-doublon)
+// stage: 'pre' (avant le shift) | 'retard' (shift commencé sans pointage)
+model RappelPointage {
+  id        Int      @id @default(autoincrement())
+  employeId Int
+  date      String   // Journée de travail Paris (YYYY-MM-DD)
+  stage     String   // 'pre' | 'retard'
+  sentAt    DateTime @default(now())
+
+  @@unique([employeId, date, stage])
+  @@index([employeId])
 }

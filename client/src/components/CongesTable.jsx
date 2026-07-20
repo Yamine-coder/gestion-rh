@@ -1,6 +1,6 @@
   import { useEffect, useState, useRef } from "react";
   import axios from "axios";
-  import { Check, X, Clock, ChevronLeft, ChevronRight, Search, Calendar, AlertCircle, RefreshCw, Download, Users, Paperclip, FileText, Eye, ExternalLink } from "lucide-react";
+  import { Check, X, Clock, ChevronLeft, ChevronRight, Search, Calendar, AlertCircle, RefreshCw, Download, Users, Paperclip, FileText, Eye, ExternalLink, ChevronDown, Filter } from "lucide-react";
   import alertService from "../services/alertService";
   import * as XLSX from "xlsx";
   import { saveAs } from "file-saver";
@@ -13,16 +13,25 @@
     const [conges, setConges] = useState([]);
     const [employes, setEmployes] = useState([]);
     const [filtre, setFiltre] = useState("tous");
+    const [filtreType, setFiltreType] = useState("tous");
+    const [filtrePeriode, setFiltrePeriode] = useState("tous");
+    const [filtreCategorie, setFiltreCategorie] = useState("tous");
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [showConflictAnalysis, setShowConflictAnalysis] = useState(false);
     const [selectedCongeForAnalysis, setSelectedCongeForAnalysis] = useState(null);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [previewJustificatif, setPreviewJustificatif] = useState(null); // { url, type, employeName }
-    const [highlightedRow, setHighlightedRow] = useState(null); // ID de la ligne a highlighter
-    const highlightRef = useRef(null); // Ref pour le scroll
-    const itemsPerPage = 5;
+    const [previewJustificatif, setPreviewJustificatif] = useState(null);
+    const [highlightedRow, setHighlightedRow] = useState(null);
+    const [openDropdown, setOpenDropdown] = useState(null); // Track which dropdown is open
+    const [selectedIds, setSelectedIds] = useState(new Set()); // Sélection multiple (bulk)
+    const [showRefusModal, setShowRefusModal] = useState(false); // Modal motif de refus
+    const [refusData, setRefusData] = useState(null); // { ids: [], motif: '' }
+    const [bulkProcessing, setBulkProcessing] = useState(false);
+    const highlightRef = useRef(null);
+    const dropdownRef = useRef(null);
+    const itemsPerPage = 10;
     const token = localStorage.getItem("token");
 
     // Récupérer les congés depuis l'API
@@ -71,6 +80,12 @@
 
     // Ouvrir la modal de confirmation
     const openConfirmModal = (id, statut) => {
+      // Refus => demander un motif
+      if (statut === 'refusé') {
+        setRefusData({ ids: [id], motif: '' });
+        setShowRefusModal(true);
+        return;
+      }
       const conge = conges.find(c => c.id === id);
       const employe = employes.find(e => e.id === conge?.employeId);
       setPendingAction({
@@ -92,18 +107,18 @@
     };
 
     // Mettre à jour le statut d'un congé
-    const updateStatut = async (id, statut) => {
+    const updateStatut = async (id, statut, motifRefus = null) => {
       try {
         await axios.put(
           `${API_BASE}/conges/${id}`,
-          { statut },
+          { statut, ...(motifRefus ? { motifRefus } : {}) },
           {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
         // Mettre à jour localement sans recharger toute la liste
         setConges((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, statut } : c))
+          prev.map((c) => (c.id === id ? { ...c, statut, ...(motifRefus ? { motifRefus } : {}) } : c))
         );
         
         // Notifier le parent pour mettre à jour le badge de notification
@@ -118,12 +133,81 @@
 
 
 
+    // Calcule le nombre de jours d'un congé (inclusif)
+    const compterJoursConge = (c) => {
+      if (!c?.dateDebut || !c?.dateFin) return 0;
+      const d1 = new Date(c.dateDebut);
+      const d2 = new Date(c.dateFin);
+      const diff = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+      return diff > 0 ? diff : 1;
+    };
+
+    // Nombre de jours de congés payés approuvés cette année pour un employé
+    const joursPrisCetteAnnee = (userId) => {
+      const annee = new Date().getFullYear();
+      return conges
+        .filter(c => c.userId === userId && c.statut === 'approuvé')
+        .filter(c => {
+          const t = (c.type || '').toLowerCase();
+          return t.includes('payé') || t.includes('paye') || t === 'cp' || t.includes('rtt');
+        })
+        .filter(c => new Date(c.dateDebut).getFullYear() === annee)
+        .reduce((sum, c) => sum + compterJoursConge(c), 0);
+    };
+
+    // Exécuter un refus avec motif (un ou plusieurs)
+    const executerRefus = async () => {
+      if (!refusData || refusData.ids.length === 0) return;
+      const motif = (refusData.motif || '').trim();
+      if (!motif) {
+        alertService.error('Motif requis', 'Veuillez indiquer un motif de refus.');
+        return;
+      }
+      setBulkProcessing(true);
+      try {
+        await Promise.all(refusData.ids.map(id => updateStatut(id, 'refusé', motif)));
+        setShowRefusModal(false);
+        setRefusData(null);
+        setSelectedIds(new Set());
+      } finally {
+        setBulkProcessing(false);
+      }
+    };
+
+    // Approuver la sélection en masse
+    const approuverSelection = async () => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      setBulkProcessing(true);
+      try {
+        await Promise.all(ids.map(id => updateStatut(id, 'approuvé')));
+        setSelectedIds(new Set());
+      } finally {
+        setBulkProcessing(false);
+      }
+    };
+
+    // Refuser la sélection en masse (demande un motif)
+    const refuserSelection = () => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      setRefusData({ ids, motif: '' });
+      setShowRefusModal(true);
+    };
+
+    // Toggle sélection d'une ligne
+    const toggleSelect = (id) => {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+    };
+
     useEffect(() => {
       fetchConges();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    // Effet pour gérer le highlight d'une ligne depuis une notification
     useEffect(() => {
       if (highlightCongeId && conges.length > 0) {
         
@@ -131,7 +215,14 @@
         const congesList = conges.filter(c => 
           c.user &&
           (filtre === "tous" ? true : c.statut === filtre) &&
-          (c.user.email || '').toLowerCase().includes(search.toLowerCase())
+          (() => {
+            const searchLower = search.toLowerCase();
+            if (!searchLower) return true;
+            const email = (c.user.email || '').toLowerCase();
+            const nom = (c.user.nom || '').toLowerCase();
+            const prenom = (c.user.prenom || '').toLowerCase();
+            return email.includes(searchLower) || nom.includes(searchLower) || prenom.includes(searchLower);
+          })()
         );
         const congeIndex = congesList.findIndex(c => c.id === highlightCongeId);
         
@@ -160,6 +251,9 @@
         } else {
           // Le congé n'est pas visible avec le filtre actuel, réinitialiser les filtres
           setFiltre('tous');
+          setFiltreType('tous');
+          setFiltrePeriode('tous');
+          setFiltreCategorie('tous');
           setSearch('');
         }
       }
@@ -208,10 +302,10 @@
       return indicateurs;
     };
 
-    // Fonction de tri intelligent pour l'admin - VERSION CORRIGÉE
+    // Fonction de tri intelligent pour l'admin
     const trierCongesAdmin = (conges) => {
       return conges.sort((a, b) => {
-        // 1. Priorité par statut (en attente en premier)
+        // 1. Priorité par statut (en attente en premier, puis approuvé à venir, refusé en dernier)
         const prioriteStatut = {
           'en attente': 1,
           'approuvé': 2, 
@@ -222,27 +316,107 @@
           return prioriteStatut[a.statut] - prioriteStatut[b.statut];
         }
         
-        // 2. Pour les demandes en attente, tri par proximité des congés
-        if (a.statut === 'en attente' && b.statut === 'en attente') {
+        // 2. Pour les demandes en attente, tri par urgence (date de début la plus proche d'abord)
+        if (a.statut === 'en attente') {
           const maintenant = new Date();
           const joursAvantA = Math.ceil((new Date(a.dateDebut) - maintenant) / (1000 * 60 * 60 * 24));
           const joursAvantB = Math.ceil((new Date(b.dateDebut) - maintenant) / (1000 * 60 * 60 * 24));
-          
-          // Tri par urgence : les congés les plus proches en premier
           return joursAvantA - joursAvantB;
         }
         
-        // 3. Pour même statut, tri par date de début des congés
-        return new Date(a.dateDebut) - new Date(b.dateDebut);
+        // 3. Pour les approuvés, les plus proches en premier (à venir d'abord, passés ensuite)
+        if (a.statut === 'approuvé') {
+          const now = new Date();
+          const aFutur = new Date(a.dateFin) >= now;
+          const bFutur = new Date(b.dateFin) >= now;
+          if (aFutur && !bFutur) return -1;
+          if (!aFutur && bFutur) return 1;
+          if (aFutur && bFutur) return new Date(a.dateDebut) - new Date(b.dateDebut);
+          return new Date(b.dateDebut) - new Date(a.dateDebut); // passés : plus récents d'abord
+        }
+        
+        // 4. Refusés : plus récents d'abord
+        return new Date(b.dateDebut) - new Date(a.dateDebut);
       });
     };
 
     // Filtrer les congés selon le statut sélectionné et la recherche
-    const congesFiltres = trierCongesAdmin(conges.filter((c) =>
-      c.user &&
-      (filtre === "tous" ? true : c.statut === filtre) &&
-      (c.user.email || '').toLowerCase().includes(search.toLowerCase())
-    ));
+    const congesFiltres = trierCongesAdmin(conges.filter((c) => {
+      if (!c.user) return false;
+      // Filtre statut
+      if (filtre !== "tous" && c.statut !== filtre) return false;
+      // Filtre type de congé
+      if (filtreType !== "tous" && c.type !== filtreType) return false;
+      // Filtre catégorie employé
+      if (filtreCategorie !== "tous") {
+        const empCategorie = (c.user.categorie || '').toLowerCase();
+        if (!empCategorie.includes(filtreCategorie.toLowerCase())) return false;
+      }
+      // Filtre période
+      if (filtrePeriode !== "tous") {
+        const now = new Date();
+        const debutSemaine = new Date(now);
+        const dow = (now.getDay() + 6) % 7;
+        debutSemaine.setDate(now.getDate() - dow);
+        debutSemaine.setHours(0, 0, 0, 0);
+        const finSemaine = new Date(debutSemaine);
+        finSemaine.setDate(debutSemaine.getDate() + 6);
+        finSemaine.setHours(23, 59, 59, 999);
+        const debutMois = new Date(now.getFullYear(), now.getMonth(), 1);
+        const finMois = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        const debutMoisProchain = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const finMoisProchain = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59);
+        const debutTrimestre = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        const finTrimestre = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0, 23, 59, 59);
+        const dateDebut = new Date(c.dateDebut);
+        const dateFin = new Date(c.dateFin);
+        if (filtrePeriode === "cette_semaine") {
+          if (dateFin < debutSemaine || dateDebut > finSemaine) return false;
+        } else if (filtrePeriode === "ce_mois") {
+          if (dateFin < debutMois || dateDebut > finMois) return false;
+        } else if (filtrePeriode === "mois_prochain") {
+          if (dateFin < debutMoisProchain || dateDebut > finMoisProchain) return false;
+        } else if (filtrePeriode === "trimestre") {
+          if (dateFin < debutTrimestre || dateDebut > finTrimestre) return false;
+        } else if (filtrePeriode === "a_venir") {
+          if (dateFin < now) return false;
+        } else if (filtrePeriode === "passe") {
+          if (dateFin >= now) return false;
+        }
+      }
+      // Recherche par nom/prénom/email
+      const searchLower = search.toLowerCase();
+      if (searchLower) {
+        const email = (c.user.email || '').toLowerCase();
+        const nom = (c.user.nom || '').toLowerCase();
+        const prenom = (c.user.prenom || '').toLowerCase();
+        const fullName = `${prenom} ${nom}`;
+        if (!email.includes(searchLower) && !nom.includes(searchLower) && !prenom.includes(searchLower) && !fullName.includes(searchLower)) return false;
+      }
+      return true;
+    }));
+
+    // Types de congés uniques présents dans les données
+    const typesCongesPresents = [...new Set(conges.map(c => c.type))].sort();
+
+    // Catégories uniques des employés qui ont des congés
+    const categoriesPresentes = [...new Set(
+      conges.filter(c => c.user && c.user.categorie).map(c => c.user.categorie)
+    )].sort();
+
+    // Nombre de filtres actifs (hors recherche)
+    const filtresActifs = [filtre !== "tous", filtreType !== "tous", filtrePeriode !== "tous", filtreCategorie !== "tous"].filter(Boolean).length;
+
+    // Fermer dropdown au clic extérieur
+    useEffect(() => {
+      const handleClickOutside = (e) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+          setOpenDropdown(null);
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Statistiques des congés
     const statsConges = {
@@ -340,96 +514,246 @@
           </div>
         </div>
 
-        {/* Barre unifiée : Filtres + Pagination */}
-        <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-            {/* Filtres à gauche */}
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              {/* Barre de recherche compacte */}
-              <div className="relative flex-1 min-w-[200px] max-w-xs">
-                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+        {/* Barre de filtres style pill/rounded */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 shadow-sm">
+          <div className="flex flex-col gap-3" ref={dropdownRef}>
+            {/* Ligne 1 : Recherche + Filtres pill */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Recherche */}
+              <div className="relative min-w-[220px] flex-1 max-w-sm">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-4 w-4 text-gray-400" />
                 </div>
                 <input
                   type="text"
-                  placeholder="Rechercher par email..."
+                  placeholder="Rechercher nom, prénom..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all duration-200"
+                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                  className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-full text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all duration-200"
                 />
                 {search && (
                   <button
                     onClick={() => setSearch("")}
-                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
-              
-              {/* Sélecteur de statut */}
-              <div className="relative min-w-[150px]">
-                <select
-                  value={filtre}
-                  onChange={(e) => setFiltre(e.target.value)}
-                  className="w-full appearance-none text-sm border border-gray-300 rounded-lg pl-3 pr-7 py-1.5 bg-white focus:ring-2 focus:ring-[#cf292c]/20 focus:border-[#cf292c] transition-all duration-200"
+
+              {/* Pill : Statut */}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === 'statut' ? null : 'statut')}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all duration-200 ${
+                    filtre !== 'tous' 
+                      ? 'bg-[#cf292c] text-white border-[#cf292c] shadow-sm' 
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-[#cf292c]/40 hover:bg-gray-50'
+                  }`}
                 >
-                  <option value="tous">Tous les statuts</option>
-                  <option value="en attente">En attente</option>
-                  <option value="approuvé">Approuvés</option>
-                  <option value="refusé">Refusés</option>
-                </select>
-                <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-gray-400">
-                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
+                  <Clock size={14} />
+                  {filtre === 'tous' ? 'Statut' : filtre === 'en attente' ? 'En attente' : filtre === 'approuvé' ? 'Approuvés' : 'Refusés'}
+                  <ChevronDown size={14} className={`transition-transform ${openDropdown === 'statut' ? 'rotate-180' : ''}`} />
+                </button>
+                {openDropdown === 'statut' && (
+                  <div className="absolute top-full left-0 mt-1.5 bg-white rounded-xl border border-gray-200 shadow-lg py-1.5 min-w-[160px] z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                    {[{v:'tous',l:'Tous les statuts'},{v:'en attente',l:'En attente'},{v:'approuvé',l:'Approuvés'},{v:'refusé',l:'Refusés'}].map(opt => (
+                      <button key={opt.v} onClick={() => { setFiltre(opt.v); setPage(1); setOpenDropdown(null); }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${filtre === opt.v ? 'text-[#cf292c] font-medium bg-[#cf292c]/5' : 'text-gray-700'}`}
+                      >{opt.l}</button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* Pill : Type de congé */}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === 'type' ? null : 'type')}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all duration-200 ${
+                    filtreType !== 'tous' 
+                      ? 'bg-[#cf292c] text-white border-[#cf292c] shadow-sm' 
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-[#cf292c]/40 hover:bg-gray-50'
+                  }`}
+                >
+                  <Calendar size={14} />
+                  {filtreType === 'tous' ? 'Type' : filtreType}
+                  <ChevronDown size={14} className={`transition-transform ${openDropdown === 'type' ? 'rotate-180' : ''}`} />
+                </button>
+                {openDropdown === 'type' && (
+                  <div className="absolute top-full left-0 mt-1.5 bg-white rounded-xl border border-gray-200 shadow-lg py-1.5 min-w-[180px] z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <button onClick={() => { setFiltreType('tous'); setPage(1); setOpenDropdown(null); }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${filtreType === 'tous' ? 'text-[#cf292c] font-medium bg-[#cf292c]/5' : 'text-gray-700'}`}
+                    >Tous les types</button>
+                    {typesCongesPresents.map(type => (
+                      <button key={type} onClick={() => { setFiltreType(type); setPage(1); setOpenDropdown(null); }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${filtreType === type ? 'text-[#cf292c] font-medium bg-[#cf292c]/5' : 'text-gray-700'}`}
+                      >{type}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pill : Période */}
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === 'periode' ? null : 'periode')}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all duration-200 ${
+                    filtrePeriode !== 'tous' 
+                      ? 'bg-[#cf292c] text-white border-[#cf292c] shadow-sm' 
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-[#cf292c]/40 hover:bg-gray-50'
+                  }`}
+                >
+                  <Calendar size={14} />
+                  {filtrePeriode === 'tous' ? 'Période' : filtrePeriode === 'cette_semaine' ? 'Cette semaine' : filtrePeriode === 'ce_mois' ? 'Ce mois' : filtrePeriode === 'mois_prochain' ? 'Mois prochain' : filtrePeriode === 'trimestre' ? 'Ce trimestre' : filtrePeriode === 'a_venir' ? 'À venir' : 'Passés'}
+                  <ChevronDown size={14} className={`transition-transform ${openDropdown === 'periode' ? 'rotate-180' : ''}`} />
+                </button>
+                {openDropdown === 'periode' && (
+                  <div className="absolute top-full left-0 mt-1.5 bg-white rounded-xl border border-gray-200 shadow-lg py-1.5 min-w-[180px] z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Période</div>
+                    {[
+                      {v:'tous', l:'Toutes périodes'},
+                      {v:'cette_semaine', l:'Cette semaine'},
+                      {v:'ce_mois', l:'Ce mois'},
+                      {v:'mois_prochain', l:'Mois prochain'},
+                      {v:'trimestre', l:'Ce trimestre'},
+                      {v:'a_venir', l:'À venir (futurs)'},
+                      {v:'passe', l:'Passés'}
+                    ].map(opt => (
+                      <button key={opt.v} onClick={() => { setFiltrePeriode(opt.v); setPage(1); setOpenDropdown(null); }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${filtrePeriode === opt.v ? 'text-[#cf292c] font-medium bg-[#cf292c]/5' : 'text-gray-700'}`}
+                      >{opt.l}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pill : Catégorie */}
+              {categoriesPresentes.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenDropdown(openDropdown === 'categorie' ? null : 'categorie')}
+                    className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium border transition-all duration-200 ${
+                      filtreCategorie !== 'tous' 
+                        ? 'bg-[#cf292c] text-white border-[#cf292c] shadow-sm' 
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-[#cf292c]/40 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Users size={14} />
+                    {filtreCategorie === 'tous' ? 'Catégorie' : filtreCategorie}
+                    <ChevronDown size={14} className={`transition-transform ${openDropdown === 'categorie' ? 'rotate-180' : ''}`} />
+                  </button>
+                  {openDropdown === 'categorie' && (
+                    <div className="absolute top-full left-0 mt-1.5 bg-white rounded-xl border border-gray-200 shadow-lg py-1.5 min-w-[170px] z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <button onClick={() => { setFiltreCategorie('tous'); setPage(1); setOpenDropdown(null); }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${filtreCategorie === 'tous' ? 'text-[#cf292c] font-medium bg-[#cf292c]/5' : 'text-gray-700'}`}
+                      >Toutes catégories</button>
+                      {categoriesPresentes.map(cat => (
+                        <button key={cat} onClick={() => { setFiltreCategorie(cat); setPage(1); setOpenDropdown(null); }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${filtreCategorie === cat ? 'text-[#cf292c] font-medium bg-[#cf292c]/5' : 'text-gray-700'}`}
+                        >{cat}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Reset filtres */}
+              {filtresActifs > 0 && (
+                <button
+                  onClick={() => { setFiltre('tous'); setFiltreType('tous'); setFiltrePeriode('tous'); setFiltreCategorie('tous'); setSearch(''); setPage(1); setOpenDropdown(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-[#cf292c] bg-[#cf292c]/5 border border-[#cf292c]/20 hover:bg-[#cf292c]/10 transition-all duration-200"
+                >
+                  <RefreshCw size={13} />
+                  Reset ({filtresActifs})
+                </button>
+              )}
             </div>
 
-            {/* Pagination à droite */}
-            <div className="flex items-center justify-between sm:justify-end gap-3">
-              <div className="flex items-center bg-gray-50 px-2.5 py-1 rounded-md border border-gray-200">
-                <div className="h-2 w-2 bg-[#cf292c] rounded-full mr-2"></div>
-                <span className="text-xs text-gray-600">
-                  Page <span className="font-semibold text-[#cf292c]">{page}</span>/<span className="font-semibold">{Math.ceil(congesFiltres.length / itemsPerPage) || 1}</span>
+            {/* Ligne 2 : Résultats + Pagination + Export */}
+            <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">
+                  <span className="font-semibold text-gray-900">{congesFiltres.length}</span> demande{congesFiltres.length !== 1 ? 's' : ''}
                 </span>
-                <span className="ml-2 text-xs text-gray-400">
-                  ({congesFiltres.length})
-                </span>
+                {filtresActifs > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#cf292c]/10 text-[#cf292c]">
+                    <Filter size={10} /> {filtresActifs} filtre{filtresActifs > 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
-              <div className="flex gap-1.5">
+
+              <div className="flex items-center gap-2">
+                {/* Pagination pill */}
+                <div className="inline-flex items-center gap-0.5 bg-gray-50 border border-gray-200 rounded-full p-0.5">
+                  <button
+                    onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={page === 1}
+                    className="p-1.5 rounded-full hover:bg-white hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronLeft size={14} className="text-gray-600" />
+                  </button>
+                  <span className="px-2 text-xs font-medium text-gray-700">
+                    {page}/{Math.ceil(congesFiltres.length / itemsPerPage) || 1}
+                  </span>
+                  <button
+                    onClick={() => setPage((prev) => indexOfLastItem < congesFiltres.length ? prev + 1 : prev)}
+                    disabled={indexOfLastItem >= congesFiltres.length}
+                    className="p-1.5 rounded-full hover:bg-white hover:shadow-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronRight size={14} className="text-gray-600" />
+                  </button>
+                </div>
+
+                {/* Export pill */}
                 <button
-                  onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={page === 1}
-                  className="p-1.5 text-sm bg-white border border-gray-200 rounded-md hover:bg-gray-50 hover:border-[#cf292c]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  onClick={handleExportExcel}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#cf292c] text-white border border-[#cf292c] hover:bg-[#b32528] transition-all duration-200 shadow-sm"
+                  title="Exporter en Excel"
                 >
-                  <ChevronLeft size={16} className="text-gray-600" />
-                </button>
-                <button
-                  onClick={() =>
-                    setPage((prev) =>
-                      indexOfLastItem < congesFiltres.length ? prev + 1 : prev
-                    )
-                  }
-                  disabled={indexOfLastItem >= congesFiltres.length}
-                  className="p-1.5 text-sm bg-[#cf292c] text-white rounded-md hover:bg-[#b32528] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                >
-                  <ChevronRight size={16} />
+                  <Download size={14} />
+                  <span className="hidden sm:inline">Export</span>
                 </button>
               </div>
-              {/* Bouton Export */}
-              <button
-                onClick={handleExportExcel}
-                className="p-1.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-all flex items-center gap-1"
-                title="Exporter en Excel"
-              >
-                <Download size={14} />
-                <span className="hidden sm:inline text-xs font-medium">Excel</span>
-              </button>
             </div>
           </div>
         </div>
+
+        {/* Barre d'actions groupées (visible quand une sélection existe) */}
+        {selectedIds.size > 0 && (
+          <div className="sticky top-2 z-20 mb-3 flex flex-wrap items-center justify-between gap-3 bg-white border border-[#cf292c]/30 rounded-2xl shadow-lg px-4 py-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-[#cf292c] text-white text-xs font-bold">
+                {selectedIds.size}
+              </span>
+              demande{selectedIds.size > 1 ? 's' : ''} sélectionnée{selectedIds.size > 1 ? 's' : ''}
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="ml-1 text-xs text-gray-400 hover:text-gray-600 underline"
+              >
+                Désélectionner
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={approuverSelection}
+                disabled={bulkProcessing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition-all shadow-sm disabled:opacity-50"
+              >
+                <Check size={15} />
+                Approuver la sélection
+              </button>
+              <button
+                onClick={refuserSelection}
+                disabled={bulkProcessing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#cf292c] text-white hover:bg-[#b32528] transition-all shadow-sm disabled:opacity-50"
+              >
+                <X size={15} />
+                Refuser la sélection
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Tableau moderne des congés avec style amélioré (desktop) */}
         <div className="hidden lg:block bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
@@ -437,6 +761,29 @@
             <table className="min-w-full">
               <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                 <tr>
+                  <th className="px-4 py-4 text-center border-b border-gray-200 w-10">
+                    {(() => {
+                      const idsEnAttente = congesAffiches.filter(c => c.statut === 'en attente').map(c => c.id);
+                      const allSelected = idsEnAttente.length > 0 && idsEnAttente.every(id => selectedIds.has(id));
+                      return (
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c] cursor-pointer accent-[#cf292c]"
+                          checked={allSelected}
+                          disabled={idsEnAttente.length === 0}
+                          onChange={(e) => {
+                            setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) idsEnAttente.forEach(id => next.add(id));
+                              else idsEnAttente.forEach(id => next.delete(id));
+                              return next;
+                            });
+                          }}
+                          title="Tout sélectionner (en attente)"
+                        />
+                      );
+                    })()}
+                  </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200">
                     Employé
                   </th>
@@ -460,7 +807,7 @@
               <tbody className="bg-white divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center">
+                  <td colSpan="7" className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                         <div className="relative">
@@ -487,6 +834,16 @@
                       ${isHighlighted ? 'animate-highlight-row bg-red-50 border-l-4 border-l-[#cf292c]' : ''}
                     `}
                   >
+                    <td className="px-4 py-4 text-center border-r border-gray-100">
+                      {c.statut === 'en attente' ? (
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c] cursor-pointer accent-[#cf292c]"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelect(c.id)}
+                        />
+                      ) : null}
+                    </td>
                     <td className="px-6 py-4 border-r border-gray-100">
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-[#cf292c] rounded-full flex items-center justify-center mr-3 flex-shrink-0">
@@ -522,6 +879,16 @@
                               "Nom non renseigné"
                             )}
                           </div>
+                          {(() => {
+                            const pris = joursPrisCetteAnnee(c.userId);
+                            return (
+                              <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5"
+                                title={`Congés payés/RTT approuvés en ${new Date().getFullYear()}`}>
+                                <Calendar size={10} className="text-gray-400" />
+                                {pris}j pris en {new Date().getFullYear()}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </td>
@@ -612,6 +979,11 @@
                           Refusé
                         </span>
                       )}
+                      {c.statut === "refusé" && c.motifRefus && (
+                        <p className="mt-1.5 text-[11px] text-gray-500 italic max-w-[160px] mx-auto line-clamp-2" title={c.motifRefus}>
+                          « {c.motifRefus} »
+                        </p>
+                      )}
                       {c.statut === "en attente" && (
                         <span className="inline-block px-3 py-1 bg-[#cf292c]/20 text-[#cf292c] text-sm font-medium rounded">
                           En attente
@@ -676,7 +1048,7 @@
                 })
                 ) : (
                 <tr>
-                  <td colSpan="6" className="text-center py-16">
+                  <td colSpan="7" className="text-center py-16">
                     <div className="flex flex-col items-center justify-center">
                       <div className="mb-4 p-4 rounded-full bg-gray-50 border border-gray-100 shadow-inner">
                         <AlertCircle size={40} className="text-gray-300" />
@@ -686,7 +1058,7 @@
                         Aucune demande ne correspond à vos critères actuels. Essayez de modifier vos filtres ou effectuez une nouvelle recherche.
                       </p>
                       <button 
-                        onClick={() => {setFiltre('tous'); setSearch('');}}
+                        onClick={() => {setFiltre('tous'); setFiltreType('tous'); setFiltrePeriode('tous'); setFiltreCategorie('tous'); setSearch(''); setPage(1);}}
                         className="mt-4 px-4 py-2 bg-[#cf292c] text-white rounded-lg shadow-sm hover:bg-[#b32528] transition flex items-center gap-2"
                       >
                         <RefreshCw size={16} />
@@ -730,6 +1102,16 @@
                 > 
                   {/* Accent vertical si urgence */}
                   <div className="p-3 pb-2">
+                    {c.statut === 'en attente' && (
+                      <label className="absolute top-2.5 right-2.5 z-10 flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="w-5 h-5 rounded border-gray-300 text-[#cf292c] focus:ring-[#cf292c] accent-[#cf292c]"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelect(c.id)}
+                        />
+                      </label>
+                    )}
                     <div className="flex items-start gap-3">
                       <div className="relative flex-shrink-0">
                         <div className="w-11 h-11 rounded-full bg-[#cf292c] flex items-center justify-center text-white font-semibold text-xs shadow-inner tracking-wide">
@@ -765,6 +1147,10 @@
                             'Nom non renseigné'
                           )}
                         </p>
+                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">
+                          <Calendar size={10} className="text-gray-400" />
+                          {joursPrisCetteAnnee(c.userId)}j pris en {new Date().getFullYear()}
+                        </div>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {/* Type */}
                           {c.type.includes('payé') && (
@@ -787,6 +1173,11 @@
                             <span className="px-2 py-0.5 rounded-md bg-[#cf292c]/20 text-[#cf292c] text-[11px] font-medium">En attente</span>
                           )}
                         </div>
+                        {c.statut === 'refusé' && c.motifRefus && (
+                          <p className="mt-1.5 text-[11px] text-gray-500 italic leading-snug">
+                            Motif du refus : « {c.motifRefus} »
+                          </p>
+                        )}
                       </div>
                     </div>
                     {/* Période compacte */}
@@ -874,7 +1265,7 @@
               <p className="text-base font-semibold text-gray-600">Aucun congé trouvé</p>
               <p className="text-xs text-gray-500 mt-2">Aucune demande ne correspond à vos critères.</p>
               <button
-                onClick={() => { setFiltre('tous'); setSearch(''); }}
+                onClick={() => { setFiltre('tous'); setFiltreType('tous'); setFiltrePeriode('tous'); setFiltreCategorie('tous'); setSearch(''); setPage(1); }}
                 className="mt-4 px-4 py-2 bg-[#cf292c] text-white rounded-lg shadow-sm hover:bg-[#b32528] transition flex items-center gap-2 text-xs"
               >
                 <RefreshCw size={14} /> Réinitialiser
@@ -907,6 +1298,53 @@
         )}
         
         {/* Modal de confirmation */}
+        {/* Modal de motif de refus */}
+        {showRefusModal && refusData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-[#cf292c]/10 flex items-center justify-center flex-shrink-0">
+                  <X size={20} className="text-[#cf292c]" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Refuser {refusData.ids.length > 1 ? `${refusData.ids.length} demandes` : 'la demande'}
+                  </h3>
+                  <p className="text-xs text-gray-500">Le motif sera visible par l'employé.</p>
+                </div>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Motif du refus <span className="text-[#cf292c]">*</span>
+              </label>
+              <textarea
+                autoFocus
+                value={refusData.motif}
+                onChange={(e) => setRefusData(prev => ({ ...prev, motif: e.target.value }))}
+                rows={3}
+                placeholder="Ex. : Période de forte affluence, effectif insuffisant…"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#cf292c]/40 focus:border-[#cf292c] resize-none"
+              />
+              <div className="flex justify-end gap-3 mt-5">
+                <button
+                  onClick={() => { setShowRefusModal(false); setRefusData(null); }}
+                  disabled={bulkProcessing}
+                  className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={executerRefus}
+                  disabled={bulkProcessing || !(refusData.motif || '').trim()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium bg-[#cf292c] text-white hover:bg-[#b32528] transition-colors shadow-sm disabled:opacity-50"
+                >
+                  <X size={15} />
+                  Confirmer le refus
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showConfirmModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">

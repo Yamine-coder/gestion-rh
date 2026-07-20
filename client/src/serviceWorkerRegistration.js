@@ -107,9 +107,22 @@ function checkValidServiceWorker(swUrl, config) {
 
 export function unregister() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.ready
-      .then((registration) => {
-        registration.unregister();
+    // Ne désenregistrer QUE le service worker CRA (service-worker.js),
+    // surtout pas notre /sw.js (PWA + Web Push), sinon la souscription
+    // push échoue avec "no active Service Worker".
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => {
+        registrations.forEach((registration) => {
+          const scriptURL =
+            (registration.active && registration.active.scriptURL) ||
+            (registration.waiting && registration.waiting.scriptURL) ||
+            (registration.installing && registration.installing.scriptURL) ||
+            '';
+          if (scriptURL.includes('/service-worker.js')) {
+            registration.unregister();
+          }
+        });
       })
       .catch((error) => {
         console.error('Erreur lors du désenregistrement:', error);
