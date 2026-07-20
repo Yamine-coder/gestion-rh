@@ -2,14 +2,15 @@
 // Mini-modale qui affiche le planning type hebdomadaire d'un employé
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, LayoutGrid } from 'lucide-react';
+import { X, LayoutGrid, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
 import { API_URL } from '../config/api';
 import axios from 'axios';
 
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
 const JOURS_COURTS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
-export default function EmployeeTemplatePreview({ employeId, employeNom, refDate, onClose }) {
+export default function EmployeeTemplatePreview({ employeId, employeNom, employeRole, refDate, onClose }) {
   const [creneaux, setCreneaux] = useState(null);
   const [loading, setLoading] = useState(true);
   const [templateNom, setTemplateNom] = useState('');
@@ -107,6 +108,74 @@ export default function EmployeeTemplatePreview({ employeId, employeNom, refDate
 
   const hasAnySlot = creneaux && JOURS.some(j => creneaux[j]?.length > 0);
 
+  // --- Téléchargement PDF direct (génération client, pas de boîte d'impression) ---
+  const handleDownloadPdf = () => {
+    if (!creneaux) return;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const marginX = 16;
+    let y = 20;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(30, 41, 59);
+    doc.text('Planning type', marginX, y);
+
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139);
+    doc.text(employeNom || '', marginX, y);
+
+    if (employeRole) {
+      y += 6;
+      doc.setFontSize(10);
+      doc.text(employeRole, marginX, y);
+    }
+
+    y += 10;
+    const rowHeight = 12;
+    const colJourWidth = 28;
+    const tableWidth = 178;
+
+    JOURS.forEach((jour, idx) => {
+      const slots = creneaux[jour] || [];
+      const isWeekend = idx >= 5;
+
+      // Fond alterné + bordure de la ligne
+      doc.setDrawColor(226, 232, 240);
+      if (slots.length > 0) doc.setFillColor(239, 246, 255);
+      else doc.setFillColor(isWeekend ? 248 : 255, isWeekend ? 250 : 255, isWeekend ? 252 : 255);
+      doc.rect(marginX, y, tableWidth, rowHeight, 'FD');
+
+      // Colonne jour
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(slots.length > 0 ? 30 : 148, slots.length > 0 ? 41 : 163, slots.length > 0 ? 59 : 184);
+      doc.text(JOURS_COURTS[idx], marginX + 5, y + rowHeight / 2 + 3);
+
+      // Colonne créneaux
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      if (slots.length > 0) {
+        doc.setTextColor(29, 78, 216);
+        doc.text(slots.join('   '), marginX + colJourWidth, y + rowHeight / 2 + 3);
+      } else {
+        doc.setTextColor(148, 163, 184);
+        doc.text(isWeekend ? 'Repos' : '—', marginX + colJourWidth, y + rowHeight / 2 + 3);
+      }
+
+      y += rowHeight;
+    });
+
+    y += 10;
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, marginX, y);
+
+    const safeName = (employeNom || 'employe').trim().replace(/\s+/g, '_');
+    doc.save(`planning_type_${safeName}.pdf`);
+  };
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
       {/* Overlay */}
@@ -123,15 +192,29 @@ export default function EmployeeTemplatePreview({ employeId, employeNom, refDate
             <LayoutGrid className="w-4 h-4 text-[#cf292c] flex-shrink-0" />
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-gray-900 truncate">Planning type</h3>
-              <p className="text-[10px] text-gray-500 truncate">{employeNom}</p>
+              <p className="text-[10px] text-gray-500 truncate">
+                {employeNom}
+                {employeRole && <span className="text-gray-400"> · {employeRole}</span>}
+              </p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {hasAnySlot && (
+              <button
+                onClick={handleDownloadPdf}
+                title="Télécharger en PDF"
+                className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                <Download className="w-4 h-4 text-gray-500" />
+              </button>
+            )}
+            <button 
+              onClick={onClose}
+              className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

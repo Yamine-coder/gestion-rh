@@ -19,7 +19,10 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
   const [tab, setTab] = useState(initialTab || 'create');
 
   // --- Wizard step (1, 2, 3) ---
-  const [step, setStep] = useState(1);
+  // Si on arrive déjà avec un seul employé pré-sélectionné en modification, on saute direct au planning type.
+  const [step, setStep] = useState(() => (
+    (initialTab === 'modify') && Array.isArray(initialEmployeeIds) && initialEmployeeIds.length === 1 ? 2 : 1
+  ));
 
   // --- Étape 1: Employés ---
   const [selectedEmployees, setSelectedEmployees] = useState(Array.isArray(initialEmployeeIds) ? initialEmployeeIds : []);
@@ -45,6 +48,18 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
   const [jours, setJours] = useState({
     lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: false, dimanche: false
   });
+
+  // --- Mode "Modifier" : planning type hebdomadaire (pas de date à choisir, pas de question de fréquence) ---
+  // Toujours récurrent, toujours en créneaux par jour ; les jours "jours" servent ici de Travail/Repos.
+  const [templateLoading, setTemplateLoading] = useState(false);
+  React.useEffect(() => {
+    if (tab !== 'modify') return;
+    setIndefini(true);
+    setCreneauxParJour(true);
+    setMonthsCount(prev => prev && prev !== 6 ? prev : 12);
+    setStartDate(prev => prev || format(new Date(), 'yyyy-MM-dd'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // --- Étape 3: Résultat ---
   const [loading, setLoading] = useState(false);
@@ -79,6 +94,50 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
 
   const jourMap = useMemo(() => ({ 0: 'dimanche', 1: 'lundi', 2: 'mardi', 3: 'mercredi', 4: 'jeudi', 5: 'vendredi', 6: 'samedi' }), []);
   const jourLabels = { lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer', jeudi: 'Jeu', vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim' };
+
+  // --- Mode "Modifier" : pré-remplit le planning type avec les VRAIS horaires actuels de l'employé ---
+  const singleEmployeeIdForTemplate = (tab === 'modify' && selectedEmployees.length === 1) ? selectedEmployees[0] : null;
+  React.useEffect(() => {
+    if (!singleEmployeeIdForTemplate) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setTemplateLoading(true);
+        const token = localStorage.getItem('token');
+        const from = format(new Date(), 'yyyy-MM-dd');
+        const to = format(addDays(new Date(), 20), 'yyyy-MM-dd');
+        const res = await axios.get(`${API_BASE}/shifts`, {
+          params: { employeId: singleEmployeeIdForTemplate, start: from, end: `${to}T23:59:59` },
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const byDow = {};
+        for (const s of (res.data || [])) {
+          if (s.type !== 'travail') continue;
+          const dow = new Date(s.date).getUTCDay();
+          if (byDow[dow] === undefined && Array.isArray(s.segments) && s.segments.length) {
+            byDow[dow] = s.segments.map(seg => ({ heureDebut: seg.start, heureFin: seg.end }));
+          }
+        }
+        if (cancelled) return;
+        const newJours = {};
+        const newCreneauxJours = {};
+        Object.entries(jourMap).forEach(([dowStr, jourName]) => {
+          const segs = byDow[Number(dowStr)];
+          newJours[jourName] = !!segs;
+          newCreneauxJours[jourName] = segs && segs.length ? segs : [{ heureDebut: '09:00', heureFin: '17:00' }];
+        });
+        setJours(newJours);
+        setCreneauxJours(newCreneauxJours);
+      } catch (e) {
+        // Silencieux : on garde le planning type par défaut si l'appel échoue
+      } finally {
+        if (!cancelled) setTemplateLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singleEmployeeIdForTemplate]);
 
   // --- Persistence légère ---
   React.useEffect(() => {
@@ -239,7 +298,8 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
           if (!sel.has(s.employeId) || s.type !== 'travail') continue;
           const d = new Date(s.date);
           const jourName = jourMap[d.getUTCDay()];
-          if (!jours[jourName]) continue;
+          // En modification, tous les jours du planning type sont concernés (Travail = remplacé, Repos = supprimé)
+          if (tab !== 'modify' && !jours[jourName]) continue;
           total++;
           parEmploye[s.employeId] = (parEmploye[s.employeId] || 0) + 1;
         }
@@ -264,7 +324,8 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
     if (!startDate) { setError('Sélectionnez une date de début'); return false; }
     if (!indefini && !endDate) { setError('Sélectionnez une date de fin'); return false; }
     if (!indefini && endDate && parseISO(startDate) > parseISO(endDate)) { setError('La date de début doit être avant la fin'); return false; }
-    if (!Object.values(jours).some(v => v)) { setError('Sélectionnez au moins un jour'); return false; }
+    // En modification (planning type), une semaine entièrement en repos est valide.
+    if (tab !== 'modify' && !Object.values(jours).some(v => v)) { setError('Sélectionnez au moins un jour'); return false; }
     const errC = validerCreneaux();
     if (errC) { setError(errC); return false; }
     setError(null); return true;
@@ -276,36 +337,68 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
   };
   const allerPrecedent = () => { setError(null); setStep(Math.max(1, step - 1)); };
 
-  // --- Création ---
+  // --- Création / Modification (planning type) ---
+  const daysMap = { dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
   const creerPlannings = async () => {
     try {
       setLoading(true); setError(null);
       const token = localStorage.getItem('token');
       if (!token) { setError('Session expirée'); setLoading(false); return; }
 
-      // En mode modification : on remplace systématiquement et on nettoie d'abord la plage
       const isModify = tab === 'modify';
-      const effectiveMode = isModify ? 'replace' : conflictMode;
-
-      // Calcul de la plage effective (pour la suppression préalable en mode modify)
       const { rangeStart, rangeEnd } = getEffectiveRange();
 
-      // Mode modification : supprimer les plannings 'travail' existants sur la plage avant recréation
       if (isModify) {
-        const daysMapDel = { dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
-        const daysOfWeekDel = Object.entries(jours).filter(([, v]) => v).map(([k]) => daysMapDel[k]);
-        await axios.post(`${API_BASE}/shifts/delete-range`, {
-          employeIds: selectedEmployees,
-          startDate: rangeStart,
-          endDate: rangeEnd,
-          type: 'travail',
-          daysOfWeek: daysOfWeekDel,
-        }, { headers: { Authorization: `Bearer ${token}` } });
+        // Planning type hebdomadaire : jours "Repos" => supprimés, jours "Travail" => remplacés par les horaires indiqués.
+        const joursRepos = Object.entries(jours).filter(([, v]) => !v).map(([k]) => daysMap[k]);
+        let deletedRepos = 0;
+        if (joursRepos.length > 0) {
+          const delRes = await axios.post(`${API_BASE}/shifts/delete-range`, {
+            employeIds: selectedEmployees,
+            startDate: rangeStart,
+            endDate: rangeEnd,
+            type: 'travail',
+            daysOfWeek: joursRepos,
+          }, { headers: { Authorization: `Bearer ${token}` } });
+          deletedRepos = delRes.data?.deleted || delRes.data?.count || 0;
+        }
+
+        const joursTravail = Object.entries(jours).filter(([, v]) => v).map(([k]) => daysMap[k]);
+        let recurringDetails = null;
+        if (joursTravail.length > 0) {
+          const segmentsByDay = {};
+          for (const [jourName, actif] of Object.entries(jours)) {
+            if (!actif) continue;
+            segmentsByDay[daysMap[jourName]] = creneauxJours[jourName].map(c => ({ start: c.heureDebut, end: c.heureFin }));
+          }
+          const res = await axios.post(`${API_BASE}/shifts/recurring`, {
+            employeIds: selectedEmployees, startDate: rangeStart, monthsCount, daysOfWeek: joursTravail, segmentsByDay, mode: 'replace',
+          }, { headers: { Authorization: `Bearer ${token}` } });
+          if (!res.data?.success) { setError(res.data?.error || 'Erreur mise à jour du planning'); setLoading(false); return; }
+          recurringDetails = res.data;
+        }
+
+        setCreationResult({
+          mode: 'template',
+          intent: 'modify',
+          details: {
+            created: recurringDetails?.created || 0,
+            replaced: recurringDetails?.replaced || 0,
+            skipped: recurringDetails?.skipped || 0,
+            skippedConges: recurringDetails?.skippedConges || 0,
+            deletedRepos,
+          },
+        });
+        setLastCreationRange({ employeIds: selectedEmployees, startDate: rangeStart, endDate: recurringDetails?.to || rangeEnd });
+        setLoading(false);
+        onSuccess(rangeStart);
+        return;
       }
 
+      // --- Onglet Créer (comportement inchangé) ---
+      const effectiveMode = conflictMode;
       let formattedDate = null; let rangeInfo = null;
       if (indefini) {
-        const daysMap = { dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6 };
         const daysOfWeek = Object.entries(jours).filter(([, v]) => v).map(([k]) => daysMap[k]);
         let body;
         if (creneauxParJour) {
@@ -451,9 +544,9 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
           <button type="button" onClick={creerPlannings} disabled={loading}
             className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-[#cf292c] hover:bg-[#b52528] rounded-lg transition-colors shadow-sm disabled:opacity-50">
             {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> {tab === 'modify' ? 'Modification...' : 'Création...'}</>
+              <><Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} /> {tab === 'modify' ? 'Enregistrement...' : 'Création...'}</>
             ) : (
-              <><Check className="w-4 h-4" strokeWidth={2} /> {tab === 'modify' ? 'Appliquer les modifications' : 'Créer les plannings'}</>
+              <><Check className="w-4 h-4" strokeWidth={2} /> {tab === 'modify' ? 'Enregistrer le planning' : 'Créer les plannings'}</>
             )}
           </button>
         ) : (
@@ -486,7 +579,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
         {(() => {
           const descMap = {
             create: 'Ajouter de nouveaux plannings à un ou plusieurs employés.',
-            modify: 'Remplacer les horaires de jours précis sans toucher au reste.',
+            modify: 'Le planning type de la semaine : cochez les jours de repos, ajustez les horaires.',
             delete: 'Retirer les plannings sur une période donnée.',
           };
           return <p className="text-[11px] text-slate-400 mt-2 px-1">{descMap[tab]}</p>;
@@ -503,14 +596,6 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
       {/* ===================== ONGLET CRÉATION / MODIFICATION ===================== */}
       {(tab === 'create' || tab === 'modify') && !creationResult && (
         <>
-          {tab === 'modify' && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-lg text-xs">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" strokeWidth={1.5} />
-              <span>
-                <strong>Mode modification ciblée.</strong> Seuls les <strong>jours que vous cochez</strong> seront remplacés par cette nouvelle configuration. Les autres jours du planning récurrent <strong>restent intacts</strong>. Astuce : pour ne changer qu'un seul jour (ex. mardi), ne cochez que ce jour.
-              </span>
-            </div>
-          )}
           <StepIndicator />
 
           {/* ===== ÉTAPE 1 : EMPLOYÉS ===== */}
@@ -579,6 +664,79 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
           {/* ===== ÉTAPE 2 : PLANNING ===== */}
           {step === 2 && (
             <div className="space-y-5">
+              {tab === 'modify' ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800">Planning type de la semaine</h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">Cochez "Repos" pour un jour non travaillé, ou ajustez les horaires ci-dessous.</p>
+                    </div>
+                    {templateLoading && (
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1 flex-shrink-0">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.5} /> Chargement...
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Date d'application : explicite et modifiable (peut être passée ou future) */}
+                  <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-lg border border-amber-200 bg-amber-50">
+                    <Repeat className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" strokeWidth={1.5} />
+                    <span className="text-xs font-medium text-amber-800">Appliqué à partir du</span>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                      className="px-2 py-1 border border-amber-300 rounded-md text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30" />
+                    <span className="text-xs font-medium text-amber-800">chaque semaine, pendant</span>
+                    <select value={monthsCount} onChange={e => setMonthsCount(parseInt(e.target.value, 10))}
+                      className="px-2 py-1 border border-amber-300 rounded-md text-xs font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30">
+                      {[1, 2, 3, 6, 12].map(m => <option key={m} value={m}>{m} mois</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    {['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'].map(jour => {
+                      const actif = jours[jour];
+                      const segs = (creneauxJours[jour] && creneauxJours[jour].length) ? creneauxJours[jour] : [{ heureDebut: '09:00', heureFin: '17:00' }];
+                      return (
+                        <div key={jour} className={`p-3 rounded-xl border transition-colors ${actif ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50'}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-bold text-slate-700 capitalize">{jour}</span>
+                            <button type="button" onClick={() => handleToggleJour(jour)}
+                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-colors
+                                ${actif ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' : 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100'}`}>
+                              {actif ? <><CalendarDays className="w-3 h-3" strokeWidth={2} /> Travail</> : <><Trash2 className="w-3 h-3" strokeWidth={2} /> Repos</>}
+                            </button>
+                          </div>
+                          {actif && (
+                            <div className="space-y-1.5">
+                              {segs.map((c, idx) => (
+                                <div key={idx} className="flex items-center gap-1.5">
+                                  <input type="time" value={c.heureDebut} onChange={e => modifierCreneauJour(jour, idx, 'heureDebut', e.target.value)}
+                                    className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400" />
+                                  <ArrowRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" strokeWidth={1.5} />
+                                  <input type="time" value={c.heureFin} onChange={e => modifierCreneauJour(jour, idx, 'heureFin', e.target.value)}
+                                    className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-sm text-center bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400" />
+                                  {segs.length > 1 && (
+                                    <button type="button" onClick={() => supprimerCreneauJour(jour, idx)}
+                                      className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600 rounded transition-colors flex-shrink-0">
+                                      <X className="w-3.5 h-3.5" strokeWidth={2} />
+                                    </button>
+                                  )}
+                                  {idx === segs.length - 1 && (
+                                    <button type="button" onClick={() => ajouterCreneauJour(jour)}
+                                      className="px-2 py-1 text-[10px] font-medium bg-slate-100 text-slate-600 hover:bg-slate-200 rounded transition-colors flex-shrink-0 whitespace-nowrap">
+                                      + coupure
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* Mode de période */}
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 mb-3">Type de planning</h3>
@@ -635,7 +793,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
               {/* Jours de la semaine */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-slate-800">{tab === 'modify' ? 'Jours à modifier' : 'Jours travaillés'}</h3>
+                  <h3 className="text-sm font-semibold text-slate-800">Jours travaillés</h3>
                   <div className="flex gap-1.5">
                     <button type="button" onClick={() => setJours({ lundi: true, mardi: true, mercredi: true, jeudi: true, vendredi: true, samedi: false, dimanche: false })}
                       className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors">Lun-Ven</button>
@@ -653,8 +811,11 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
                   ))}
                 </div>
               </div>
+                </>
+              )}
 
-              {/* Créneaux horaires */}
+              {/* Créneaux horaires (uniquement pour l'onglet Créer ; en Modifier, les horaires sont dans la grille ci-dessus) */}
+              {tab !== 'modify' && (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-semibold text-slate-800">Horaires</h3>
@@ -743,6 +904,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
                   </div>
                 )}
               </div>
+              )}
 
               <WizardNav />
             </div>
@@ -751,7 +913,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
           {/* ===== ÉTAPE 3 : CONFIRMATION ===== */}
           {step === 3 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-800">{tab === 'modify' ? 'Résumé avant modification' : 'Résumé avant création'}</h3>
+              <h3 className="text-sm font-semibold text-slate-800">{tab === 'modify' ? 'Résumé avant enregistrement' : 'Résumé avant création'}</h3>
 
               {/* Carte récap */}
               <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -793,7 +955,27 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
 
                 {/* Jours & Horaires */}
                 <div className="p-3 bg-white border-b border-slate-100">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Jours & Horaires</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{tab === 'modify' ? 'Planning type' : 'Jours & Horaires'}</span>
+                  {tab === 'modify' ? (
+                    <div className="mt-2 space-y-1">
+                      {['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'].map(jour => {
+                        const actif = jours[jour];
+                        return (
+                          <div key={jour} className="flex items-center gap-2 text-xs">
+                            <span className="w-16 font-semibold text-slate-700 capitalize">{jour}</span>
+                            {actif ? (
+                              (creneauxJours[jour] || []).map((c, i) => (
+                                <span key={i} className="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-medium text-slate-700">{c.heureDebut} → {c.heureFin}</span>
+                              ))
+                            ) : (
+                              <span className="px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[11px] font-semibold">Repos</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>
                   <div className="flex items-center gap-2 mt-1.5">
                     {Object.entries(jours).map(([jour, actif]) => (
                       <span key={jour} className={`inline-flex items-center justify-center w-7 h-7 rounded-md text-[10px] font-bold
@@ -821,6 +1003,8 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
                       ))
                     )}
                   </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Stats */}
@@ -859,7 +1043,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
                       </p>
                       <p className={`text-[11px] mt-0.5 ${tab === 'modify' || conflictMode === 'replace' ? 'text-amber-600' : 'text-blue-600'}`}>
                         {tab === 'modify'
-                          ? 'Ces jours seront remplacés par la nouvelle configuration. Les autres jours restent intacts.'
+                          ? 'Ces jours seront mis à jour selon le planning type ci-dessus.'
                           : conflictMode === 'replace'
                             ? 'Ils seront remplacés par la nouvelle configuration.'
                             : 'Ces jours seront ignorés (les plannings existants seront conservés).'}
@@ -894,7 +1078,7 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50">
                   <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" strokeWidth={1.5} />
                   <p className="text-xs text-amber-700">
-                    Seuls les <strong>jours sélectionnés</strong> seront remplacés par la nouvelle configuration. Les autres jours du planning récurrent <strong>restent intacts</strong>.
+                    Ce planning type sera appliqué <strong>chaque semaine pendant {monthsCount} mois</strong> : les jours <strong>Repos</strong> seront libérés, les autres jours prendront les horaires indiqués.
                   </p>
                 </div>
               ) : (
@@ -927,21 +1111,27 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
       {/* ===== RÉSULTAT CRÉATION ===== */}
       {(tab === 'create' || tab === 'modify') && creationResult && (
         <div className="text-center py-8">
-          <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-emerald-100 flex items-center justify-center">
+          <div className={`w-14 h-14 mx-auto mb-4 rounded-full flex items-center justify-center bg-emerald-100`}>
             <CheckCircle2 className="w-7 h-7 text-emerald-600" strokeWidth={1.5} />
           </div>
           <h3 className="text-lg font-semibold text-slate-800 mb-1">
-            {creationResult.intent === 'modify' ? 'Plannings modifiés !' : 'Plannings créés !'}
+            {creationResult.mode === 'template' ? 'Planning mis à jour !' : creationResult.intent === 'modify' ? 'Plannings modifiés !' : 'Plannings créés !'}
           </h3>
           <p className="text-sm text-slate-500 mb-4">
             {creationResult.mode === 'batch' && <><span className="font-semibold text-emerald-600">{creationResult.details.created}</span> planning(s) {creationResult.intent === 'modify' ? 'mis à jour' : 'créés'} avec succès</>}
             {creationResult.mode === 'recurring' && <><span className="font-semibold text-emerald-600">{creationResult.details.created}</span> dates {creationResult.intent === 'modify' ? 'mises à jour' : 'créées'} en récurrence</>}
+            {creationResult.mode === 'template' && (
+              <>
+                <span className="font-semibold text-emerald-600">{creationResult.details.created}</span> date(s) programmée(s)
+                {creationResult.details.deletedRepos > 0 && <> · <span className="font-semibold text-red-500">{creationResult.details.deletedRepos}</span> mise(s) en repos</>}
+              </>
+            )}
           </p>
 
           {/* Détails transparence : ignorés / congés protégés / erreurs */}
           {(() => {
             const d = creationResult.details || {};
-            const ignores = creationResult.mode === 'recurring' ? (d.skipped || 0) : (Array.isArray(d.errors) ? d.errors.length : 0);
+            const ignores = (creationResult.mode === 'recurring' || creationResult.mode === 'template') ? (d.skipped || 0) : (Array.isArray(d.errors) ? d.errors.length : 0);
             const conges = d.skippedConges || 0;
             const remplaces = d.replaced || 0;
             if (!ignores && !conges && !remplaces) return null;
@@ -968,7 +1158,11 @@ const CreationRapideForm = ({ employes, onClose, onSuccess, initialTab, initialE
 
           {lastCreationRange && (
             <p className="text-xs text-slate-400 mb-6">
-              Du {format(parseISO(lastCreationRange.startDate), 'd MMM yyyy', { locale: fr })} au {format(parseISO(lastCreationRange.endDate), 'd MMM yyyy', { locale: fr })} — {lastCreationRange.employeIds.length} employé{lastCreationRange.employeIds.length > 1 ? 's' : ''}
+              {lastCreationRange.startDate === lastCreationRange.endDate ? (
+                <>Le {format(parseISO(lastCreationRange.startDate), 'd MMM yyyy', { locale: fr })}</>
+              ) : (
+                <>Du {format(parseISO(lastCreationRange.startDate), 'd MMM yyyy', { locale: fr })} au {format(parseISO(lastCreationRange.endDate), 'd MMM yyyy', { locale: fr })}</>
+              )} — {lastCreationRange.employeIds.length} employé{lastCreationRange.employeIds.length > 1 ? 's' : ''}
             </p>
           )}
           <div className="flex justify-center gap-3">

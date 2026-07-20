@@ -5,7 +5,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Clock, Users, Moon, Banknote, AlarmClock, Coffee } from 'lucide-react';
+import { X, Clock, Users, Moon, Banknote, AlarmClock, Coffee, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
 
 // Parser "HH:MM" -> minutes
 const parseTime = (t) => {
@@ -138,6 +139,274 @@ export default function CategoryPresenceModal({
 
   const NAMES_W = 'w-40';
 
+  // Statut d'un employé pour une date donnée (réutilisé par l'export PDF hebdomadaire)
+  const statusForDate = (emp, dStr) => {
+    const conge = conges.find(
+      (c) =>
+        c.userId === emp.id &&
+        (c.statut === 'approuvé' || c.statut === 'approuve') &&
+        c.dateDebut && c.dateFin &&
+        dStr >= c.dateDebut.slice(0, 10) && dStr <= c.dateFin.slice(0, 10)
+    );
+    if (conge) return { status: 'conge', label: 'Congé' };
+    const shift = shifts.find(
+      (s) => s.employeId === emp.id && s.date && s.date.slice(0, 10) === dStr
+    );
+    if (shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length) {
+      const label = shift.segments
+        .filter((s) => s && s.start && s.end)
+        .map((s) => `${s.start}-${s.end}`)
+        .join(', ');
+      return { status: 'travail', label: label || '—' };
+    }
+    if (shift?.type === 'absence') return { status: 'absence', label: 'Absent' };
+    if (shift?.type === 'repos') return { status: 'repos', label: 'Repos' };
+    return { status: 'libre', label: '—' };
+  };
+
+  // Segments horaires d'un employé pour une date donnée (réutilisé par l'export PDF)
+  const segmentsForDate = (emp, dStr) => {
+    const shift = shifts.find(
+      (s) => s.employeId === emp.id && s.date && s.date.slice(0, 10) === dStr
+    );
+    if (shift?.type === 'travail' && Array.isArray(shift.segments) && shift.segments.length) {
+      return shift.segments
+        .filter((seg) => seg && seg.start && seg.end)
+        .map((seg) => {
+          let start = parseTime(seg.start);
+          let end = parseTime(seg.end);
+          const night = end <= start;
+          if (night) end += 24 * 60;
+          return { ...seg, _start: start, _end: end, _night: night };
+        });
+    }
+    return [];
+  };
+
+  // Couleur RGB (pour jsPDF) d'un segment selon son état — miroir de segmentColor()
+  const segmentRgb = (seg, night) => {
+    if (seg?.isExtra) {
+      return seg.paymentStatus === 'payé' || seg.paymentStatus === 'paye'
+        ? [5, 150, 105]   // emerald-600
+        : [16, 185, 129]; // emerald-500
+    }
+    if (seg?.aValider) return [245, 158, 11]; // amber-500
+    if (night) return [99, 102, 241];         // indigo-500
+    return [59, 130, 246];                    // blue-500
+  };
+
+  // Assombrit une couleur RGB (pour la bordure des jauges, meilleure lisibilité)
+  const darkenRgb = ([r, g, b], factor = 0.72) => [
+    Math.round(r * factor),
+    Math.round(g * factor),
+    Math.round(b * factor),
+  ];
+
+  // Axe horaire commun (min/max) sur toute la semaine pour aligner les jauges de chaque jour
+  const weekAxis = useMemo(() => {
+    let minMin = 24 * 60, maxMin = 0;
+    employes.forEach((emp) => {
+      dates.forEach((d) => {
+        segmentsForDate(emp, fmt(d)).forEach((s) => {
+          if (s._start < minMin) minMin = s._start;
+          if (s._end > maxMin) maxMin = s._end;
+        });
+      });
+    });
+    if (minMin > maxMin) { minMin = 8 * 60; maxMin = 20 * 60; }
+    const startHour = Math.max(0, Math.floor(minMin / 60));
+    const endHour = Math.min(30, Math.ceil(maxMin / 60));
+    const axisStart = startHour * 60;
+    const axisEnd = Math.max(endHour * 60, axisStart + 60);
+    return { axisStart, axisEnd, startHour, endHour };
+  }, [employes, dates, shifts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Téléchargement PDF direct : planning hebdomadaire de la catégorie, par employé ---
+  const handleDownloadPdf = () => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const marginX = 12;
+    let y = 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Planning — ${groupe?.categorie || 'Catégorie'}`, marginX, y);
+
+    y += 7;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    const periode = dates.length
+      ? `Semaine du ${dayLabel(dates[0])} au ${dayLabel(dates[dates.length - 1])}`
+      : '';
+    doc.text(periode, marginX, y);
+
+    y += 10;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const tableWidth = pageWidth - marginX * 2;
+    const colEmpWidth = 48;
+    const colDayWidth = (tableWidth - colEmpWidth) / Math.max(1, dates.length);
+    const headerHeight = 9;
+    const axisRowHeight = 5;
+    const rowHeight = 16;
+    const barHeight = 6;
+
+    const { axisStart, axisEnd, startHour, endHour } = weekAxis;
+    const axisSpan = Math.max(1, axisEnd - axisStart);
+    const tickStep = Math.max(1, Math.round((endHour - startHour) / 4));
+
+    // En-tête du tableau (nom des jours)
+    doc.setFillColor(243, 244, 246);
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(marginX, y, tableWidth, headerHeight, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(51, 65, 85);
+    doc.text('Employé', marginX + 3, y + headerHeight / 2 + 3);
+    dates.forEach((d, i) => {
+      const x = marginX + colEmpWidth + i * colDayWidth;
+      doc.line(x, y, x, y + headerHeight);
+      doc.text(dayLabel(d), x + colDayWidth / 2, y + headerHeight / 2 + 3, { align: 'center' });
+    });
+    y += headerHeight;
+
+    // Ligne d'axe horaire (repères d'heures partagés par tous les jours)
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(marginX, y, tableWidth, axisRowHeight, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(71, 85, 105);
+    for (let h = startHour; h <= endHour; h += tickStep) {
+      const frac = (h * 60 - axisStart) / axisSpan;
+      dates.forEach((d, i) => {
+        const xCol = marginX + colEmpWidth + i * colDayWidth;
+        const xTick = xCol + Math.min(Math.max(frac, 0.02), 0.98) * colDayWidth;
+        doc.text(`${h % 24}h`, xTick, y + axisRowHeight - 1, { align: 'center' });
+      });
+    }
+    y += axisRowHeight;
+
+    // Lignes employés (tous, présents + non présents ce jour sélectionné n'a pas d'importance ici : vue semaine complète)
+    employes.forEach((emp, rowIdx) => {
+      if (y + rowHeight > doc.internal.pageSize.getHeight() - 15) {
+        doc.addPage();
+        y = 16;
+        // Redessiner l'axe horaire sur la nouvelle page
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(marginX, y, tableWidth, axisRowHeight, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(71, 85, 105);
+        for (let h = startHour; h <= endHour; h += tickStep) {
+          const frac = (h * 60 - axisStart) / axisSpan;
+          dates.forEach((d, i) => {
+            const xCol = marginX + colEmpWidth + i * colDayWidth;
+            const xTick = xCol + Math.min(Math.max(frac, 0.02), 0.98) * colDayWidth;
+            doc.text(`${h % 24}h`, xTick, y + axisRowHeight - 1, { align: 'center' });
+          });
+        }
+        y += axisRowHeight;
+      }
+      doc.setDrawColor(226, 232, 240);
+      doc.setFillColor(rowIdx % 2 === 0 ? 255 : 249, rowIdx % 2 === 0 ? 255 : 250, rowIdx % 2 === 0 ? 255 : 251);
+      doc.rect(marginX, y, tableWidth, rowHeight, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(fullName(emp), marginX + 3, y + 5.5);
+      if (emp.poste) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text(emp.poste, marginX + 3, y + 10);
+      }
+
+      dates.forEach((d, i) => {
+        const dStr = fmt(d);
+        const xCol = marginX + colEmpWidth + i * colDayWidth;
+        doc.line(xCol, y, xCol, y + rowHeight);
+
+        const { status, label } = statusForDate(emp, dStr);
+
+        if (status === 'travail') {
+          const segs = segmentsForDate(emp, dStr);
+          const trackX = xCol + 1;
+          const trackW = colDayWidth - 2;
+          const barY = y + rowHeight - barHeight - 2;
+
+          // Piste de fond (jauge vide)
+          doc.setDrawColor(226, 232, 240);
+          doc.setFillColor(241, 245, 249);
+          doc.roundedRect(trackX, barY, trackW, barHeight, 0.8, 0.8, 'FD');
+
+          // Repères verticaux discrets (toutes les tickStep heures)
+          doc.setDrawColor(214, 220, 229);
+          for (let h = startHour; h <= endHour; h += tickStep) {
+            const frac = (h * 60 - axisStart) / axisSpan;
+            const xTick = trackX + frac * trackW;
+            doc.line(xTick, barY, xTick, barY + barHeight);
+          }
+
+          // Barres de segments (jauges) — chaque segment affiche systématiquement son horaire,
+          // à l'intérieur si assez large, sinon au-dessus (évite les jauges illisibles/trop fines)
+          segs.forEach((s) => {
+            const left = trackX + Math.max(0, (s._start - axisStart) / axisSpan) * trackW;
+            const rawWidth = ((s._end - s._start) / axisSpan) * trackW;
+            const width = Math.max(1.8, Math.min(trackX + trackW - left, rawWidth));
+            const [r, g, b] = segmentRgb(s, s._night);
+            const [dr, dg, db] = darkenRgb([r, g, b]);
+            doc.setFillColor(r, g, b);
+            doc.setDrawColor(dr, dg, db);
+            doc.roundedRect(left, barY, width, barHeight, 0.8, 0.8, 'FD');
+
+            const timeTxt = `${s.start}-${s.end}`;
+            const centerX = Math.min(Math.max(left + width / 2, trackX + 8), trackX + trackW - 8);
+            if (width > 15) {
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6);
+              doc.setTextColor(255, 255, 255);
+              doc.text(timeTxt, left + width / 2, barY + barHeight - 1.6, { align: 'center' });
+            } else {
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(6);
+              doc.setTextColor(dr, dg, db);
+              doc.text(timeTxt, centerX, barY - 1.2, { align: 'center' });
+            }
+          });
+        } else if (status === 'conge') {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(124, 58, 237);
+          doc.text(label, xCol + colDayWidth / 2, y + rowHeight / 2 + 2.5, { align: 'center', maxWidth: colDayWidth - 2 });
+        } else if (status === 'absence') {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(220, 38, 38);
+          doc.text(label, xCol + colDayWidth / 2, y + rowHeight / 2 + 2.5, { align: 'center', maxWidth: colDayWidth - 2 });
+        } else {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(label, xCol + colDayWidth / 2, y + rowHeight / 2 + 2.5, { align: 'center', maxWidth: colDayWidth - 2 });
+        }
+      });
+
+      y += rowHeight;
+    });
+
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')}`, marginX, y);
+
+    const safeName = (groupe?.categorie || 'planning').trim().replace(/\s+/g, '_');
+    doc.save(`planning_${safeName}.pdf`);
+  };
+
   const statusBadge = (status) => {
     switch (status) {
       case 'conge':
@@ -174,13 +443,22 @@ export default function CategoryPresenceModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            title="Fermer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={handleDownloadPdf}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Télécharger le planning de la semaine en PDF"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Fermer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Onglets jours */}

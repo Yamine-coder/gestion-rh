@@ -122,14 +122,6 @@ export default function TopNavAdmin({
       description: navigoEnAttente > 0 ? `${navigoEnAttente} Navigo en attente` : "Gérer les employés"
     },
     { 
-      key: "vuejour", 
-      label: "Vue journalière", 
-      icon: FileText, 
-      short: "Vue jour",
-      priority: "medium",
-      description: "Pointages du jour"
-    },
-    { 
       key: "demandes", 
       label: "Congés", 
       icon: Inbox, 
@@ -137,6 +129,14 @@ export default function TopNavAdmin({
       badge: demandesBadge,
       priority: "medium",
       description: "Demandes de congés"
+    },
+    { 
+      key: "vuejour", 
+      label: "Vue journalière", 
+      icon: FileText, 
+      short: "Vue jour",
+      priority: "medium",
+      description: "Pointages du jour"
     },
     { 
       key: "rapports", 
@@ -166,7 +166,7 @@ export default function TopNavAdmin({
   ];
 
   // Entrées principales visibles directement + secondaires regroupées dans "Plus"
-  const PRIMARY_KEYS = ["dashboard", "planning", "employes", "demandes", "rapports"];
+  const PRIMARY_KEYS = ["dashboard", "planning", "employes", "demandes", "vuejour"];
   const primaryItems = menuItems.filter((i) => PRIMARY_KEYS.includes(i.key));
   const moreItems = menuItems.filter((i) => !PRIMARY_KEYS.includes(i.key));
   const isMoreActive = moreItems.some((i) => i.key === currentMenu);

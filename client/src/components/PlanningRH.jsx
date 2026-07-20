@@ -3050,7 +3050,11 @@ function PlanningRHTable({
                                   e.stopPropagation();
                                   if (rowMenuEmpId === emp.id) { setRowMenuEmpId(null); return; }
                                   const r = e.currentTarget.getBoundingClientRect();
-                                  setRowMenuPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 196) });
+                                  const estimatedMenuHeight = 150; // en-tête + 3 actions
+                                  const top = (r.bottom + estimatedMenuHeight + 8 > window.innerHeight)
+                                    ? Math.max(8, r.top - estimatedMenuHeight - 4)
+                                    : r.bottom + 4;
+                                  setRowMenuPos({ top, left: Math.max(8, Math.min(r.left, window.innerWidth - 196)) });
                                   setRowMenuEmpId(emp.id);
                                 }}
                                 className={`p-0.5 rounded hover:bg-gray-200/80 transition-all flex-shrink-0 ${rowMenuEmpId === emp.id ? 'opacity-100 bg-gray-200/80 text-[#cf292c]' : 'opacity-0 group-hover:opacity-100 text-gray-400 hover:text-[#cf292c]'}`}
@@ -3115,6 +3119,7 @@ function PlanningRHTable({
           <EmployeeTemplatePreview
             employeId={templatePreviewEmp.id}
             employeNom={`${templatePreviewEmp.prenom || ''} ${templatePreviewEmp.nom || ''}`}
+            employeRole={templatePreviewEmp.poste || templatePreviewEmp.role || ''}
             refDate={dates && dates.length > 0 ? dates[0] : null}
             onClose={() => setTemplatePreviewEmp(null)}
           />
@@ -4550,7 +4555,11 @@ function DayAgenda({ date, employes, shifts, conges, onCellClick, formatEmployee
                         e.stopPropagation();
                         if (rowMenuEmpId === emp.id) { setRowMenuEmpId(null); return; }
                         const r = e.currentTarget.getBoundingClientRect();
-                        setRowMenuPos({ top: r.bottom + 4, left: Math.min(r.right - 176, window.innerWidth - 196) });
+                        const estimatedMenuHeight = 150; // en-tête + 3 actions
+                        const top = (r.bottom + estimatedMenuHeight + 8 > window.innerHeight)
+                          ? Math.max(8, r.top - estimatedMenuHeight - 4)
+                          : r.bottom + 4;
+                        setRowMenuPos({ top, left: Math.max(8, Math.min(r.right - 176, window.innerWidth - 196)) });
                         setRowMenuEmpId(emp.id);
                       }}
                       className={`w-6 h-6 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-200/70 transition-all ${rowMenuEmpId === emp.id ? 'opacity-100 bg-gray-200/70 text-gray-700' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'}`}
