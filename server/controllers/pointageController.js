@@ -17,6 +17,16 @@ function getShiftHeureFin(shift) {
   return last.end || last.fin || null;
 }
 
+/** Heure de début (HH:mm) d'un shift, depuis les champs directs ou le premier segment officiel. */
+function getShiftHeureDebut(shift) {
+  if (shift.heureDebut) return shift.heureDebut;
+  const segments = parseSegments(shift.segments).filter((s) => !s.isExtra);
+  if (segments.length === 0) return null;
+  const sorted = [...segments].sort((a, b) => (a.start || a.debut || '').localeCompare(b.start || b.debut || ''));
+  const first = sorted[0];
+  return first.start || first.debut || null;
+}
+
 // ========== MISE À JOUR DES PAIEMENTS EXTRAS APRÈS POINTAGE DÉPART ==========
 /**
  * Met à jour les PaiementExtra du jour pour un employé après son pointage de départ
@@ -475,18 +485,27 @@ const getPointagesParJour = async (req, res) => {
       },
     });
 
-    // Shifts prévus ce jour-là → sert à pré-remplir l'heure de fin attendue
+    // Shifts prévus ce jour-là → sert à pré-remplir les heures attendues
     const shifts = await prisma.shift.findMany({
       where: {
         type: 'travail',
         date: new Date(`${date}T00:00:00.000Z`),
       },
-      select: { employeId: true, segments: true },
+      select: {
+        employeId: true,
+        segments: true,
+        employe: { select: { id: true, email: true, nom: true, prenom: true } },
+      },
     });
     const heureFinParEmploye = {};
+    const heureDebutParEmploye = {};
+    const employeParId = {};
     shifts.forEach((s) => {
       const heureFin = getShiftHeureFin(s);
       if (heureFin) heureFinParEmploye[s.employeId] = heureFin;
+      const heureDebut = getShiftHeureDebut(s);
+      if (heureDebut) heureDebutParEmploye[s.employeId] = heureDebut;
+      if (s.employe) employeParId[s.employeId] = s.employe;
     });
 
     const groupedByUser = {};
@@ -549,7 +568,26 @@ const getPointagesParJour = async (req, res) => {
         blocs: user.blocs,
         total: `${totalH}h ${totalM < 10 ? '0' : ''}${totalM}min`,
         heureFinPrevue: heureFinParEmploye[user.id] || null,
+        heureDebutPrevue: heureDebutParEmploye[user.id] || null,
       };
+    });
+
+    // 🕳️ Employés avec un shift prévu ce jour-là mais AUCUN pointage (oubli total)
+    // → on les ajoute quand même à la liste pour permettre une saisie manuelle
+    Object.entries(employeParId).forEach(([employeId, employe]) => {
+      const id = parseInt(employeId);
+      if (groupedByUser[id]) return; // déjà présent via ses pointages
+      final.push({
+        id,
+        email: employe.email,
+        nom: employe.nom,
+        prenom: employe.prenom,
+        blocs: [],
+        total: null,
+        heureFinPrevue: heureFinParEmploye[id] || null,
+        heureDebutPrevue: heureDebutParEmploye[id] || null,
+        aucunPointage: true,
+      });
     });
 
     res.json(final);

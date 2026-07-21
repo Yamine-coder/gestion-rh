@@ -317,6 +317,11 @@ function VueJournaliereRH() {
       initialValues[`${blocIdx}-arrivee`] = blocTimeToHHMM(bloc.arrivee);
       initialValues[`${blocIdx}-depart`] = blocTimeToHHMM(bloc.depart);
     });
+    // Aucun pointage mais un shift prévu ce jour-là → on pré-remplit avec les heures prévues
+    if (user.blocs.length === 0) {
+      if (user.heureDebutPrevue) initialValues['0-arrivee'] = user.heureDebutPrevue;
+      if (user.heureFinPrevue) initialValues['0-depart'] = user.heureFinPrevue;
+    }
     setCorrectValues(initialValues);
     setCorrectFeedback({});
     setBlocsToShow(Math.max(user.blocs.length, 1));
@@ -442,9 +447,16 @@ function VueJournaliereRH() {
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 text-gray-400 text-xs font-medium border border-gray-200">
-        Absent
-      </span>
+      <div className="inline-flex flex-col items-center gap-0.5">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-50 text-gray-400 text-xs font-medium border border-gray-200">
+          Absent
+        </span>
+        {(user.heureDebutPrevue || user.heureFinPrevue) && (
+          <span className="text-[10px] text-amber-600 whitespace-nowrap">
+            Shift prévu {user.heureDebutPrevue || '?'}–{user.heureFinPrevue || '?'}
+          </span>
+        )}
+      </div>
     );
   };
 
