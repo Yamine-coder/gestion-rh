@@ -283,21 +283,12 @@ const enregistrerPointage = async (req, res) => {
     const datePointage = new Date(horodatage);
     const maintenant = new Date();
     const uneHeure = 60 * 60 * 1000; // 1 heure en ms
-    const septJours = 7 * 24 * 60 * 60 * 1000; // 7 jours en ms
 
     // Empêcher les pointages futurs (tolérance: 1h)
     if (datePointage > maintenant.getTime() + uneHeure) {
       return res.status(400).json({ 
         error: 'Impossible de pointer dans le futur',
         details: `Date fournie: ${datePointage.toISOString()}, limite: ${new Date(maintenant.getTime() + uneHeure).toISOString()}`
-      });
-    }
-
-    // Empêcher les pointages trop anciens (limite: 7 jours)
-    if (datePointage < maintenant.getTime() - septJours) {
-      return res.status(400).json({ 
-        error: 'Impossible de pointer plus de 7 jours dans le passé',
-        details: `Date fournie: ${datePointage.toISOString()}, limite: ${new Date(maintenant.getTime() - septJours).toISOString()}`
       });
     }
 
