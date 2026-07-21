@@ -49,6 +49,7 @@ function VueJournaliereRH() {
   const [correctValues, setCorrectValues] = useState({}); // { [pointageId]: "HH:mm" }
   const [correctSaving, setCorrectSaving] = useState(null); // pointageId en cours d'enregistrement
   const [correctFeedback, setCorrectFeedback] = useState({}); // { [pointageId]: 'success' | 'error' }
+  const [blocsToShow, setBlocsToShow] = useState(1); // nombre de blocs affichés dans la modale (existants + ajoutés manuellement)
 
   // 🔍 Recherche & filtre de statut
   const [searchTerm, setSearchTerm] = useState('');
@@ -280,7 +281,15 @@ function VueJournaliereRH() {
     try {
       const [year, month, day] = date.split('-').map(Number);
       const [hour, minute] = completeTime.split(':').map(Number);
-      const horodatage = new Date(year, month - 1, day, hour, minute, 0);
+      let horodatage = new Date(year, month - 1, day, hour, minute, 0);
+
+      // Si le départ tombe avant (ou au même instant que) l'arrivée, c'est qu'il
+      // a lieu après minuit (service traversant minuit) → on passe au jour suivant
+      const lastBloc = completingUser.blocs?.[completingUser.blocs.length - 1];
+      if (lastBloc?.arrivee && horodatage <= new Date(lastBloc.arrivee)) {
+        horodatage = new Date(horodatage.getTime() + 24 * 60 * 60 * 1000);
+      }
+
       await axios.post(
         `${API_BASE}/pointage/manuel`,
         { type: 'depart', horodatage: horodatage.toISOString(), userId: completingUser.id },
@@ -310,6 +319,7 @@ function VueJournaliereRH() {
     });
     setCorrectValues(initialValues);
     setCorrectFeedback({});
+    setBlocsToShow(Math.max(user.blocs.length, 1));
     setCorrectingUserId(user.id);
   };
 
@@ -317,20 +327,28 @@ function VueJournaliereRH() {
     setCorrectingUserId(null);
     setCorrectValues({});
     setCorrectFeedback({});
+    setBlocsToShow(1);
   };
 
   const handleSaveField = async (blocIdx, field) => {
     const key = `${blocIdx}-${field}`;
     const timeStr = correctValues[key];
     if (!timeStr || !correctingUser) return;
-    const bloc = correctingUser.blocs[blocIdx];
+    const bloc = correctingUser.blocs[blocIdx] || {};
     const pointageId = field === 'arrivee' ? bloc?.arriveeId : bloc?.departId;
     setCorrectSaving(key);
     setCorrectFeedback((prev) => ({ ...prev, [key]: null }));
     try {
       const [year, month, day] = date.split('-').map(Number);
       const [hour, minute] = timeStr.split(':').map(Number);
-      const horodatage = new Date(year, month - 1, day, hour, minute, 0);
+      let horodatage = new Date(year, month - 1, day, hour, minute, 0);
+
+      // Départ avant (ou au même instant que) l'arrivée du même bloc → service
+      // traversant minuit, on passe au jour suivant
+      if (field === 'depart' && bloc?.arrivee && horodatage <= new Date(bloc.arrivee)) {
+        horodatage = new Date(horodatage.getTime() + 24 * 60 * 60 * 1000);
+      }
+
       if (pointageId) {
         // Le pointage existe déjà → on corrige son heure
         await axios.put(
@@ -965,14 +983,12 @@ function VueJournaliereRH() {
                           Compléter le départ
                         </button>
                       )}
-                      {user.blocs.length > 0 && (
-                        <button
-                          onClick={() => openCorrectModal(user)}
-                          className="text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:underline"
-                        >
-                          Corriger un pointage
-                        </button>
-                      )}
+                      <button
+                        onClick={() => openCorrectModal(user)}
+                        className="text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:underline"
+                      >
+                        {user.blocs.length > 0 ? 'Corriger un pointage' : 'Ajouter un pointage'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1026,14 +1042,12 @@ function VueJournaliereRH() {
                         Compléter le départ
                       </button>
                     )}
-                    {user.blocs.length > 0 && (
-                      <button
-                        onClick={() => openCorrectModal(user)}
-                        className="text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:underline"
-                      >
-                        Corriger un pointage
-                      </button>
-                    )}
+                    <button
+                      onClick={() => openCorrectModal(user)}
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-700 hover:underline"
+                    >
+                      {user.blocs.length > 0 ? 'Corriger un pointage' : 'Ajouter un pointage'}
+                    </button>
                   </div>
                 </div>
 
@@ -1167,11 +1181,12 @@ function VueJournaliereRH() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-gray-900 mb-1">Corriger un pointage</h3>
             <p className="text-sm text-gray-500 mb-4">
-              {getNomComplet(correctingUser)} — {dayjs(date).format('DD/MM/YYYY')}. Modifiez ou renseignez l'heure en cas d'erreur ou d'oubli de saisie.
+              {getNomComplet(correctingUser)} — {dayjs(date).format('DD/MM/YYYY')}. Modifiez ou renseignez l'heure en cas d'erreur ou d'oubli de saisie (ajoutez un bloc pour une coupure).
             </p>
 
             <div className="space-y-4 max-h-[50vh] overflow-y-auto">
-              {correctingUser.blocs.map((bloc, blocIdx) => {
+              {Array.from({ length: Math.max(blocsToShow, correctingUser.blocs.length) }).map((_, blocIdx) => {
+                const bloc = correctingUser.blocs[blocIdx] || {};
                 const arriveeKey = `${blocIdx}-arrivee`;
                 const departKey = `${blocIdx}-depart`;
                 return (
@@ -1229,7 +1244,14 @@ function VueJournaliereRH() {
               })}
             </div>
 
-            <div className="flex items-center justify-end mt-4">
+            <div className="flex items-center justify-between mt-4">
+              <button
+                onClick={() => setBlocsToShow((c) => Math.min(Math.max(c, correctingUser.blocs.length) + 1, 5))}
+                disabled={Math.max(blocsToShow, correctingUser.blocs.length) >= 5}
+                className="text-[11px] font-medium text-[#cf292c] hover:text-[#a82124] hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
+              >
+                + Ajouter un bloc (coupure)
+              </button>
               <button
                 onClick={closeCorrectModal}
                 className="px-3.5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
